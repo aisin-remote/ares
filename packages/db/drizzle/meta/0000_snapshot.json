@@ -1,0 +1,580 @@
+{
+  "version": "5",
+  "dialect": "mysql",
+  "id": "1ff36c38-c25a-4ab3-852b-f58429ed0969",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "tables": {
+    "TM_DEVICE": {
+      "name": "TM_DEVICE",
+      "columns": {
+        "ID": {
+          "name": "ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "CODE": {
+          "name": "CODE",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "NAME": {
+          "name": "NAME",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "PLANT_ID": {
+          "name": "PLANT_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "KIND": {
+          "name": "KIND",
+          "type": "enum('SCANNER','RFID','MACHINE_PANEL','PRINTER')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "TOKEN_HASH": {
+          "name": "TOKEN_HASH",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "LAST_SEEN_AT": {
+          "name": "LAST_SEEN_AT",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "IS_ACTIVE": {
+          "name": "IS_ACTIVE",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "CREATED_AT": {
+          "name": "CREATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "TM_DEVICE_CODE_UNIQUE": {
+          "name": "TM_DEVICE_CODE_UNIQUE",
+          "columns": [
+            "CODE"
+          ],
+          "isUnique": true
+        },
+        "TM_DEVICE_PLANT_IDX": {
+          "name": "TM_DEVICE_PLANT_IDX",
+          "columns": [
+            "PLANT_ID"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "TM_DEVICE_PLANT_ID_TM_PLANT_ID_fk": {
+          "name": "TM_DEVICE_PLANT_ID_TM_PLANT_ID_fk",
+          "tableFrom": "TM_DEVICE",
+          "tableTo": "TM_PLANT",
+          "columnsFrom": [
+            "PLANT_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "TM_DEVICE_ID": {
+          "name": "TM_DEVICE_ID",
+          "columns": [
+            "ID"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "TM_PLANT": {
+      "name": "TM_PLANT",
+      "columns": {
+        "ID": {
+          "name": "ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "CODE": {
+          "name": "CODE",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "NAME": {
+          "name": "NAME",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "IS_ACTIVE": {
+          "name": "IS_ACTIVE",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "CREATED_AT": {
+          "name": "CREATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "TM_PLANT_CODE_UNIQUE": {
+          "name": "TM_PLANT_CODE_UNIQUE",
+          "columns": [
+            "CODE"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "TM_PLANT_ID": {
+          "name": "TM_PLANT_ID",
+          "columns": [
+            "ID"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "TM_ROLE": {
+      "name": "TM_ROLE",
+      "columns": {
+        "ID": {
+          "name": "ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "NAME": {
+          "name": "NAME",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "LABEL": {
+          "name": "LABEL",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "CREATED_AT": {
+          "name": "CREATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "TM_ROLE_NAME_UNIQUE": {
+          "name": "TM_ROLE_NAME_UNIQUE",
+          "columns": [
+            "NAME"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "TM_ROLE_ID": {
+          "name": "TM_ROLE_ID",
+          "columns": [
+            "ID"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "TM_USER": {
+      "name": "TM_USER",
+      "columns": {
+        "ID": {
+          "name": "ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "NPK": {
+          "name": "NPK",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "NAME": {
+          "name": "NAME",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "EMAIL": {
+          "name": "EMAIL",
+          "type": "varchar(191)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "PASSWORD_HASH": {
+          "name": "PASSWORD_HASH",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "ROLE_ID": {
+          "name": "ROLE_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "PLANT_ID": {
+          "name": "PLANT_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "IS_ACTIVE": {
+          "name": "IS_ACTIVE",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "CREATED_AT": {
+          "name": "CREATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "TM_USER_NPK_UNIQUE": {
+          "name": "TM_USER_NPK_UNIQUE",
+          "columns": [
+            "NPK"
+          ],
+          "isUnique": true
+        },
+        "TM_USER_EMAIL_UNIQUE": {
+          "name": "TM_USER_EMAIL_UNIQUE",
+          "columns": [
+            "EMAIL"
+          ],
+          "isUnique": true
+        },
+        "TM_USER_PLANT_IDX": {
+          "name": "TM_USER_PLANT_IDX",
+          "columns": [
+            "PLANT_ID"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "TM_USER_ROLE_ID_TM_ROLE_ID_fk": {
+          "name": "TM_USER_ROLE_ID_TM_ROLE_ID_fk",
+          "tableFrom": "TM_USER",
+          "tableTo": "TM_ROLE",
+          "columnsFrom": [
+            "ROLE_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TM_USER_PLANT_ID_TM_PLANT_ID_fk": {
+          "name": "TM_USER_PLANT_ID_TM_PLANT_ID_fk",
+          "tableFrom": "TM_USER",
+          "tableTo": "TM_PLANT",
+          "columnsFrom": [
+            "PLANT_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "TM_USER_ID": {
+          "name": "TM_USER_ID",
+          "columns": [
+            "ID"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "TT_SAP_OUTBOX": {
+      "name": "TT_SAP_OUTBOX",
+      "columns": {
+        "ID": {
+          "name": "ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "PLANT_ID": {
+          "name": "PLANT_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "SOURCE_TABLE": {
+          "name": "SOURCE_TABLE",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "SOURCE_ID": {
+          "name": "SOURCE_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "DOC_TYPE": {
+          "name": "DOC_TYPE",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "MOVEMENT_TYPE": {
+          "name": "MOVEMENT_TYPE",
+          "type": "varchar(8)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "IDEMPOTENCY_KEY": {
+          "name": "IDEMPOTENCY_KEY",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "PAYLOAD": {
+          "name": "PAYLOAD",
+          "type": "json",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "STATUS": {
+          "name": "STATUS",
+          "type": "enum('PENDING','SENT','FAILED','HELD','SKIPPED')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'PENDING'"
+        },
+        "ATTEMPTS": {
+          "name": "ATTEMPTS",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "LAST_ERROR": {
+          "name": "LAST_ERROR",
+          "type": "varchar(1000)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "SAP_DOC_NUMBER": {
+          "name": "SAP_DOC_NUMBER",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "OCCURRED_AT": {
+          "name": "OCCURRED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "SENT_AT": {
+          "name": "SENT_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "CREATED_AT": {
+          "name": "CREATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "TT_SAP_OUTBOX_SOURCE_UNIQUE": {
+          "name": "TT_SAP_OUTBOX_SOURCE_UNIQUE",
+          "columns": [
+            "SOURCE_TABLE",
+            "SOURCE_ID",
+            "DOC_TYPE"
+          ],
+          "isUnique": true
+        },
+        "TT_SAP_OUTBOX_IDEMPOTENCY_UNIQUE": {
+          "name": "TT_SAP_OUTBOX_IDEMPOTENCY_UNIQUE",
+          "columns": [
+            "IDEMPOTENCY_KEY"
+          ],
+          "isUnique": true
+        },
+        "TT_SAP_OUTBOX_STATUS_IDX": {
+          "name": "TT_SAP_OUTBOX_STATUS_IDX",
+          "columns": [
+            "STATUS",
+            "OCCURRED_AT"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "TT_SAP_OUTBOX_PLANT_ID_TM_PLANT_ID_fk": {
+          "name": "TT_SAP_OUTBOX_PLANT_ID_TM_PLANT_ID_fk",
+          "tableFrom": "TT_SAP_OUTBOX",
+          "tableTo": "TM_PLANT",
+          "columnsFrom": [
+            "PLANT_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "TT_SAP_OUTBOX_ID": {
+          "name": "TT_SAP_OUTBOX_ID",
+          "columns": [
+            "ID"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    }
+  },
+  "views": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "tables": {},
+    "indexes": {}
+  }
+}

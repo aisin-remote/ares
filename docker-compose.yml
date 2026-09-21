@@ -1,0 +1,48 @@
+# Infrastruktur untuk development lokal.
+# Produksi on-prem: pakai MySQL & Redis yang sudah ada, bukan file ini.
+services:
+  mysql:
+    image: mysql:8.4  # samakan dengan server 172.18.3.75
+    container_name: ares-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: ares
+      MYSQL_USER: ares
+      MYSQL_PASSWORD: ares
+      TZ: Asia/Jakarta
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=+07:00
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Valkey: fork Redis berlisensi BSD (Linux Foundation), protokol sama persis.
+  # BullMQ dan ioredis jalan tanpa perubahan kode apa pun.
+  valkey:
+    image: valkey/valkey:9-alpine
+    container_name: ares-valkey
+    restart: unless-stopped
+    command: valkey-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - valkey_data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+
+volumes:
+  mysql_data:
+  valkey_data:

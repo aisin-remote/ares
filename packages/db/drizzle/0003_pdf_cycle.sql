@@ -1,0 +1,2 @@
+ALTER TABLE `TT_PICKLIST_H` ADD `CYCLE` int DEFAULT 1 NOT NULL;--> statement-breakpoint
+ALTER TABLE `TT_PICKLIST_H` ADD `PDF_READY_AT` timestamp;

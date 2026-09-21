@@ -1,0 +1,21 @@
+node_modules/
+.pnpm-store/
+dist/
+build/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log
+npm-debug.log*
+coverage/
+storage/
+uploads/
+drizzle/meta/_journal.json.bak
+
+# Berkas hasil render worker (PDF picklist & kanban)
+storage/

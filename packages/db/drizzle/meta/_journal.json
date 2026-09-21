@@ -1,0 +1,41 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1789701464071,
+      "tag": "0000_skema_awal",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1789703613448,
+      "tag": "0001_skema_fase1",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1789712123496,
+      "tag": "0002_permission",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1789717974645,
+      "tag": "0003_pdf_cycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1789724149960,
+      "tag": "0004_flimsy_goliath",
+      "breakpoints": true
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "tui",
+  "globalDependencies": [
+    ".env"
+  ],
+  "globalEnv": [
+    "NODE_ENV",
+    "DATABASE_URL",
+    "REDIS_URL",
+    "JWT_SECRET",
+    "MES_API_URL",
+    "MES_API_TOKEN",
+    "MES_SYNC_ENABLED",
+    "SAP_MSSQL_ENABLED",
+    "SAP_MSSQL_HOST",
+    "SAP_MSSQL_PORT",
+    "SAP_MSSQL_INSTANCE",
+    "SAP_MSSQL_DATABASE",
+    "SAP_MSSQL_USER",
+    "SAP_MSSQL_PASSWORD",
+    "API_URL",
+    "NEXT_PUBLIC_API_URL",
+    "WEB_ORIGIN"
+  ],
+  "tasks": {
+    "build": {
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        "dist/**",
+        ".next/**",
+        "!.next/cache/**"
+      ]
+    },
+    "dev": {
+      "dependsOn": [
+        "^build"
+      ],
+      "cache": false,
+      "persistent": true
+    },
+    "typecheck": {
+      "dependsOn": [
+        "^build"
+      ]
+    },
+    "lint": {},
+    "test": {
+      "dependsOn": [
+        "^build"
+      ]
+    },
+    "clean": {
+      "cache": false
+    }
+  }
+}
