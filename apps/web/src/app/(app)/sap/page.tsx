@@ -41,13 +41,14 @@ export default async function SapPage({
   ]);
 
   const idGagal = data.filter((d) => d.status === 'FAILED').map((d) => d.id);
+  const idDitahan = data.filter((d) => d.status === 'HELD').map((d) => d.id);
 
   return (
     <>
       <PageHeader
         crumbs={[{ label: 'Integrasi SAP' }]}
         title="Integrasi SAP"
-        description="Antrean perpindahan barang yang dikirim ke SAP lewat MS SQL"
+        description={`Antrean perpindahan barang melalui gateway ${ringkas.gateway}`}
       />
 
       {/* Keadaan saklar pengiriman ditaruh paling atas: tanpa ini, antrean yang
@@ -56,10 +57,16 @@ export default async function SapPage({
         <p className="mb-5 flex items-start gap-2 rounded-card border border-warn/40 bg-warn/10 px-4 py-3 text-[14px] text-warn">
           <PauseCircle className="mt-0.5 size-4 shrink-0" strokeWidth={2} aria-hidden />
           <span>
-            Pengiriman ke MS SQL <strong>belum dinyalakan</strong> (<code>SAP_MSSQL_ENABLED</code>).
+            Gateway <strong>{ringkas.gateway}</strong> belum aktif. Untuk mode mssql, aktifkan{' '}
+            <code>SAP_MSSQL_ENABLED</code> setelah staging siap.
             Dokumen tetap dikumpulkan dan menunggu — tidak ada yang hilang. Begitu bentuk tabel
             tujuan dan movement type disepakati tim SAP, seluruh tunggakan terkirim apa adanya.
           </span>
+        </p>
+      ) : ringkas.gateway === 'fake' ? (
+        <p className="mb-5 rounded-card border border-accent/30 bg-accent/10 px-4 py-3 text-[14px] text-accent">
+          Mode uji <strong>fake</strong> aktif. Dokumen ditandai terkirim dengan nomor FAKE-&lt;id&gt;
+          tanpa menulis ke SAP.
         </p>
       ) : null}
 
@@ -74,7 +81,7 @@ export default async function SapPage({
       </Reveal>
 
       <div className="mb-5">
-        <OutboxActions idGagal={idGagal} />
+        <OutboxActions idGagal={idGagal} idDitahan={idDitahan} />
       </div>
 
       <Reveal>

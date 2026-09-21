@@ -44,4 +44,4 @@ Tampilan ARES identik dengan Avicenna MES (PRD §10). Sistem desain (`globals.cs
 | --- | --- | --- |
 | MES → ARES (hasil produksi) | job `mes-sync` menarik API MES dengan cursor (PRD 8.2) | `MES_SYNC_ENABLED=false` sampai kontrak API disepakati |
 | SAP → ARES (PO open items, master) | job `sap-sync-*` (PRD 8.1) | belum |
-| ARES → SAP (GR 101/102) | `TT_SAP_OUTBOX` → `sap-writer` ke tabel staging MS SQL | writer ada, `collect()` masih stub; `SAP_MSSQL_ENABLED=false` |
+| ARES → SAP (GR 101; pembalik 102 pending) | `TT_SAP_OUTBOX` → `SapGateway` | `SAP_GATEWAY=fake` untuk uji; `mssql` menunggu kontrak tabel staging |

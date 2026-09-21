@@ -34,3 +34,20 @@ export const picklistListQuerySchema = paginationSchema.extend({
   vendorId: idSchema.optional(),
 });
 export type PicklistListQuery = z.infer<typeof picklistListQuerySchema>;
+
+/** F-30 / 6.3: konfirmasi kirim supplier — box dikirim per line, ETA, kendaraan, catatan. */
+export const confirmShipmentSchema = z.object({
+  lines: z
+    .array(
+      z.object({
+        picklistLineId: idSchema,
+        boxShipped: z.number().int().min(0, 'Tidak boleh negatif'),
+      }),
+    )
+    .min(1, 'Minimal satu baris'),
+  /** ISO 8601 dengan zona (mis. hasil `Date.toISOString()`); kosong = tidak diisi. */
+  eta: z.string().datetime({ offset: true }).optional(),
+  vehicleNo: z.string().trim().max(32).optional(),
+  note: z.string().trim().max(255).optional(),
+});
+export type ConfirmShipmentInput = z.infer<typeof confirmShipmentSchema>;

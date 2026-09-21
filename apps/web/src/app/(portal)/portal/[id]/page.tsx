@@ -9,6 +9,8 @@ import { InfoRow, InfoRowPair } from '@/components/ui/info-row';
 import { Table, Th, Td, Tr, EmptyState } from '@/components/ui/table';
 import { Reveal } from '@/components/motion/reveal';
 import { UnduhDokumen } from '@/components/portal/unduh-dokumen';
+import { ConfirmShipmentForm } from '@/components/portal/confirm-shipment-form';
+import { LINE_STATUS_LABEL } from '@/components/picklist/status';
 import { STATUS_LABEL, STATUS_TONE, jam, tanggal, waktu } from '@/components/picklist/status';
 import { cn } from '@/components/ui/cn';
 
@@ -34,6 +36,9 @@ export default async function PortalDetailPage({ params }: { params: Promise<{ i
 
   const totalKanban = picklist.lines.reduce((n, l) => n + l.kanbanCount, 0);
   const totalBox = picklist.lines.reduce((n, l) => n + l.boxOrdered, 0);
+  // 6.3.4: form konfirmasi hanya sebelum SHIPPED; sesudahnya angkanya beku di layar ini.
+  const bisaKonfirmasi = picklist.status === 'ISSUED' || picklist.status === 'DOWNLOADED';
+  const sudahKirim = picklist.shippedAt !== null;
 
   return (
     <>
@@ -82,7 +87,7 @@ export default async function PortalDetailPage({ params }: { params: Promise<{ i
             </InfoRow>
             <InfoRow icon={Truck} label="Konfirmasi kirim">
               {picklist.shippedAt
-                ? `${waktu(picklist.shippedAt)}${picklist.vehicleNo ? ` · ${picklist.vehicleNo}` : ''}`
+                ? `${waktu(picklist.shippedAt)}${picklist.vehicleNo ? ` · ${picklist.vehicleNo}` : ''}${picklist.eta ? ` · ETA ${waktu(picklist.eta)}` : ''}`
                 : 'Belum dikonfirmasi'}
             </InfoRow>
             {picklist.note ? (
@@ -97,51 +102,82 @@ export default async function PortalDetailPage({ params }: { params: Promise<{ i
       <Reveal className="mt-5">
         <Card>
           <CardHeader
-            icon={Layers}
-            title="Yang harus dikirim"
-            subtitle="Satu kanban per box — tempelkan kartunya pada box yang sesuai"
+            icon={bisaKonfirmasi ? Truck : Layers}
+            title={bisaKonfirmasi ? 'Konfirmasi kirim' : 'Yang dikirim'}
+            subtitle={
+              bisaKonfirmasi
+                ? 'Isi box yang benar-benar naik truk per part, ETA, dan nomor kendaraan (F-30)'
+                : sudahKirim
+                  ? 'Jumlah kirim sudah dikonfirmasi dan tidak bisa diubah dari portal; perubahan lewat PPIC'
+                  : 'Satu kanban per box — tempelkan kartunya pada box yang sesuai'
+            }
           />
-          <Table>
-            <thead>
-              <tr>
-                <Th>Part</Th>
-                <Th>Back no</Th>
-                <Th align="right">Qty/box</Th>
-                <Th align="right">Box</Th>
-                <Th align="right">Pcs</Th>
-                <Th align="right">Kanban</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {picklist.lines.length === 0 ? (
-                <EmptyState colSpan={6}>
-                  Order ini tidak punya baris. Hubungi PPIC — seharusnya tidak mungkin terjadi.
-                </EmptyState>
-              ) : (
-                picklist.lines.map((l) => (
-                  <Tr key={l.id}>
-                    <Td strong className="whitespace-nowrap">
-                      <span className="tabular">{l.partNo}</span>
-                      <span className="ml-2 font-normal text-ink-muted">{l.partName}</span>
-                    </Td>
-                    <Td className="tabular">{l.backNo}</Td>
-                    <Td align="right" className="tabular">
-                      {l.qtyPerBox}
-                    </Td>
-                    <Td align="right" className="tabular">
-                      {l.boxOrdered}
-                    </Td>
-                    <Td align="right" className="tabular">
-                      {l.pcs}
-                    </Td>
-                    <Td align="right" className="tabular">
-                      {l.kanbanCount}
-                    </Td>
-                  </Tr>
-                ))
-              )}
-            </tbody>
-          </Table>
+          {bisaKonfirmasi ? (
+            <ConfirmShipmentForm
+              picklistId={picklist.id}
+              lines={picklist.lines.map((l) => ({
+                id: l.id,
+                partNo: l.partNo,
+                partName: l.partName,
+                backNo: l.backNo,
+                boxOrdered: l.boxOrdered,
+                qtyPerBox: l.qtyPerBox,
+              }))}
+              defaultEta={`${picklist.deliveryDate}T${jam(picklist.arrivalTime)}`}
+            />
+          ) : (
+            <Table>
+              <thead>
+                <tr>
+                  <Th>Part</Th>
+                  <Th>Back no</Th>
+                  <Th align="right">Qty/box</Th>
+                  <Th align="right">Diorder</Th>
+                  <Th align="right">Dikirim</Th>
+                  <Th align="right">Pcs</Th>
+                  <Th>Status</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {picklist.lines.length === 0 ? (
+                  <EmptyState colSpan={7}>
+                    Order ini tidak punya baris. Hubungi PPIC — seharusnya tidak mungkin terjadi.
+                  </EmptyState>
+                ) : (
+                  picklist.lines.map((l) => (
+                    <Tr key={l.id}>
+                      <Td strong className="whitespace-nowrap">
+                        <span className="tabular">{l.partNo}</span>
+                        <span className="ml-2 font-normal text-ink-muted">{l.partName}</span>
+                      </Td>
+                      <Td className="tabular">{l.backNo}</Td>
+                      <Td align="right" className="tabular">
+                        {l.qtyPerBox}
+                      </Td>
+                      <Td align="right" className="tabular">
+                        {l.boxOrdered}
+                      </Td>
+                      <Td
+                        align="right"
+                        className={cn(
+                          'tabular font-semibold',
+                          l.boxShipped !== null && l.boxShipped < l.boxOrdered
+                            ? 'text-warn'
+                            : 'text-ink',
+                        )}
+                      >
+                        {l.boxShipped ?? '—'}
+                      </Td>
+                      <Td align="right" className="tabular">
+                        {(l.boxShipped ?? l.boxOrdered) * l.qtyPerBox}
+                      </Td>
+                      <Td>{LINE_STATUS_LABEL[l.status] ?? l.status}</Td>
+                    </Tr>
+                  ))
+                )}
+              </tbody>
+            </Table>
+          )}
         </Card>
       </Reveal>
 
@@ -149,7 +185,9 @@ export default async function PortalDetailPage({ params }: { params: Promise<{ i
         <Link href="/portal" className="font-semibold text-ink hover:underline">
           Kembali ke daftar order
         </Link>
-        {' · Konfirmasi kirim (jumlah box, ETA, nomor kendaraan) menyusul di layar ini.'}
+        {sudahKirim
+          ? ' · Bila jumlah kirim perlu diubah setelah konfirmasi, hubungi PPIC (6.3.4).'
+          : ''}
       </p>
     </>
   );

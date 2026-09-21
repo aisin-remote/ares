@@ -173,7 +173,8 @@ export function Topbar({
   );
 }
 
-function initials(name: string): string {
+/** Inisial nama (huruf depan kata pertama + terakhir); dipakai topbar dan sidebar. */
+export function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return '?';
   const first = parts[0]?.[0] ?? '';

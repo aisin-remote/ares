@@ -8,6 +8,7 @@ import {
   and,
   inArray,
   asc,
+  desc,
   plants,
   users,
   vendors,
@@ -25,11 +26,14 @@ import {
   scanEvents,
   stockMutations,
   sapOutbox,
+  auditLogs,
 } from '@ares/db';
 import { formatScanCode } from '@ares/domain';
 import { ReceivingService } from './receiving.service';
 import { PicklistService } from '../picklist/picklist.service';
 import { SapOutboxService } from '../sap/sap-outbox.service';
+import { SapWriterService } from '../sap/sap-writer.service';
+import { FakeSapGateway } from '../sap/sap.gateway';
 import { SequenceService } from '../common/sequence.service';
 import type { QueueService } from '../queue/queue.service';
 
@@ -43,6 +47,7 @@ const sequence = new SequenceService();
 const picklists = new PicklistService(db, sequence, queue);
 const receiving = new ReceivingService(db, sequence);
 const outbox = new SapOutboxService(db);
+const writer = new SapWriterService(db, new FakeSapGateway());
 const stamp = Date.now().toString().slice(-10);
 
 let actor: { userId: number; plantId: number };
@@ -133,11 +138,20 @@ afterAll(async () => {
       .where(inArray(receiptHeaders.picklistId, plIds));
     const rcIds = rcs.map((r) => r.id);
     if (rcIds.length > 0) {
+      await db.delete(auditLogs).where(and(eq(auditLogs.entity, 'TT_RECEIPT_H'),
+        inArray(auditLogs.entityId, rcIds.map(String))));
+      const outboxRows = await db.select({ id: sapOutbox.id }).from(sapOutbox)
+        .where(and(eq(sapOutbox.sourceTable, 'TT_RECEIPT_H'), inArray(sapOutbox.sourceId, rcIds)));
+      if (outboxRows.length > 0) await db.delete(auditLogs)
+        .where(and(eq(auditLogs.entity, 'TT_SAP_OUTBOX'),
+          inArray(auditLogs.entityId, outboxRows.map((row) => String(row.id)))));
       await db
         .delete(sapOutbox)
         .where(and(eq(sapOutbox.sourceTable, 'TT_RECEIPT_H'), inArray(sapOutbox.sourceId, rcIds)));
       await db.delete(scanEvents).where(inArray(scanEvents.sessionId, rcIds));
     }
+    await db.delete(auditLogs).where(and(eq(auditLogs.entity, 'TT_PICKLIST_H'),
+      inArray(auditLogs.entityId, plIds.map(String))));
     await db.delete(stockMutations).where(inArray(stockMutations.partId, [partA, partB]));
     const lines = await db
       .select({ id: picklistLines.id })
@@ -382,6 +396,82 @@ describe('sesi scan: buka → 5 scan (1 dobel, 1 picklist lain) → tutup → ou
       .from(sapOutbox)
       .where(and(eq(sapOutbox.sourceTable, 'TT_RECEIPT_H'), eq(sapOutbox.sourceId, sesi.id)));
     expect(row?.status).toBe('SKIPPED');
+  });
+
+  it('receipt CLOSED bisa dibatalkan sebelum GR terkirim dan seluruh mutasi dipulihkan', async () => {
+    const E = await issue([{ vendorPartId: vpA, boxes: 1 }]);
+    const sesi = await receiving.open(picklistCode(E.picklistNo), actor);
+    await receiving.scan(sesi.id, kanbanCode(E.lines[0]!.kanbanIds[0]!), actor);
+    await receiving.close(sesi.id, undefined, actor);
+    await outbox.collect();
+
+    await expect(receiving.cancel(sesi.id, 'Receipt salah scan', actor)).resolves.toMatchObject({
+      id: sesi.id,
+      status: 'CANCELLED',
+      picklistId: E.id,
+    });
+
+    const [receipt] = await db.select({ status: receiptHeaders.status }).from(receiptHeaders)
+      .where(eq(receiptHeaders.id, sesi.id));
+    const [pl] = await db.select({ status: picklistHeaders.status }).from(picklistHeaders)
+      .where(eq(picklistHeaders.id, E.id));
+    const [kanban] = await db.select({ status: kanbans.status, receiptId: kanbans.receiptId })
+      .from(kanbans).where(eq(kanbans.id, E.lines[0]!.kanbanIds[0]!));
+    const [sap] = await db.select({ status: sapOutbox.status }).from(sapOutbox)
+      .where(and(eq(sapOutbox.sourceTable, 'TT_RECEIPT_H'), eq(sapOutbox.sourceId, sesi.id)));
+    expect(receipt?.status).toBe('CANCELLED');
+    expect(pl?.status).toBe('ISSUED');
+    expect(kanban).toEqual({ status: 'PRINTED', receiptId: null });
+    expect(sap?.status).toBe('SKIPPED');
+
+    const mutations = await db.select({ delta: stockMutations.deltaPcs, type: stockMutations.type })
+      .from(stockMutations).where(eq(stockMutations.partId, partA)).orderBy(desc(stockMutations.id)).limit(2);
+    expect(mutations).toContainEqual({ delta: -100, type: 'ADJUST' });
+    const audit = await db.select({ action: auditLogs.action }).from(auditLogs)
+      .where(and(eq(auditLogs.entity, 'TT_RECEIPT_H'), eq(auditLogs.entityId, String(sesi.id))))
+      .orderBy(asc(auditLogs.id));
+    expect(audit.map((row) => row.action)).toEqual(['OPEN', 'CLOSE', 'CANCEL']);
+
+    await outbox.collect();
+    const stillOne = await db.select({ id: sapOutbox.id }).from(sapOutbox)
+      .where(and(eq(sapOutbox.sourceTable, 'TT_RECEIPT_H'), eq(sapOutbox.sourceId, sesi.id)));
+    expect(stillOne).toHaveLength(1);
+  });
+
+  it('FakeSapGateway mengirim nomor palsu, retry tercatat di audit, dan SENT tidak bisa dibatalkan', async () => {
+    const F = await issue([{ vendorPartId: vpB, boxes: 1 }]);
+    const sesi = await receiving.open(picklistCode(F.picklistNo), actor);
+    await receiving.scan(sesi.id, kanbanCode(F.lines[0]!.kanbanIds[0]!), actor);
+    await receiving.close(sesi.id, undefined, actor);
+    await outbox.collect();
+
+    const [pending] = await db.select().from(sapOutbox)
+      .where(and(eq(sapOutbox.sourceTable, 'TT_RECEIPT_H'), eq(sapOutbox.sourceId, sesi.id)));
+    await writer.flush([pending!.id]);
+    const [sent] = await db.select().from(sapOutbox).where(eq(sapOutbox.id, pending!.id));
+    expect(sent).toMatchObject({ status: 'SENT', sapDocNumber: `FAKE-${sent!.id}` });
+    await expect(receiving.cancel(sesi.id, 'Sudah terlambat', actor)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+
+    await db.update(sapOutbox).set({ status: 'FAILED', attempts: 8, lastError: 'uji' })
+      .where(eq(sapOutbox.id, sent!.id));
+    await expect(outbox.hold([sent!.id], actor.userId)).resolves.toEqual({ ditahan: 1 });
+    const [held] = await db.select().from(sapOutbox).where(eq(sapOutbox.id, sent!.id));
+    expect(held).toMatchObject({ status: 'HELD', attempts: 8 });
+    await outbox.releaseHeld();
+    const [stillHeld] = await db.select().from(sapOutbox).where(eq(sapOutbox.id, sent!.id));
+    expect(stillHeld?.status).toBe('HELD');
+    await expect(outbox.retry([sent!.id], actor.userId)).resolves.toEqual({ diulang: 1 });
+    const [retried] = await db.select().from(sapOutbox).where(eq(sapOutbox.id, sent!.id));
+    expect(retried).toMatchObject({ status: 'PENDING', attempts: 0, lastError: null });
+    const outboxAudit = await db.select({ action: auditLogs.action }).from(auditLogs)
+      .where(and(eq(auditLogs.entity, 'TT_SAP_OUTBOX'), eq(auditLogs.entityId, String(sent!.id))))
+      .orderBy(asc(auditLogs.id));
+    expect(outboxAudit.map((row) => row.action)).toEqual(['HOLD', 'RETRY']);
+    await writer.flush([sent!.id]);
+    const [resent] = await db.select().from(sapOutbox).where(eq(sapOutbox.id, sent!.id));
+    expect(resent).toMatchObject({ status: 'SENT', attempts: 1, sapDocNumber: `FAKE-${sent!.id}` });
   });
 
   it('barcode bukan picklist / picklist tidak ada → ditolak sebelum menyentuh DB', async () => {

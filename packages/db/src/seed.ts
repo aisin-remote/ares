@@ -1,7 +1,7 @@
 import './load-env';
 import bcrypt from 'bcryptjs';
 import { getDb, closeDb } from './client';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import {
   plants,
   roles,
@@ -18,9 +18,7 @@ import {
 /**
  * Seed minimal ARES: satu pabrik, peran sesuai PRD bagian 2, satu admin.
  *
- * Idempoten — aman dijalankan berulang. Master supplier/part/vendor part
- * (PRD F-01, F-02) menyusul bersama skemanya; jangan seed data dummy
- * transaksi di sini.
+ * Idempoten — aman dijalankan berulang. Data contoh hanya dengan SEED_DEMO=on.
  */
 async function main() {
   const db = getDb();
@@ -69,13 +67,37 @@ async function main() {
       { roleId: roleId('ppic'), action: 'picklist.read' },
       { roleId: roleId('warehouse'), action: 'picklist.read' },
       { roleId: roleId('supplier'), action: 'picklist.read' },
+      // F-30: konfirmasi kirim hanya oleh akun supplier (6.3.4: setelah SHIPPED lewat PPIC).
+      { roleId: roleId('supplier'), action: 'picklist.ship' },
       // Sesi scan kedatangan (F-34–F-37): operator gudang, admin sebagai cadangan.
       { roleId: roleId('warehouse'), action: 'receipt.open' },
       { roleId: roleId('warehouse'), action: 'receipt.scan' },
       { roleId: roleId('warehouse'), action: 'receipt.close' },
+      { roleId: roleId('warehouse'), action: 'receipt.cancel' },
       { roleId: roleId('admin'), action: 'receipt.open' },
       { roleId: roleId('admin'), action: 'receipt.scan' },
       { roleId: roleId('admin'), action: 'receipt.close' },
+      { roleId: roleId('admin'), action: 'receipt.cancel' },
+      // Pemantauan dan kontrol outbox SAP (F-46–F-48).
+      { roleId: roleId('admin'), action: 'outbox.read' },
+      { roleId: roleId('admin'), action: 'outbox.collect' },
+      { roleId: roleId('admin'), action: 'outbox.retry' },
+      { roleId: roleId('admin'), action: 'outbox.hold' },
+      { roleId: roleId('ppic'), action: 'outbox.read' },
+      { roleId: roleId('ppic'), action: 'outbox.collect' },
+      { roleId: roleId('ppic'), action: 'outbox.retry' },
+      { roleId: roleId('ppic'), action: 'outbox.hold' },
+      // F-01–F-09: master hanya untuk PPIC/Admin; pengelolaan user khusus Admin.
+      { roleId: roleId('admin'), action: 'master.read' },
+      { roleId: roleId('admin'), action: 'master.write' },
+      { roleId: roleId('admin'), action: 'setting.write' },
+      { roleId: roleId('admin'), action: 'user.write' },
+      { roleId: roleId('ppic'), action: 'master.read' },
+      { roleId: roleId('ppic'), action: 'master.write' },
+      { roleId: roleId('ppic'), action: 'setting.write' },
+      // F-42: penyesuaian stok WH manual oleh PPIC (admin sebagai cadangan).
+      { roleId: roleId('admin'), action: 'stock.adjust' },
+      { roleId: roleId('ppic'), action: 'stock.adjust' },
     ],
   );
 
@@ -95,15 +117,13 @@ async function main() {
   }
 
   // ── Master contoh (F-01, F-02, F-04) ────────────────────────────────────
-  // Dimatikan dengan SEED_DEMO=off saat seed dijalankan di server sungguhan.
-  if (process.env.SEED_DEMO === 'off') {
-    console.log('[seed]   master contoh dilewati (SEED_DEMO=off)');
-  } else {
+  // Demo selalu opt-in agar seed produksi tidak menyisipkan master/PO contoh.
+  if (process.env.SEED_DEMO === 'on') {
     await seedMasterContoh();
+    await seedAkunSupplier(plant.id, roleId('supplier'));
+  } else {
+    console.log('[seed]   data demo dilewati (aktifkan dengan SEED_DEMO=on)');
   }
-
-  // ── Akun portal untuk supplier contoh (F-28) ────────────────────────────
-  if (process.env.SEED_DEMO !== 'off') await seedAkunSupplier(plant.id, roleId('supplier'));
 
   console.log('[seed] selesai');
   await closeDb();
@@ -118,26 +138,25 @@ async function main() {
  */
 async function seedAkunSupplier(plantId: number, supplierRoleId: number): Promise<void> {
   const db = getDb();
-  const [vendor] = await db
+  const demoVendors = await db
     .select({ id: vendors.id, name: vendors.name, email: vendors.email, no: vendors.sapVendorNo })
     .from(vendors)
-    .where(eq(vendors.sapVendorNo, '0000100231'))
-    .limit(1);
-  if (!vendor?.email) return;
-
-  const ada = await db.select().from(users).where(eq(users.email, vendor.email)).limit(1);
-  if (ada.length > 0) return;
-
-  await db.insert(users).values({
-    npk: `SUP-${vendor.no}`,
-    name: vendor.name,
-    email: vendor.email,
-    passwordHash: await bcrypt.hash('supplier123', 10),
-    roleId: supplierRoleId,
-    plantId,
-    vendorId: vendor.id,
-  });
-  console.log(`[seed]   + akun supplier ${vendor.email} (password: supplier123)`);
+    .where(inArray(vendors.sapVendorNo, ['0000100231', '0000100544']));
+  for (const vendor of demoVendors) {
+    if (!vendor.email) continue;
+    const ada = await db.select().from(users).where(eq(users.email, vendor.email)).limit(1);
+    if (ada.length > 0) continue;
+    await db.insert(users).values({
+      npk: `SUP-${vendor.no}`,
+      name: vendor.name,
+      email: vendor.email,
+      passwordHash: await bcrypt.hash('supplier123', 10),
+      roleId: supplierRoleId,
+      plantId,
+      vendorId: vendor.id,
+    });
+    console.log(`[seed]   + akun supplier ${vendor.email} (password: supplier123)`);
+  }
 }
 
 /**

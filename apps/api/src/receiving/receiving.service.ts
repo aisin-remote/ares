@@ -10,6 +10,7 @@ import {
   asc,
   eq,
   inArray,
+  ne,
   sql,
   vendors,
   vendorParts,
@@ -22,6 +23,7 @@ import {
   kanbanEvents,
   scanEvents,
   stockMutations,
+  sapOutbox,
   type Database,
   type Transaction,
 } from '@ares/db';
@@ -34,11 +36,14 @@ import {
   InvalidTransitionError,
   type KanbanForScan,
   type CloseLineInput,
+  picklistStatusAfterReceiptCancel,
+  kanbanStatusAfterReceiptCancel,
 } from '@ares/domain';
 import type { PicklistStatus } from '@ares/contracts';
 import { InjectDb } from '../db/db.module';
 import { SequenceService } from '../common/sequence.service';
 import type { Actor } from '../picklist/picklist.service';
+import { writeAudit } from '../common/audit';
 
 /**
  * Picklist yang boleh dibuka sesi scannya. PRINTED/belum konfirmasi tetap
@@ -103,6 +108,8 @@ export class ReceivingService {
           .values({ plantId: actor.plantId, receiptNo, picklistId: pl.id, status: 'OPEN' })
           .$returningId()
       )[0]!.id;
+      await writeAudit(tx, 'TT_RECEIPT_H', id, 'OPEN', actor.userId, null,
+        { receiptNo, picklistId: pl.id, status: 'OPEN' });
       return { id, resumed: false };
     });
 
@@ -329,6 +336,12 @@ export class ReceivingService {
         })
         .where(eq(receiptHeaders.id, s.id));
 
+      await writeAudit(tx, 'TT_RECEIPT_H', s.id, 'CLOSE', actor.userId,
+        { status: 'OPEN', picklistStatus: pl.status, receiptNo: s.receiptNo },
+        { status: 'CLOSED', picklistStatus: finalStatus ?? pl.status,
+          boxReceived: closed.lines.reduce((sum, line) => sum + line.boxReceived, 0),
+          missingKanbanIds: closed.missingKanbanIds, reason: reason?.trim() || null });
+
       return {
         id: s.id,
         receiptNo: s.receiptNo,
@@ -338,6 +351,99 @@ export class ReceivingService {
         missingCount: closed.missingKanbanIds.length,
         lines: closed.lines,
       };
+    });
+  }
+
+  /** F-40: pembatalan sebelum GR terkirim, termasuk sesi yang masih OPEN. */
+  async cancel(receiptId: number, reason: string, actor: Actor) {
+    return this.db.transaction(async (tx) => {
+      const [receipt] = await tx.select().from(receiptHeaders)
+        .where(eq(receiptHeaders.id, receiptId)).for('update');
+      if (!receipt) throw new NotFoundException('Receipt tidak ditemukan');
+      if (receipt.status === 'CANCELLED') throw new ConflictException('Receipt sudah dibatalkan');
+      const [pl] = await tx.select().from(picklistHeaders)
+        .where(eq(picklistHeaders.id, receipt.picklistId)).for('update');
+      if (!pl) throw new NotFoundException('Picklist receipt tidak ditemukan');
+      const [outbox] = await tx.select().from(sapOutbox)
+        .where(and(eq(sapOutbox.sourceTable, 'TT_RECEIPT_H'),
+          eq(sapOutbox.sourceId, receiptId), eq(sapOutbox.docType, 'GR'))).for('update');
+      if (outbox?.status === 'SENT') {
+        throw new ConflictException('GR sudah terkirim; pembatalan memerlukan GR pembalik (F-40)');
+      }
+      if (outbox && outbox.status !== 'SKIPPED') {
+        await tx.update(sapOutbox).set({ status: 'SKIPPED', lastError: `Receipt dibatalkan: ${reason}`.slice(0, 1000) })
+          .where(eq(sapOutbox.id, outbox.id));
+      }
+
+      const received = await tx.select({ id: kanbans.id }).from(kanbans)
+        .where(eq(kanbans.receiptId, receiptId)).for('update');
+      const receivedIds = received.map((row) => row.id);
+      const autoEvents = receivedIds.length ? await tx.select({ id: kanbanEvents.kanbanId })
+        .from(kanbanEvents)
+        .where(and(inArray(kanbanEvents.kanbanId, receivedIds),
+          eq(kanbanEvents.type, 'SHIPPED_AUTO'), eq(kanbanEvents.ref, receipt.receiptNo))) : [];
+      const autoIds = new Set(autoEvents.map((row) => row.id));
+      for (const id of receivedIds) {
+        await tx.update(kanbans).set({
+          status: kanbanStatusAfterReceiptCancel(autoIds.has(id)), receiptId: null, receivedAt: null,
+        }).where(eq(kanbans.id, id));
+      }
+
+      if (receipt.status === 'CLOSED') {
+        const [other] = await tx.select({ id: receiptHeaders.id }).from(receiptHeaders)
+          .where(and(eq(receiptHeaders.picklistId, pl.id), eq(receiptHeaders.status, 'CLOSED'),
+            ne(receiptHeaders.id, receiptId)))
+          .orderBy(asc(receiptHeaders.id));
+        if (other)
+          throw new ConflictException('Ada receipt lain yang sudah ditutup untuk picklist ini');
+        const missingEvents = await tx.select({ id: kanbanEvents.kanbanId }).from(kanbanEvents)
+          .where(and(eq(kanbanEvents.type, 'MISSING'), eq(kanbanEvents.ref, receipt.receiptNo)));
+        for (const event of missingEvents) {
+          await tx.update(kanbans)
+            .set({ status: pl.shippedAt ? 'SHIPPED' : 'PRINTED' })
+            .where(and(eq(kanbans.id, event.id), eq(kanbans.status, 'MISSING')));
+        }
+
+        const lines = await tx.select({
+          id: receiptLines.id, picklistLineId: receiptLines.picklistLineId,
+          boxReceived: receiptLines.boxReceived, pcsReceived: receiptLines.pcsReceived,
+          totalReceived: picklistLines.boxReceived, boxOrdered: picklistLines.boxOrdered,
+          boxShipped: picklistLines.boxShipped, lineStatus: picklistLines.status,
+          partId: vendorParts.partId,
+        }).from(receiptLines)
+          .innerJoin(picklistLines, eq(receiptLines.picklistLineId, picklistLines.id))
+          .innerJoin(vendorParts, eq(picklistLines.vendorPartId, vendorParts.id))
+          .where(eq(receiptLines.receiptId, receiptId));
+        const now = new Date();
+        for (const line of lines) {
+          const total = line.totalReceived - line.boxReceived;
+          if (total < 0) throw new ConflictException('Jumlah box receipt tidak cocok dengan picklist');
+          await tx.insert(stockMutations).values({
+            plantId: receipt.plantId, partId: line.partId, sloc: this.sloc,
+            deltaPcs: -line.pcsReceived, type: 'ADJUST', refTable: 'TT_RECEIPT_L', refId: line.id,
+            note: `Pembatalan ${receipt.receiptNo}: ${reason}`.slice(0, 255),
+            userId: actor.userId, occurredAt: now,
+          });
+          await tx.update(picklistLines).set({ boxReceived: total,
+            status: line.lineStatus === 'RECEIVED' && total === 0
+              ? line.boxShipped !== null && line.boxShipped < line.boxOrdered ? 'SHORT' : 'OPEN'
+              : line.lineStatus,
+          }).where(eq(picklistLines.id, line.picklistLineId));
+        }
+        await tx.update(picklistHeaders)
+          .set({ status: picklistStatusAfterReceiptCancel(pl) })
+          .where(eq(picklistHeaders.id, pl.id));
+      }
+
+      const note = `${receipt.note ? `${receipt.note} | ` : ''}Dibatalkan: ${reason}`.slice(0, 255);
+      await tx.update(receiptHeaders).set({ status: 'CANCELLED', note, userId: actor.userId })
+        .where(eq(receiptHeaders.id, receiptId));
+      await writeAudit(tx, 'TT_RECEIPT_H', receiptId, 'CANCEL', actor.userId,
+        { ...receipt, picklistStatus: pl.status, outboxStatus: outbox?.status ?? null },
+        { ...receipt, status: 'CANCELLED', note,
+          picklistStatus: receipt.status === 'CLOSED' ? picklistStatusAfterReceiptCancel(pl) : pl.status,
+          outboxStatus: outbox ? 'SKIPPED' : null, kanbanRestored: receivedIds.length, reason });
+      return { id: receiptId, status: 'CANCELLED' as const, picklistId: pl.id };
     });
   }
 

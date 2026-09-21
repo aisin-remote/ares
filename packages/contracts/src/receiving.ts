@@ -20,3 +20,9 @@ export const closeReceiptSchema = z.object({
   reason: z.string().trim().max(255).optional(),
 });
 export type CloseReceiptInput = z.infer<typeof closeReceiptSchema>;
+
+/** F-40: alasan pembatalan wajib agar audit dapat menjelaskan koreksi stok. */
+export const cancelReceiptSchema = z.object({
+  reason: z.string().trim().min(1, 'Alasan pembatalan wajib diisi').max(255),
+});
+export type CancelReceiptInput = z.infer<typeof cancelReceiptSchema>;

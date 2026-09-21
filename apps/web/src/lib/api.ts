@@ -58,3 +58,29 @@ export class ApiRequestError extends Error {
     this.name = 'ApiRequestError';
   }
 }
+
+/**
+ * Unggah berkas (multipart) ke API — untuk upload Excel BOM (F-03).
+ * Tanpa Content-Type manual: fetch yang menyusun boundary multipart-nya.
+ */
+export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
+  const headers = new Headers();
+  const token = await getToken();
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    body: form,
+    headers,
+    cache: 'no-store',
+  });
+  if (res.status === 401) redirect('/login');
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { message?: string } | null;
+    throw new ApiRequestError(
+      body?.message ?? `Permintaan gagal (${res.status})`,
+      res.status,
+      body,
+    );
+  }
+  return res.json() as Promise<T>;
+}

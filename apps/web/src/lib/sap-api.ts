@@ -7,8 +7,9 @@ export interface SapSummary {
   failed: number;
   held: number;
   skipped: number;
-  /** Apakah pengiriman ke MS SQL sudah dinyalakan. */
+  /** Apakah gateway yang dipilih siap mengirim. */
   pengirimanAktif: boolean;
+  gateway: 'fake' | 'mssql';
 }
 
 export interface SapOutboxRow {

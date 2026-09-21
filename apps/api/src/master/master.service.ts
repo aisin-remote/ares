@@ -1,0 +1,304 @@
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import bcrypt from 'bcryptjs';
+import {
+  and,
+  asc,
+  auditLogs,
+  count,
+  desc,
+  eq,
+  getMasterTable,
+  like,
+  or,
+  parts,
+  permissions,
+  plants,
+  poHeaders,
+  poLines,
+  roles,
+  users,
+  type Database,
+} from '@ares/db';
+import {
+  buildCreateSchema,
+  buildUpdateSchema,
+  getEntityDef,
+  isMasterEntity,
+  type MasterEntity,
+} from '@ares/contracts';
+import { InjectDb } from '../db/db.module';
+
+export interface MasterActor {
+  userId: number;
+  role: string;
+}
+
+export interface ListParams {
+  page: number;
+  perPage: number;
+  q?: string;
+  sort?: string;
+  dir?: 'asc' | 'desc';
+}
+
+type Row = Record<string, unknown> & { id: number };
+
+/** Data akun tidak pernah mengirim hash ke browser atau menyimpannya di audit. */
+function publicRow(entity: MasterEntity, row: Row): Row {
+  if (entity !== 'users') return row;
+  const { passwordHash: _passwordHash, ...safe } = row;
+  return safe as Row;
+}
+
+function dbError(err: unknown): Error {
+  const error = err as { errno?: number; cause?: { errno?: number } };
+  const errno = error?.errno ?? error?.cause?.errno;
+  if (errno === 1062) return new ConflictException('Data dengan kunci yang sama sudah ada');
+  if (errno === 1452)
+    return new BadRequestException('Referensi tidak ditemukan atau tidak lagi berlaku');
+  return err as Error;
+}
+
+function validationError(error: { issues: { path: (string | number)[]; message: string }[] }) {
+  return new BadRequestException({
+    message: 'Data yang dikirim tidak valid',
+    details: error.issues.map((issue) => ({ field: issue.path.join('.'), message: issue.message })),
+  });
+}
+
+function labelOf(row: Row): { label: string; short: string } {
+  const code = row.sapVendorNo ?? row.partNo ?? row.npk ?? row.code ?? row.date;
+  const name = row.name;
+  const short = String(code ?? name ?? row.id);
+  return { label: code && name ? `${String(code)} — ${String(name)}` : short, short };
+}
+
+/** F-01–F-09: CRUD registry dengan audit dalam transaksi yang sama. */
+@Injectable()
+export class MasterService {
+  constructor(@InjectDb() private readonly db: Database) {}
+
+  // Tabel dipilih dari whitelist tetap. Union tipe tabel Drizzle tidak bisa
+  // diteruskan ke query builder generik tanpa cast di satu batas ini.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private table(entity: MasterEntity): any {
+    return getMasterTable(entity);
+  }
+
+  private async assertExtraPermission(entity: MasterEntity, actor: MasterActor) {
+    const action =
+      entity === 'users'
+        ? 'user.write'
+        : entity === 'vendorCutoffs' || entity === 'holidays'
+          ? 'setting.write'
+          : null;
+    if (!action) return;
+    const [row] = await this.db
+      .select({ id: permissions.id })
+      .from(permissions)
+      .innerJoin(roles, eq(permissions.roleId, roles.id))
+      .where(and(eq(roles.name, actor.role), eq(permissions.action, action)))
+      .limit(1);
+    if (!row) throw new ForbiddenException(`Peran ${actor.role} tidak punya hak ${action}`);
+  }
+
+  private sortColumn(entity: MasterEntity, sort?: string) {
+    const def = getEntityDef(entity);
+    const table = this.table(entity);
+    const allowed = new Set([...def.fields.map((field) => field.name), 'id']);
+    const name = sort && allowed.has(sort) ? sort : def.defaultSort;
+    return table[name] ?? table.id;
+  }
+
+  private searchCondition(entity: MasterEntity, q?: string) {
+    if (!q) return undefined;
+    const table = this.table(entity);
+    const columns = getEntityDef(entity)
+      .searchFields.map((field) => table[field])
+      .filter(Boolean);
+    return columns.length ? or(...columns.map((column) => like(column, `%${q}%`))) : undefined;
+  }
+
+  async list(entity: MasterEntity, params: ListParams) {
+    const table = this.table(entity);
+    const where = this.searchCondition(entity, params.q);
+    const [rows, totals] = await Promise.all([
+      this.db
+        .select()
+        .from(table)
+        .where(where)
+        .orderBy((params.dir === 'desc' ? desc : asc)(this.sortColumn(entity, params.sort)))
+        .limit(params.perPage)
+        .offset((params.page - 1) * params.perPage),
+      this.db.select({ value: count() }).from(table).where(where),
+    ]);
+    const total = Number(totals[0]?.value ?? 0);
+    return {
+      data: (rows as Row[]).map((row) => publicRow(entity, row)),
+      meta: {
+        page: params.page,
+        perPage: params.perPage,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / params.perPage)),
+      },
+    };
+  }
+
+  async get(entity: MasterEntity, id: number) {
+    const table = this.table(entity);
+    const [row] = await this.db.select().from(table).where(eq(table.id, id)).limit(1);
+    if (!row)
+      throw new NotFoundException(`${getEntityDef(entity).singular} #${id} tidak ditemukan`);
+    return publicRow(entity, row as Row);
+  }
+
+  /** Pilihan relasi read-only juga mencakup peran, pabrik, dan item PO. */
+  async options(entity: string) {
+    if (entity === 'roles' || entity === 'plants') {
+      const table = entity === 'roles' ? roles : plants;
+      const rows = await this.db.select().from(table).orderBy(asc(table.id));
+      return rows.map((row) => ({ value: row.id, ...labelOf(row as Row) }));
+    }
+    if (entity === 'poLines') {
+      const rows = await this.db
+        .select({
+          id: poLines.id,
+          poNo: poHeaders.sapPoNo,
+          item: poLines.item,
+          partNo: parts.partNo,
+        })
+        .from(poLines)
+        .innerJoin(poHeaders, eq(poLines.poId, poHeaders.id))
+        .innerJoin(parts, eq(poLines.partId, parts.id))
+        .orderBy(asc(poHeaders.sapPoNo), asc(poLines.item));
+      return rows.map((row) => ({
+        value: row.id,
+        label: `${row.poNo} / ${row.item} — ${row.partNo}`,
+        short: `${row.poNo}/${row.item}`,
+      }));
+    }
+    if (!isMasterEntity(entity))
+      throw new BadRequestException(`Entitas master "${entity}" tidak dikenal`);
+    const table = this.table(entity);
+    const rows = await this.db
+      .select()
+      .from(table)
+      .where(
+        getEntityDef(entity).fields.some((field) => field.name === 'isActive')
+          ? eq(table.isActive, true)
+          : undefined,
+      )
+      .orderBy(asc(this.sortColumn(entity)));
+    return (rows as Row[]).map((row) => ({ value: row.id, ...labelOf(row) }));
+  }
+
+  private async userValues(
+    values: Record<string, unknown>,
+    current?: Row,
+  ): Promise<Record<string, unknown>> {
+    const { password, ...rest } = values;
+    const output = { ...rest };
+    if (password !== undefined) output.passwordHash = await bcrypt.hash(String(password), 10);
+    const roleId = Number(output.roleId ?? current?.roleId);
+    const [role] = await this.db
+      .select({ name: roles.name })
+      .from(roles)
+      .where(eq(roles.id, roleId))
+      .limit(1);
+    if (!role) throw new BadRequestException('Peran yang dipilih tidak ditemukan');
+    const vendorId = output.vendorId === undefined ? current?.vendorId : output.vendorId;
+    if (role.name === 'supplier' && !vendorId)
+      throw new BadRequestException('Akun supplier harus memilih supplier');
+    if (role.name !== 'supplier' && vendorId)
+      throw new BadRequestException('Akun internal tidak boleh terikat ke supplier');
+    return output;
+  }
+
+  async create(entity: MasterEntity, body: unknown, actor: MasterActor) {
+    await this.assertExtraPermission(entity, actor);
+    const parsed = buildCreateSchema(entity).safeParse(body);
+    if (!parsed.success) throw validationError(parsed.error);
+    const table = this.table(entity);
+    const values = entity === 'users' ? await this.userValues(parsed.data) : parsed.data;
+    try {
+      return await this.db.transaction(async (tx) => {
+        const result = await tx.insert(table).values(values);
+        const id = Number(result[0].insertId);
+        const [after] = await tx.select().from(table).where(eq(table.id, id)).limit(1);
+        if (!after) throw new Error('Baris master baru tidak ditemukan setelah INSERT');
+        await tx.insert(auditLogs).values({
+          entity,
+          entityId: String(id),
+          action: 'CREATE',
+          userId: actor.userId,
+          before: null,
+          after: publicRow(entity, after as Row),
+        });
+        return publicRow(entity, after as Row);
+      });
+    } catch (error) {
+      throw dbError(error);
+    }
+  }
+
+  async update(entity: MasterEntity, id: number, body: unknown, actor: MasterActor) {
+    await this.assertExtraPermission(entity, actor);
+    const parsed = buildUpdateSchema(entity).safeParse(body);
+    if (!parsed.success) throw validationError(parsed.error);
+    const provided = Object.fromEntries(
+      Object.entries(parsed.data).filter(([, value]) => value !== undefined),
+    );
+    if (!Object.keys(provided).length) return this.get(entity, id);
+    const table = this.table(entity);
+    try {
+      return await this.db.transaction(async (tx) => {
+        const [before] = await tx
+          .select()
+          .from(table)
+          .where(eq(table.id, id))
+          .limit(1)
+          .for('update');
+        if (!before)
+          throw new NotFoundException(`${getEntityDef(entity).singular} #${id} tidak ditemukan`);
+        const values =
+          entity === 'users' ? await this.userValues(provided, before as Row) : provided;
+        await tx.update(table).set(values).where(eq(table.id, id));
+        const [after] = await tx.select().from(table).where(eq(table.id, id)).limit(1);
+        if (!after) throw new Error('Baris master hilang setelah UPDATE');
+        const oldActive = (before as Row).isActive;
+        const newActive = (after as Row).isActive;
+        const action =
+          oldActive !== newActive
+            ? newActive
+              ? 'ACTIVATE'
+              : 'DEACTIVATE'
+            : 'password' in provided && Object.keys(provided).length === 1
+              ? 'RESET_PASSWORD'
+              : 'UPDATE';
+        await tx.insert(auditLogs).values({
+          entity,
+          entityId: String(id),
+          action,
+          userId: actor.userId,
+          before: publicRow(entity, before as Row),
+          after: publicRow(entity, after as Row),
+        });
+        return publicRow(entity, after as Row);
+      });
+    } catch (error) {
+      throw dbError(error);
+    }
+  }
+
+  async setActive(entity: MasterEntity, id: number, isActive: boolean, actor: MasterActor) {
+    if (!getEntityDef(entity).fields.some((field) => field.name === 'isActive'))
+      throw new BadRequestException(`${getEntityDef(entity).label} tidak punya status aktif`);
+    return this.update(entity, id, { isActive }, actor);
+  }
+}

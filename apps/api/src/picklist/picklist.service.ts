@@ -31,14 +31,23 @@ import {
 import {
   pickPoItem,
   assertTransition,
+  confirmShipment,
   cycleOfCutoff,
   InvalidTransitionError,
   PICKLIST_TRANSITIONS,
+  ShipmentError,
   type PoCandidate,
+  type ShipmentLineInput,
 } from '@ares/domain';
-import type { IssueManualPicklistInput, PicklistListQuery } from '@ares/contracts';
+import type {
+  ConfirmShipmentInput,
+  IssueManualPicklistInput,
+  PicklistListQuery,
+} from '@ares/contracts';
+import type { PicklistNoticeKind } from '../notify/notify.service';
 import { InjectDb } from '../db/db.module';
 import { SequenceService } from '../common/sequence.service';
+import { writeAudit } from '../common/audit';
 import { QueueService } from '../queue/queue.service';
 import { QUEUES, JOBS } from '../queue/queue.constants';
 
@@ -208,6 +217,11 @@ export class PicklistService {
       await tx.insert(kanbans).values(kanbanRows);
       await tx.insert(kanbanEvents).values(eventRows);
 
+      await writeAudit(tx, 'TT_PICKLIST_H', picklistId, 'ISSUE', actor.userId, null, {
+        picklistNo, revision: 0, status: 'ISSUED', vendorId: input.vendorId,
+        deliveryDate: input.deliveryDate, lines: input.lines, kanbanCount: serial,
+      });
+
       return {
         id: picklistId,
         picklistNo,
@@ -218,7 +232,18 @@ export class PicklistService {
     });
 
     await this.enqueueRender(hasil.id);
+    await this.enqueueNotice('PICKLIST_ISSUED', hasil.id);
     return hasil;
+  }
+
+  /** F-31: email ke akun vendor lewat worker; gagal mengantre hanya dicatat, order tetap terbit. */
+  private async enqueueNotice(kind: PicklistNoticeKind, picklistId: number): Promise<void> {
+    try {
+      await this.queue.add(QUEUES.NOTIFICATION, JOBS.SEND_NOTIFICATION, { kind, picklistId });
+    } catch (err) {
+      const pesan = err instanceof Error ? err.message : String(err);
+      this.logger.error(`picklist ${picklistId}: email ${kind} gagal diantre: ${pesan}`);
+    }
   }
 
   /**
@@ -243,8 +268,7 @@ export class PicklistService {
    * tidak dipakai ulang (6.6.2). Kanban PRINTED ikut CANCELLED (PRD §3).
    *
    * ponytail: "pcs dikembalikan ke antrean" hanya berlaku untuk type AUTO —
-   * antrean (TT_ORDER_QUEUE) menyusul fase 2. Alasan disimpan di NOTE sampai
-   * TT_AUDIT_LOG (F-54) ada.
+   * antrean (TT_ORDER_QUEUE) menyusul fase 2.
    */
   async cancel(id: number, reason: string, actor: Actor, scope: VendorScope) {
     return this.db.transaction(async (tx) => {
@@ -293,8 +317,258 @@ export class PicklistService {
         );
       }
 
+      await writeAudit(tx, 'TT_PICKLIST_H', id, 'CANCEL', actor.userId, pl, {
+        ...pl, status: 'CANCELLED', note, kanbanCancelled: ks.map((k) => k.id), reason,
+      });
+
       return { id, status: 'CANCELLED' as const, kanbanCount: ks.length };
     });
+  }
+
+  /**
+   * F-30 / 6.3: konfirmasi kirim oleh supplier — satu transaksi.
+   *
+   * Header → SHIPPED (ISSUED lewat DOWNLOADED dulu: supplier yang mengonfirmasi
+   * jelas sudah memegang dokumennya), kanban yang dikirim → SHIPPED + event,
+   * line kurang → SHORT. Sisa mengikuti SHORT_SHIP_POLICY cutoff supplier:
+   *   CARRY_OVER  kanban sisa CANCELLED (6.3.2);
+   *   REVISION    header revisi+1 dengan nomor sama berisi line sisa, kanban
+   *               sisa dipindah ke line revisi dan tetap PRINTED (6.3.3, F-25).
+   * Setelah SHIPPED tidak bisa diubah lagi dari portal (6.3.4).
+   *
+   * ponytail: CARRY_OVER belum mengembalikan pcs ke antrean (TT_ORDER_QUEUE
+   * fase 2) — boxShort × qtyPerBox tersedia dari domain, tinggal ditulis.
+   * ponytail: tanggal kirim revisi = tanggal kirim asal + 1 hari kalender;
+   * hari kerja & libur (6.2) menyusul bersama job cutoff fase 2.
+   */
+  async confirmShipment(id: number, input: ConfirmShipmentInput, actor: { vendorId: number; userId: number }) {
+    const hasil = await this.db.transaction(async (tx) => {
+      const [pl] = await tx
+        .select()
+        .from(picklistHeaders)
+        .where(and(eq(picklistHeaders.id, id), eq(picklistHeaders.vendorId, actor.vendorId)))
+        .for('update');
+      if (!pl) throw new NotFoundException('Picklist tidak ditemukan');
+
+      // Status yang dilalui: ISSUED → DOWNLOADED → SHIPPED atau DOWNLOADED → SHIPPED.
+      const path: Array<'DOWNLOADED' | 'SHIPPED'> =
+        pl.status === 'ISSUED' ? ['DOWNLOADED', 'SHIPPED'] : ['SHIPPED'];
+      try {
+        let cur = pl.status;
+        for (const next of path) {
+          assertTransition('picklist', cur, next);
+          cur = next;
+        }
+      } catch (e) {
+        if (e instanceof InvalidTransitionError) {
+          throw new ConflictException(
+            ['SHIPPED', 'PARTIAL', 'COMPLETE'].includes(pl.status)
+              ? 'Pengiriman sudah dikonfirmasi; perubahan lewat PPIC (6.3.4)'
+              : e.message,
+          );
+        }
+        throw e;
+      }
+
+      const lines = await tx
+        .select({
+          id: picklistLines.id,
+          vendorPartId: picklistLines.vendorPartId,
+          boxOrdered: picklistLines.boxOrdered,
+          qtyPerBox: picklistLines.qtyPerBox,
+          sapPoNo: picklistLines.sapPoNo,
+          sapPoItem: picklistLines.sapPoItem,
+        })
+        .from(picklistLines)
+        .where(eq(picklistLines.picklistId, pl.id))
+        .orderBy(asc(picklistLines.id));
+      const lineIds = lines.map((l) => l.id);
+      const ks = lineIds.length
+        ? await tx
+            .select({
+              id: kanbans.id,
+              serial: kanbans.serial,
+              status: kanbans.status,
+              picklistLineId: kanbans.picklistLineId,
+            })
+            .from(kanbans)
+            .where(inArray(kanbans.picklistLineId, lineIds))
+            .for('update')
+        : [];
+
+      const shippedByLine = new Map(input.lines.map((l) => [l.picklistLineId, l.boxShipped]));
+      const domainLines: ShipmentLineInput[] = lines.map((l) => {
+        const boxShipped = shippedByLine.get(l.id);
+        if (boxShipped === undefined) {
+          throw new UnprocessableEntityException(`Line ${l.id} belum diisi jumlah box dikirim`);
+        }
+        return {
+          picklistLineId: l.id,
+          boxOrdered: l.boxOrdered,
+          boxShipped,
+          kanbans: ks.filter((k) => k.picklistLineId === l.id),
+        };
+      });
+
+      const policy = await this.shortShipPolicy(tx, pl.vendorId, pl.arrivalTime);
+      let result: ReturnType<typeof confirmShipment>;
+      try {
+        result = confirmShipment(domainLines, policy);
+      } catch (e) {
+        if (e instanceof ShipmentError) throw new UnprocessableEntityException(e.message);
+        throw e;
+      }
+
+      const now = new Date();
+      const ref = `${pl.picklistNo}-${pl.revision}`;
+      const catatan = input.note?.trim();
+      const note = catatan
+        ? `${pl.note ? `${pl.note} | ` : ''}Supplier: ${catatan}`.slice(0, 255)
+        : pl.note;
+      await tx
+        .update(picklistHeaders)
+        .set({
+          status: 'SHIPPED',
+          shippedAt: now,
+          eta: input.eta ? new Date(input.eta) : null,
+          vehicleNo: input.vehicleNo?.trim() || null,
+          note,
+        })
+        .where(eq(picklistHeaders.id, pl.id));
+
+      for (const r of result.lines) {
+        await tx
+          .update(picklistLines)
+          .set({ boxShipped: r.boxShipped, status: r.status })
+          .where(eq(picklistLines.id, r.picklistLineId));
+      }
+
+      const shippedIds = result.lines.flatMap((r) => r.shippedKanbanIds);
+      if (shippedIds.length > 0) {
+        await tx.update(kanbans).set({ status: 'SHIPPED' }).where(inArray(kanbans.id, shippedIds));
+        await tx.insert(kanbanEvents).values(
+          shippedIds.map((kanbanId) => ({
+            kanbanId,
+            type: 'SHIPPED' as const,
+            occurredAt: now,
+            ref,
+          })),
+        );
+      }
+      if (result.cancelledKanbanIds.length > 0) {
+        await tx
+          .update(kanbans)
+          .set({ status: 'CANCELLED' })
+          .where(inArray(kanbans.id, result.cancelledKanbanIds));
+        await tx.insert(kanbanEvents).values(
+          result.cancelledKanbanIds.map((kanbanId) => ({
+            kanbanId,
+            type: 'CANCELLED' as const,
+            occurredAt: now,
+            ref,
+          })),
+        );
+      }
+
+      // REVISION: nomor sama, revisi+1, hanya line sisa; kanban sisa ikut pindah.
+      let revision: { id: number; revision: number; lineCount: number } | null = null;
+      if (result.revisionLines.length > 0) {
+        const lineById = new Map(lines.map((l) => [l.id, l]));
+        const revNo = pl.revision + 1;
+        const revId = (
+          await tx
+            .insert(picklistHeaders)
+            .values({
+              plantId: pl.plantId,
+              picklistNo: pl.picklistNo,
+              revision: revNo,
+              type: pl.type,
+              vendorId: pl.vendorId,
+              cutoffAt: pl.cutoffAt,
+              deliveryDate: tambahHari(pl.deliveryDate, 1),
+              arrivalTime: pl.arrivalTime,
+              cycle: pl.cycle,
+              status: 'ISSUED',
+              note: `Revisi ${revNo} dari ${ref}: sisa yang belum terkirim`,
+              createdById: pl.createdById,
+            })
+            .$returningId()
+        )[0]!.id;
+        for (const r of result.revisionLines) {
+          const src = lineById.get(r.picklistLineId)!;
+          const newLineId = (
+            await tx
+              .insert(picklistLines)
+              .values({
+                picklistId: revId,
+                vendorPartId: src.vendorPartId,
+                boxOrdered: r.boxes,
+                qtyPerBox: src.qtyPerBox,
+                pcs: r.boxes * src.qtyPerBox,
+                // 6.6.4: revisi mewarisi nomor PO.
+                sapPoNo: src.sapPoNo,
+                sapPoItem: src.sapPoItem,
+              })
+              .$returningId()
+          )[0]!.id;
+          if (r.kanbanIds.length > 0) {
+            await tx
+              .update(kanbans)
+              .set({ picklistLineId: newLineId })
+              .where(inArray(kanbans.id, r.kanbanIds));
+          }
+        }
+        revision = { id: revId, revision: revNo, lineCount: result.revisionLines.length };
+        await writeAudit(tx, 'TT_PICKLIST_H', revId, 'CREATE_REVISION', actor.userId, null, {
+          picklistNo: pl.picklistNo, revision: revNo, sourceId: pl.id,
+          lines: result.revisionLines.map((line) => ({ picklistLineId: line.picklistLineId, boxes: line.boxes })),
+        });
+      }
+
+      await writeAudit(tx, 'TT_PICKLIST_H', pl.id, 'CONFIRM_SHIPMENT', actor.userId,
+        { ...pl, lines: domainLines.map((line) => ({
+          picklistLineId: line.picklistLineId, boxOrdered: line.boxOrdered, kanbans: line.kanbans,
+        })) },
+        { ...pl, status: 'SHIPPED', shippedAt: now, eta: input.eta ?? null,
+          vehicleNo: input.vehicleNo ?? null, note, policy,
+          lines: result.lines.map((line) => ({ picklistLineId: line.picklistLineId,
+            boxShipped: line.boxShipped, boxShort: line.boxShort, status: line.status })), revision });
+
+      return {
+        id: pl.id,
+        picklistNo: pl.picklistNo,
+        status: 'SHIPPED' as const,
+        policy,
+        short: result.short,
+        lines: result.lines.map((r) => ({
+          picklistLineId: r.picklistLineId,
+          boxShipped: r.boxShipped,
+          boxShort: r.boxShort,
+          status: r.status,
+        })),
+        revision,
+      };
+    });
+
+    if (hasil.revision) {
+      await this.enqueueRender(hasil.revision.id);
+      await this.enqueueNotice('PICKLIST_REVISED', hasil.revision.id);
+    }
+    return hasil;
+  }
+
+  /**
+   * Kebijakan short shipment dari cutoff supplier yang jam kedatangannya sama
+   * dengan picklist; bila tidak ketemu, cutoff aktif pertama; bila tidak ada
+   * sama sekali, CARRY_OVER (bawaan kolom).
+   */
+  private async shortShipPolicy(tx: Transaction, vendorId: number, arrivalTime: string) {
+    const rows = await tx
+      .select({ arrivalTime: vendorCutoffs.arrivalTime, policy: vendorCutoffs.shortShipPolicy })
+      .from(vendorCutoffs)
+      .where(and(eq(vendorCutoffs.vendorId, vendorId), eq(vendorCutoffs.isActive, true)))
+      .orderBy(asc(vendorCutoffs.cutoffTime));
+    return (rows.find((r) => r.arrivalTime === arrivalTime) ?? rows[0])?.policy ?? 'CARRY_OVER';
   }
 
   async list(q: PicklistListQuery, scope: VendorScope) {
@@ -376,7 +650,9 @@ export class PicklistService {
       // barisnya terambil: picklist milik supplier lain menghasilkan baris
       // kosong, jadi jawabannya 404 dan bukan 403 yang justru mengonfirmasi
       // bahwa nomor itu ada.
-      .where(and(eq(picklistHeaders.id, id), scope ? eq(picklistHeaders.vendorId, scope) : undefined));
+      .where(
+        and(eq(picklistHeaders.id, id), scope ? eq(picklistHeaders.vendorId, scope) : undefined),
+      );
     if (!header) throw new NotFoundException('Picklist tidak ditemukan');
 
     const [lines, kanbanRows] = await Promise.all([
@@ -437,9 +713,9 @@ export class PicklistService {
    * sini (aturan repo 3).
    */
   async markDownloaded(id: number, vendorId: number): Promise<void> {
-    const dariMana = (Object.keys(PICKLIST_TRANSITIONS) as Array<keyof typeof PICKLIST_TRANSITIONS>).filter(
-      (dari) => PICKLIST_TRANSITIONS[dari].includes('DOWNLOADED'),
-    );
+    const dariMana = (
+      Object.keys(PICKLIST_TRANSITIONS) as Array<keyof typeof PICKLIST_TRANSITIONS>
+    ).filter((dari) => PICKLIST_TRANSITIONS[dari].includes('DOWNLOADED'));
     if (dariMana.length === 0) return;
 
     await this.db
@@ -483,4 +759,11 @@ export class PicklistService {
     }
     return { ...dipilih, cycle: cycleOfCutoff(rows, dipilih.id) ?? 1 };
   }
+}
+
+/** Tanggal kalender YYYY-MM-DD + n hari, tanpa geser zona waktu. */
+function tambahHari(ymd: string, n: number): string {
+  const d = new Date(`${ymd}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
 }

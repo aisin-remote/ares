@@ -11,6 +11,7 @@ import {
   parts,
 } from '@ares/db';
 import { InjectDb } from '../db/db.module';
+import { writeAudit } from '../common/audit';
 
 /**
  * Mengumpulkan perpindahan barang menjadi dokumen untuk SAP.
@@ -143,8 +144,16 @@ export class SapOutboxService {
     occurredAt: Date;
   }): Promise<boolean> {
     try {
-      await this.db.insert(sapOutbox).values(v);
-      return true;
+      return await this.db.transaction(async (tx) => {
+        /* Sinkron dengan cancel receipt: receipt dikunci dulu, lalu outbox. */
+        const [source] = await tx.select({ status: receiptHeaders.status })
+          .from(receiptHeaders)
+          .where(eq(receiptHeaders.id, v.sourceId))
+          .for('update');
+        if (!source || source.status !== 'CLOSED') return false;
+        await tx.insert(sapOutbox).values(v);
+        return true;
+      });
     } catch (err) {
       // Unique index yang menolak berarti dokumen ini sudah dikumpulkan —
       // entah pada putaran sebelumnya, entah oleh pengumpul lain yang berjalan
@@ -166,7 +175,8 @@ export class SapOutboxService {
     const hasil = await this.db
       .update(sapOutbox)
       .set({ status: 'PENDING', lastError: null })
-      .where(and(eq(sapOutbox.status, 'HELD'), sql`${sapOutbox.movementType} IS NOT NULL`));
+      .where(and(eq(sapOutbox.status, 'HELD'), sql`${sapOutbox.movementType} IS NOT NULL`,
+        sql`(${sapOutbox.lastError} IS NULL OR ${sapOutbox.lastError} NOT LIKE 'Ditahan manual:%')`));
     const dilepas = Number((hasil as unknown as [{ affectedRows?: number }])[0]?.affectedRows ?? 0);
     if (dilepas > 0) this.logger.log(`${dilepas} dokumen tertahan dilepas ke antrean kirim`);
     return { dilepas };
@@ -232,13 +242,39 @@ export class SapOutboxService {
   }
 
   /** Mencoba ulang dokumen yang gagal kirim. */
-  async retry(ids: number[]): Promise<{ diulang: number }> {
+  async retry(ids: number[], userId: number): Promise<{ diulang: number }> {
     if (ids.length === 0) return { diulang: 0 };
-    await this.db
-      .update(sapOutbox)
-      .set({ status: 'PENDING', lastError: null })
-      .where(and(inArray(sapOutbox.id, ids), eq(sapOutbox.status, 'FAILED')));
-    return { diulang: ids.length };
+    return this.db.transaction(async (tx) => {
+      const rows = await tx.select().from(sapOutbox)
+        .where(and(inArray(sapOutbox.id, ids), inArray(sapOutbox.status, ['FAILED', 'HELD'])))
+        .for('update');
+      for (const row of rows) {
+        await tx.update(sapOutbox)
+          .set({ status: 'PENDING', attempts: 0, lastError: null })
+          .where(eq(sapOutbox.id, row.id));
+        await writeAudit(tx, 'TT_SAP_OUTBOX', row.id, 'RETRY', userId, row,
+          { ...row, status: 'PENDING', attempts: 0, lastError: null });
+      }
+      return { diulang: rows.length };
+    });
+  }
+
+  /** F-46: tahan kegagalan agar worker tidak mencobanya sampai dilepas lewat retry. */
+  async hold(ids: number[], userId: number): Promise<{ ditahan: number }> {
+    if (ids.length === 0) return { ditahan: 0 };
+    return this.db.transaction(async (tx) => {
+      const rows = await tx.select().from(sapOutbox)
+        .where(and(inArray(sapOutbox.id, ids), eq(sapOutbox.status, 'FAILED')))
+        .for('update');
+      for (const row of rows) {
+        const lastError = `Ditahan manual: ${row.lastError ?? 'tanpa pesan kegagalan'}`.slice(0, 1000);
+        await tx.update(sapOutbox).set({ status: 'HELD', lastError })
+          .where(eq(sapOutbox.id, row.id));
+        await writeAudit(tx, 'TT_SAP_OUTBOX', row.id, 'HOLD', userId, row,
+          { ...row, status: 'HELD', lastError });
+      }
+      return { ditahan: rows.length };
+    });
   }
 }
 

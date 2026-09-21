@@ -13,9 +13,11 @@ import type { Request } from 'express';
 import {
   issueManualPicklistSchema,
   cancelPicklistSchema,
+  confirmShipmentSchema,
   picklistListQuerySchema,
   type IssueManualPicklistInput,
   type CancelPicklistInput,
+  type ConfirmShipmentInput,
   type PicklistListQuery,
 } from '@ares/contracts';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
@@ -67,6 +69,23 @@ export class PicklistController {
     @Req() req: Request,
   ) {
     return this.picklists.issueManual(body, actorOf(req));
+  }
+
+  /**
+   * F-30 konfirmasi kirim — hanya akun supplier; vendor-nya dari token,
+   * bukan dari body, jadi supplier tidak bisa mengonfirmasi order orang lain.
+   */
+  @Post(':id/confirm-shipment')
+  @RequirePermission('picklist.ship')
+  confirmShipment(
+    @Param('id', ParseIntPipe) id: number,
+    @Body(new ZodValidationPipe(confirmShipmentSchema)) body: ConfirmShipmentInput,
+    @Req() req: Request,
+  ) {
+    const vendorId = scopeOf(req);
+    if (vendorId == null)
+      throw new BadRequestException('Konfirmasi kirim hanya untuk akun supplier');
+    return this.picklists.confirmShipment(id, body, { vendorId, userId: actorOf(req).userId });
   }
 
   /** F-20 pembatalan sebelum SHIPPED. */

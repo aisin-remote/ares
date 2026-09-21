@@ -4,6 +4,7 @@ import {
   int,
   boolean,
   date,
+  decimal,
   time,
   timestamp,
   mysqlEnum,
@@ -142,6 +143,38 @@ export const vendorCutoffs = mysqlTable(
   (t) => [uniqueIndex('TM_VENDOR_CUTOFF_VENDOR_TIME_UNIQUE').on(t.vendorId, t.cutoffTime)],
 );
 
+/**
+ * BOM per part jadi (F-03, PRD §7): komponen dan qty per satu induk, berversi
+ * lewat EFFECTIVE_FROM/TO. Bersarang — induk boleh menjadi komponen part lain;
+ * penguraiannya di packages/domain/bom.ts (explodeBom). Diisi manual, upload
+ * Excel, atau sinkron SAP (F-48).
+ */
+export const bomLines = mysqlTable(
+  'TM_BOM',
+  {
+    id: pk(),
+    /** Part yang dibuat. */
+    parentPartId: fk('PARENT_PART_ID')
+      .notNull()
+      .references(() => parts.id),
+    /** Part yang dibutuhkan. */
+    componentPartId: fk('COMPONENT_PART_ID')
+      .notNull()
+      .references(() => parts.id),
+    /** Desimal: raw material dipakai dalam kg, bukan pcs. */
+    qtyPer: decimal('QTY_PER', { precision: 12, scale: 4 }).notNull(),
+    effectiveFrom: date('EFFECTIVE_FROM', { mode: 'string' }).notNull(),
+    /** NULL = masih berlaku. */
+    effectiveTo: date('EFFECTIVE_TO', { mode: 'string' }),
+    ...timestamps,
+  },
+  (t) => [
+    // Satu versi per (induk, komponen, mulai berlaku); upload ulang memperbarui, bukan menggandakan.
+    uniqueIndex('TM_BOM_PARENT_COMPONENT_FROM_UNIQUE').on(t.parentPartId, t.componentPartId, t.effectiveFrom),
+    index('TM_BOM_COMPONENT_IDX').on(t.componentPartId),
+  ],
+);
+
 /** Kalender libur pabrik (F-05). */
 export const holidays = mysqlTable(
   'TM_HOLIDAY',
@@ -149,6 +182,7 @@ export const holidays = mysqlTable(
     id: pk(),
     date: date('DATE', { mode: 'string' }).notNull(),
     name: varchar('NAME', { length: 128 }).notNull(),
+    isActive: boolean('IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
   (t) => [uniqueIndex('TM_HOLIDAY_DATE_UNIQUE').on(t.date)],
@@ -181,6 +215,11 @@ export const vendorsRelations = relations(vendors, ({ many }) => ({
 
 export const partsRelations = relations(parts, ({ many }) => ({
   vendorParts: many(vendorParts),
+}));
+
+export const bomLinesRelations = relations(bomLines, ({ one }) => ({
+  parent: one(parts, { fields: [bomLines.parentPartId], references: [parts.id] }),
+  component: one(parts, { fields: [bomLines.componentPartId], references: [parts.id] }),
 }));
 
 export const vendorPartsRelations = relations(vendorParts, ({ one }) => ({

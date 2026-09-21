@@ -9,8 +9,11 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { PermissionsGuard } from './auth/permissions.guard';
 import { PicklistModule } from './picklist/picklist.module';
 import { ReceivingModule } from './receiving/receiving.module';
+import { NotifyModule } from './notify/notify.module';
+import { StockModule } from './stock/stock.module';
 import { DocumentModule } from './document/document.module';
 import { SapModule } from './sap/sap.module';
+import { MasterModule } from './master/master.module';
 import { HealthController } from './health/health.controller';
 import { loadEnv } from './config/env';
 
@@ -27,8 +30,11 @@ import { loadEnv } from './config/env';
     RealtimeModule,
     AuthModule,
     SapModule,
+    MasterModule,
     PicklistModule,
     ReceivingModule,
+    NotifyModule,
+    StockModule,
     DocumentModule,
   ],
   controllers: [HealthController],

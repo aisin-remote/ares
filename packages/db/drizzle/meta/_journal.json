@@ -36,6 +36,20 @@
       "when": 1789724149960,
       "tag": "0004_flimsy_goliath",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1789951809160,
+      "tag": "0005_salty_joystick",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1789971925418,
+      "tag": "0006_bom",
+      "breakpoints": true
     }
   ]
 }

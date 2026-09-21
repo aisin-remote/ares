@@ -43,8 +43,18 @@ const envSchema = z.object({
 
   WEB_ORIGIN: z.string().default('http://127.0.0.1:3000'),
 
+  // PRD 8.4 / F-31: email ke akun supplier. SMTP_HOST kosong = tulis ke log saja.
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().default(587),
+  SMTP_SECURE: envBoolean(false),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  SMTP_FROM: z.string().default('ARES e-Kanban <no-reply@ares.local>'),
+
   /** Storage location tujuan GR & stok WH (PRD 8.1, §13); `WH00` hanya placeholder. */
   SAP_SLOC: z.string().default('WH00'),
+  /** Implementasi tujuan sap-writer. Fake dipakai di development/pilot tanpa SAP. */
+  SAP_GATEWAY: z.enum(['fake', 'mssql']).default('fake'),
 
   /** Tempat PDF picklist & kanban disimpan worker (F-27); relatif ke cwd proses. */
   STORAGE_DIR: z.string().default('./storage'),

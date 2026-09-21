@@ -3,8 +3,8 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
-import { RefreshCw, Check, AlertCircle, RotateCcw } from 'lucide-react';
-import { collectNowAction, retryAction } from '@/app/(app)/sap/actions';
+import { RefreshCw, Check, AlertCircle, RotateCcw, PauseCircle } from 'lucide-react';
+import { collectNowAction, holdAction, retryAction } from '@/app/(app)/sap/actions';
 import { durations, easeSoft } from '../motion/transitions';
 import { cn } from '../ui/cn';
 
@@ -15,7 +15,7 @@ import { cn } from '../ui/cn';
  * seseorang sedang menunggui layar — setelah memperbaiki koneksi, atau setelah
  * mengisi movement type — dan perlu tahu hasilnya sekarang, bukan semenit lagi.
  */
-export function OutboxActions({ idGagal }: { idGagal: number[] }) {
+export function OutboxActions({ idGagal, idDitahan }: { idGagal: number[]; idDitahan: number[] }) {
   const [pesan, setPesan] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
   const [pending, startTransition] = useTransition();
   const [sibuk, setSibuk] = useState(false);
@@ -37,10 +37,19 @@ export function OutboxActions({ idGagal }: { idGagal: number[] }) {
 
   async function ulangi() {
     setSibuk(true);
-    const res = await retryAction(idGagal);
+    const res = await retryAction([...idGagal, ...idDitahan]);
     setSibuk(false);
     if ('error' in res) return setPesan({ tone: 'bad', text: res.error });
     setPesan({ tone: 'ok', text: `${res.diulang} dokumen dikembalikan ke antrean kirim.` });
+    startTransition(() => router.refresh());
+  }
+
+  async function tahan() {
+    setSibuk(true);
+    const res = await holdAction(idGagal);
+    setSibuk(false);
+    if ('error' in res) return setPesan({ tone: 'bad', text: res.error });
+    setPesan({ tone: 'ok', text: `${res.ditahan} dokumen ditahan sampai dicoba ulang.` });
     startTransition(() => router.refresh());
   }
 
@@ -56,7 +65,7 @@ export function OutboxActions({ idGagal }: { idGagal: number[] }) {
         {sibuk ? 'Memproses…' : 'Kumpulkan sekarang'}
       </button>
 
-      {idGagal.length > 0 ? (
+      {idGagal.length + idDitahan.length > 0 ? (
         <button
           type="button"
           onClick={() => void ulangi()}
@@ -64,7 +73,15 @@ export function OutboxActions({ idGagal }: { idGagal: number[] }) {
           className="inline-flex h-11 items-center gap-2 rounded-full border border-line px-5 text-[14px] font-semibold transition-colors hover:border-ink disabled:opacity-50"
         >
           <RotateCcw className="size-4" strokeWidth={1.9} aria-hidden />
-          Coba ulang {idGagal.length} yang gagal
+          Coba ulang {idGagal.length + idDitahan.length} dokumen
+        </button>
+      ) : null}
+
+      {idGagal.length > 0 ? (
+        <button type="button" onClick={() => void tahan()} disabled={sibuk || pending}
+          className="inline-flex h-11 items-center gap-2 rounded-full border border-line px-5 text-[14px] font-semibold transition-colors hover:border-warn hover:text-warn disabled:opacity-50">
+          <PauseCircle className="size-4" strokeWidth={1.9} aria-hidden />
+          Tahan {idGagal.length} yang gagal
         </button>
       ) : null}
 

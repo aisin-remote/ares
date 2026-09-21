@@ -13,9 +13,11 @@ import {
   openReceiptSchema,
   scanReceiptSchema,
   closeReceiptSchema,
+  cancelReceiptSchema,
   type OpenReceiptInput,
   type ScanReceiptInput,
   type CloseReceiptInput,
+  type CancelReceiptInput,
 } from '@ares/contracts';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { RequirePermission } from '../auth/permissions.guard';
@@ -72,5 +74,16 @@ export class ReceivingController {
     @Req() req: Request,
   ) {
     return this.receiving.close(id, body.reason, actorOf(req));
+  }
+
+  /** F-40: PPIC membatalkan sebelum GR terkirim. */
+  @Post(':id/cancel')
+  @RequirePermission('receipt.cancel')
+  cancel(
+    @Param('id', ParseIntPipe) id: number,
+    @Body(new ZodValidationPipe(cancelReceiptSchema)) body: CancelReceiptInput,
+    @Req() req: Request,
+  ) {
+    return this.receiving.cancel(id, body.reason, actorOf(req));
   }
 }

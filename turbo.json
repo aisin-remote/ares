@@ -13,6 +13,7 @@
     "MES_API_TOKEN",
     "MES_SYNC_ENABLED",
     "SAP_MSSQL_ENABLED",
+    "SAP_GATEWAY",
     "SAP_MSSQL_HOST",
     "SAP_MSSQL_PORT",
     "SAP_MSSQL_INSTANCE",
@@ -21,6 +22,7 @@
     "SAP_MSSQL_PASSWORD",
     "API_URL",
     "NEXT_PUBLIC_API_URL",
+    "NEXT_PUBLIC_ARES_PHASE",
     "WEB_ORIGIN"
   ],
   "tasks": {

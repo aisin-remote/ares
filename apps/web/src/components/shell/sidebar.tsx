@@ -1,15 +1,27 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronDown, LogOut } from 'lucide-react';
-import { NAV_GROUPS, type NavGroup } from './nav-config';
+import { ChevronDown, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { NAV_GROUPS, visibleGroups, type NavGroup } from './nav-config';
+import { BrandMark } from './brand-mark';
+import { initials } from './topbar';
+import { usePreferences } from './preferences-provider';
 import type { SidebarMode } from '@/lib/preferences';
 import { iconFor } from '../ui/icon-map';
 import { springSnappy, durations, easeSoft } from '../motion/transitions';
 import { cn } from '../ui/cn';
+
+/** Lebar sidebar mode ikon; tooltip menempel di tepi kanannya. */
+const RAIL_WIDTH = 76;
+
+interface Tooltip {
+  top: number;
+  label: string;
+}
 
 /**
  * Navigasi utama.
@@ -17,6 +29,13 @@ import { cn } from '../ui/cn';
  * Pil hitam penanda menu aktif memakai `layoutId`, sehingga saat berpindah
  * halaman ia MELUNCUR dari posisi lama ke posisi baru alih-alih berkedip
  * hilang-muncul.
+ *
+ * Lipat/buka mengikuti pola Sentra: satu tombol di kepala sidebar
+ * (PanelLeftClose/Open) yang mengubah preferensi `sidebar` — sama dengan
+ * pilihan di panel pengaturan, jadi keduanya selalu sepakat dan diingat per
+ * perangkat. Saat terlipat, tombolnya bersembunyi di balik huruf "A" dan
+ * muncul ketika kepala sidebar disapu kursor; nama menu tampil sebagai
+ * tooltip di tepi kanan rel.
  */
 export function Sidebar({
   userName,
@@ -40,6 +59,9 @@ export function Sidebar({
   mode?: SidebarMode;
 }) {
   const pathname = usePathname();
+  const { set } = usePreferences();
+  const [tooltip, setTooltip] = useState<Tooltip | null>(null);
+  const tooltipId = useId();
 
   /*
    * Mode ikon hanya berlaku saat sidebar menjadi bagian tetap tata letak.
@@ -47,6 +69,22 @@ export function Sidebar({
    * memberi ruang apa pun — yang ada isinya malah jadi lebih sulit dikenali.
    */
   const ringkas = mode === 'ikon' && !open;
+
+  const toggle = (e: React.MouseEvent<HTMLButtonElement>) => {
+    setTooltip(null);
+    // Lepas fokus: kalau tetap di tombol, logo yang bersembunyi di baliknya
+    // (mode ikon) tidak pernah muncul lagi sampai pengguna mengklik tempat lain.
+    e.currentTarget.blur();
+    set('sidebar', mode === 'ikon' ? 'penuh' : 'ikon');
+  };
+  const toggleLabel = mode === 'ikon' ? 'Buka sidebar' : 'Minimalkan sidebar';
+  const ToggleIcon = mode === 'ikon' ? PanelLeftOpen : PanelLeftClose;
+
+  const showTooltip = (el: HTMLElement, label: string) => {
+    if (!ringkas) return;
+    const r = el.getBoundingClientRect();
+    setTooltip({ top: r.top + r.height / 2, label });
+  };
 
   return (
     <aside
@@ -63,7 +101,7 @@ export function Sidebar({
        */
       className={cn(
         'fixed inset-y-0 left-0 z-50 flex shrink-0 flex-col border-r border-line bg-shell',
-        'transition-[transform,visibility,width] duration-300 ease-out motion-reduce:transition-none',
+        'transition-[transform,visibility,width] duration-300 ease-[var(--ease-out-soft)] motion-reduce:transition-none',
         // Lebar dasar selalu ada: mode ikon hanya berlaku mulai lg, karena di
         // bawah itu sidebar berperan sebagai panel geser.
         'w-[264px]',
@@ -72,58 +110,125 @@ export function Sidebar({
         open ? 'visible translate-x-0 shadow-shell' : 'invisible -translate-x-full',
       )}
     >
-      <div className={cn('pb-6 pt-8', ringkas ? 'px-0 text-center' : 'px-7')}>
-        <Link href={homeHref} className="block" title="ARES">
-          {ringkas ? (
-            <span className="text-[20px] font-extrabold tracking-tight">A</span>
-          ) : (
-            <>
-              <div className="text-[22px] font-extrabold leading-none tracking-tight">ARES</div>
-              <div className="mt-1.5 text-[13px] text-ink-muted">{subtitle}</div>
-            </>
+      {/* ── Kepala: wordmark + tombol lipat ─────────────────────────────── */}
+      <div
+        className={cn(
+          // Setinggi topbar (76px) supaya garis bawah keduanya sejajar.
+          'group/kepala relative flex h-[76px] shrink-0 items-center',
+          ringkas ? 'justify-center px-0' : 'gap-2 pl-5 pr-3',
+        )}
+      >
+        <Link
+          href={homeHref}
+          title="ARES"
+          className={cn(
+            'block min-w-0 flex-1',
+            // Terlipat: logo minggir saat kepala disapu kursor atau tombolnya
+            // difokus lewat keyboard — bukan setiap kali tombol punya fokus.
+            ringkas &&
+              'flex-none transition-[visibility] group-hover/kepala:invisible group-has-[button:focus-visible]/kepala:invisible',
           )}
+        >
+          <BrandMark compact={ringkas} tagline={subtitle} />
         </Link>
+
+        {/*
+         * Hanya di layar lebar: di bawah lg sidebar adalah panel geser dan
+         * tombol tutupnya ada di topbar. Saat terlipat tombol ini menumpang
+         * di tempat huruf "A" — tampak begitu kepala disapu atau difokus.
+         */}
+        <button
+          type="button"
+          onClick={toggle}
+          title={toggleLabel}
+          aria-label={toggleLabel}
+          aria-expanded={mode !== 'ikon'}
+          className={cn(
+            'hidden size-9 shrink-0 place-items-center rounded-full text-ink-muted outline-none transition-[opacity,color,background-color] hover:bg-surface hover:text-ink focus-visible:ring-2 focus-visible:ring-ink/20 lg:grid',
+            ringkas &&
+              'absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover/kepala:opacity-100 focus-visible:opacity-100',
+          )}
+        >
+          <ToggleIcon className="size-[18px]" strokeWidth={1.8} aria-hidden />
+        </button>
       </div>
 
-      <nav className={cn('scroll-slim flex-1 overflow-y-auto pb-4', ringkas ? 'px-3' : 'px-4')}>
-        {groups.map((group) => (
-          <Group key={group.title} group={group} pathname={pathname} ringkas={ringkas} />
+      {/* Scrollbar-nya baru tampak saat sidebar disapu kursor (batang saja, tanpa panah). */}
+      <nav className={cn('scroll-hover flex-1 overflow-y-auto pb-4', ringkas ? 'px-3' : 'px-4')}>
+        {visibleGroups(
+          groups === NAV_GROUPS && role !== 'admin' && role !== 'ppic'
+            ? groups.filter((group) => group.title !== 'Setting' && group.title !== 'Master Data')
+            : groups,
+        ).map((group) => (
+          <Group
+            key={group.title}
+            group={group}
+            pathname={pathname}
+            ringkas={ringkas}
+            tooltipId={tooltip ? tooltipId : undefined}
+            onEnter={showTooltip}
+            onLeave={() => setTooltip(null)}
+          />
         ))}
       </nav>
 
-      <div className={cn('border-t border-line py-5', ringkas ? 'px-3' : 'px-6')}>
-        {ringkas ? (
-          <form action="/api/logout" method="post">
-            <motion.button
-              type="submit"
-              whileTap={{ scale: 0.96 }}
-              transition={{ duration: durations.fast, ease: easeSoft }}
-              title={`Keluar — ${userName}`}
-              aria-label={`Keluar — ${userName}`}
-              className="grid size-11 w-full place-items-center rounded-full text-ink-muted transition-colors hover:bg-surface hover:text-ink"
-            >
-              <LogOut className="size-[18px]" strokeWidth={1.8} aria-hidden />
-            </motion.button>
-          </form>
-        ) : (
-          <>
-            <div className="text-[14px] font-bold leading-tight">{userName}</div>
-            <div className="mt-0.5 text-[13px] capitalize text-ink-muted">
+      {/*
+       * Identitas pengguna — jangkar bawah sidebar, ada di kedua mode supaya
+       * rel ikon tidak terlihat mengambang. Tombol Keluar ada di menu topbar.
+       * Di mode ikon tinggal avatarnya; nama dan peran muncul sebagai tooltip.
+       */}
+      <div
+        className={cn(
+          'flex shrink-0 items-center gap-3 border-t border-line py-4',
+          ringkas ? 'justify-center px-0' : 'px-5',
+        )}
+        onPointerEnter={(e) => {
+          if (ringkas && e.pointerType !== 'touch') {
+            showTooltip(e.currentTarget, `${userName} · ${role ?? 'tanpa role'}`);
+          }
+        }}
+        onPointerLeave={() => setTooltip(null)}
+      >
+        <span
+          className="grid size-9 shrink-0 place-items-center rounded-full bg-accent text-[13px] font-bold text-white"
+          aria-hidden={!ringkas}
+          aria-label={ringkas ? `${userName}, ${role ?? 'tanpa role'}` : undefined}
+        >
+          {initials(userName)}
+        </span>
+        {ringkas ? null : (
+          <span className="min-w-0">
+            <span className="block truncate text-[14px] font-bold leading-tight">{userName}</span>
+            <span className="mt-0.5 block text-[12px] capitalize text-ink-muted">
               {role ?? 'tanpa role'}
-            </div>
-            <form action="/api/logout" method="post" className="mt-3">
-              <motion.button
-                type="submit"
-                whileTap={{ scale: 0.96 }}
-                transition={{ duration: durations.fast, ease: easeSoft }}
-                className="rounded-full text-[13px] text-ink-muted underline underline-offset-4 transition-colors hover:text-ink"
-              >
-                Keluar
-              </motion.button>
-            </form>
-          </>
+            </span>
+          </span>
         )}
       </div>
+
+      {/*
+       * Tooltip mode ikon dirender ke body: nav menggulir (overflow), jadi
+       * apa pun yang dilebarkan ke kanan dari dalamnya akan terpotong.
+       * `pl-3` menjembatani celah antara rel dan gelembung supaya kursor
+       * yang menyeberang tidak membuatnya lenyap.
+       */}
+      {ringkas && tooltip
+        ? createPortal(
+            <div
+              id={tooltipId}
+              role="tooltip"
+              data-nav-tooltip
+              className="a-fade pointer-events-auto fixed z-[60] hidden -translate-y-1/2 pl-3 lg:block"
+              style={{ top: tooltip.top, left: RAIL_WIDTH - 12 }}
+              onPointerLeave={() => setTooltip(null)}
+            >
+              <span className="block whitespace-nowrap rounded-xl bg-ink px-3.5 py-2 text-[13px] font-semibold text-card shadow-lift">
+                {tooltip.label}
+              </span>
+            </div>,
+            document.body,
+          )
+        : null}
     </aside>
   );
 }
@@ -132,10 +237,16 @@ function Group({
   group,
   pathname,
   ringkas,
+  tooltipId,
+  onEnter,
+  onLeave,
 }: {
   group: NavGroup;
   pathname: string;
   ringkas: boolean;
+  tooltipId?: string;
+  onEnter: (el: HTMLElement, label: string) => void;
+  onLeave: () => void;
 }) {
   const hasActive = group.items.some((i) => isActive(pathname, i.href));
   // Grup yang dilipat tetap terbuka kalau salah satu isinya sedang aktif —
@@ -151,7 +262,9 @@ function Group({
   const terbuka = ringkas ? true : open;
 
   return (
-    <div className={cn('mb-5', ringkas && 'mb-3 border-t border-line pt-3 first:border-0 first:pt-0')}>
+    <div
+      className={cn('mb-5', ringkas && 'mb-3 border-t border-line pt-3 first:border-0 first:pt-0')}
+    >
       {ringkas ? null : group.collapsible ? (
         <button
           type="button"
@@ -188,10 +301,21 @@ function Group({
                   <Link
                     href={item.href}
                     aria-current={active ? 'page' : undefined}
-                    // Tanpa teks, nama menu harus tetap sampai ke pembaca layar
-                    // dan ke penunjuk tetikus yang berhenti di atasnya.
-                    title={ringkas ? item.label : undefined}
+                    // Tanpa teks, nama menu harus tetap sampai ke pembaca layar.
                     aria-label={ringkas ? item.label : undefined}
+                    aria-describedby={ringkas ? tooltipId : undefined}
+                    onClick={onLeave}
+                    onPointerEnter={(e) => {
+                      if (e.pointerType !== 'touch') onEnter(e.currentTarget, item.label);
+                    }}
+                    onPointerLeave={(e) => {
+                      // Menyeberang ke gelembungnya sendiri bukan alasan menutup.
+                      const ke = e.relatedTarget;
+                      if (!(ke instanceof Element) || !ke.closest('[data-nav-tooltip]')) onLeave();
+                    }}
+                    onFocus={(e) => onEnter(e.currentTarget, item.label)}
+                    onBlur={onLeave}
+                    data-nav-link
                     className={cn(
                       'group relative flex items-center rounded-full py-2.5',
                       'text-[14px] font-semibold outline-none',
@@ -210,7 +334,7 @@ function Group({
                       <span className="absolute inset-0 rounded-full bg-transparent transition-colors duration-200 group-hover:bg-surface" />
                     )}
                     <Icon
-                      className="relative size-[18px] shrink-0"
+                      className="sidebar-nav-icon relative size-[18px] shrink-0"
                       strokeWidth={active ? 2 : 1.7}
                       aria-hidden
                     />

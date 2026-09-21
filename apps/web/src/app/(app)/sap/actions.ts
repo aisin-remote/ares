@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { unstable_rethrow } from 'next/navigation';
 import { apiFetch, ApiRequestError } from '@/lib/api';
 
 function toMessage(err: unknown): string {
@@ -22,6 +23,7 @@ export async function collectNowAction(): Promise<
     revalidatePath('/sap');
     return res;
   } catch (err) {
+    unstable_rethrow(err);
     return { error: toMessage(err) };
   }
 }
@@ -35,6 +37,21 @@ export async function retryAction(ids: number[]): Promise<{ diulang: number } | 
     revalidatePath('/sap');
     return res;
   } catch (err) {
+    unstable_rethrow(err);
+    return { error: toMessage(err) };
+  }
+}
+
+export async function holdAction(ids: number[]): Promise<{ ditahan: number } | { error: string }> {
+  try {
+    const res = await apiFetch<{ ditahan: number }>('/sap/hold', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    });
+    revalidatePath('/sap');
+    return res;
+  } catch (err) {
+    unstable_rethrow(err);
     return { error: toMessage(err) };
   }
 }

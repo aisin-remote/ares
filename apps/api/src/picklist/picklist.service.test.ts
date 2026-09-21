@@ -1,14 +1,12 @@
 import 'reflect-metadata';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import {
-  ConflictException,
-  NotFoundException,
-  UnprocessableEntityException,
-} from '@nestjs/common';
+import { ConflictException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import {
   getDb,
   closeDb,
   eq,
+  and,
+  asc,
   inArray,
   count,
   plants,
@@ -23,6 +21,7 @@ import {
   picklistLines,
   kanbans,
   kanbanEvents,
+  auditLogs,
 } from '@ares/db';
 import { parseScanCode } from '@ares/domain';
 import { PicklistService } from './picklist.service';
@@ -36,10 +35,10 @@ import type { QueueService } from '../queue/queue.service';
 const db = getDb();
 // Antrean tiruan: job render PDF (F-27) tidak termasuk yang diuji di sini, dan
 // test tidak boleh menuntut Redis hidup.
-const jobs: Array<{ queue: string; name: string }> = [];
+const jobs: Array<{ queue: string; name: string; payload: unknown }> = [];
 const queue = {
-  add: async (queueName: string, jobName: string) => {
-    jobs.push({ queue: queueName, name: jobName });
+  add: async (queueName: string, jobName: string, payload: unknown) => {
+    jobs.push({ queue: queueName, name: jobName, payload });
     return 'test';
   },
 } as unknown as QueueService;
@@ -114,6 +113,8 @@ afterAll(async () => {
     .where(eq(picklistHeaders.vendorId, vendorId));
   const plIds = pls.map((p) => p.id);
   if (plIds.length > 0) {
+    await db.delete(auditLogs).where(and(eq(auditLogs.entity, 'TT_PICKLIST_H'),
+      inArray(auditLogs.entityId, plIds.map(String))));
     const lines = await db
       .select({ id: picklistLines.id })
       .from(picklistLines)
@@ -186,6 +187,9 @@ describe('PicklistService.issueManual (F-17, F-21, F-22, 6.6.1)', () => {
         ),
       );
     expect(Number(ev?.n)).toBe(3);
+    const [audit] = await db.select({ action: auditLogs.action }).from(auditLogs)
+      .where(and(eq(auditLogs.entity, 'TT_PICKLIST_H'), eq(auditLogs.entityId, String(out.id))));
+    expect(audit?.action).toBe('ISSUE');
   });
 
   it('nomor berurutan per hari dan serial kanban urut lintas line', async () => {
@@ -265,6 +269,10 @@ describe('PicklistService.cancel (F-20, 6.6.2, 6.6.3)', () => {
         ),
       );
     expect(evs.filter((e) => e.type === 'CANCELLED')).toHaveLength(2);
+    const audit = await db.select({ action: auditLogs.action }).from(auditLogs)
+      .where(and(eq(auditLogs.entity, 'TT_PICKLIST_H'), eq(auditLogs.entityId, String(issued.id))))
+      .orderBy(asc(auditLogs.id));
+    expect(audit.map((row) => row.action)).toEqual(['ISSUE', 'CANCEL']);
   });
 
   it('sudah CANCELLED tidak bisa dibatalkan lagi; nomor tidak dipakai ulang', async () => {
@@ -273,7 +281,9 @@ describe('PicklistService.cancel (F-20, 6.6.2, 6.6.3)', () => {
       actor,
     );
     await svc.cancel(issued.id, 'uji', actor, null);
-    await expect(svc.cancel(issued.id, 'lagi', actor, null)).rejects.toBeInstanceOf(ConflictException);
+    await expect(svc.cancel(issued.id, 'lagi', actor, null)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
 
     const next = await svc.issueManual(
       { vendorId, deliveryDate: '2026-09-25', lines: [{ vendorPartId: vpA, boxes: 1 }] },
@@ -285,7 +295,10 @@ describe('PicklistService.cancel (F-20, 6.6.2, 6.6.3)', () => {
 
 describe('PicklistService.list', () => {
   it('menyaring per vendor dan status, membawa nama supplier dan ringkasan box', async () => {
-    const res = await svc.list({ page: 1, perPage: 5, dir: 'asc', vendorId, status: 'ISSUED' }, null);
+    const res = await svc.list(
+      { page: 1, perPage: 5, dir: 'asc', vendorId, status: 'ISSUED' },
+      null,
+    );
     expect(res.meta.total).toBeGreaterThan(0);
     expect(res.data.every((r) => r.vendorId === vendorId && r.status === 'ISSUED')).toBe(true);
     expect(res.data[0]).toMatchObject({ vendorName: 'Supplier uji', lineCount: 1 });
@@ -347,5 +360,211 @@ describe('scope vendor (aturan repo 9)', () => {
     await svc.markDownloaded(issued.id, vendorId);
     const kedua = await svc.get(issued.id, null);
     expect(kedua.downloadedAt?.getTime()).toBe(pertama.downloadedAt?.getTime());
+  });
+});
+
+describe('PicklistService.confirmShipment (F-30, 6.3, F-25)', () => {
+  const setPolicy = (policy: 'CARRY_OVER' | 'REVISION') =>
+    db
+      .update(vendorCutoffs)
+      .set({ shortShipPolicy: policy })
+      .where(eq(vendorCutoffs.vendorId, vendorId));
+
+  const kanbanRows = (picklistId: number) =>
+    db
+      .select({
+        id: kanbans.id,
+        serial: kanbans.serial,
+        status: kanbans.status,
+        picklistLineId: kanbans.picklistLineId,
+      })
+      .from(kanbans)
+      .innerJoin(picklistLines, eq(kanbans.picklistLineId, picklistLines.id))
+      .where(eq(picklistLines.picklistId, picklistId))
+      .orderBy(asc(kanbans.serial));
+
+  it('konfirmasi penuh → SHIPPED, ETA & kendaraan tersimpan, semua kanban SHIPPED + event', async () => {
+    await setPolicy('CARRY_OVER');
+    const issued = await svc.issueManual(
+      { vendorId, deliveryDate: '2026-09-25', lines: [{ vendorPartId: vpA, boxes: 2 }] },
+      actor,
+    );
+    const detail = await svc.get(issued.id, null);
+    const lineId = detail.lines[0]!.id;
+
+    const out = await svc.confirmShipment(
+      issued.id,
+      {
+        lines: [{ picklistLineId: lineId, boxShipped: 2 }],
+        eta: '2026-09-25T06:30:00.000Z',
+        vehicleNo: 'B 1234 XYZ',
+        note: 'Sopir Budi',
+      },
+      { vendorId, userId: actor.userId },
+    );
+    expect(out).toMatchObject({
+      status: 'SHIPPED',
+      short: false,
+      policy: 'CARRY_OVER',
+      revision: null,
+    });
+    expect(out.lines).toEqual([
+      { picklistLineId: lineId, boxShipped: 2, boxShort: 0, status: 'OPEN' },
+    ]);
+
+    const after = await svc.get(issued.id, null);
+    expect(after.status).toBe('SHIPPED');
+    expect(after.shippedAt).toBeInstanceOf(Date);
+    expect(after.eta?.toISOString()).toBe('2026-09-25T06:30:00.000Z');
+    expect(after.vehicleNo).toBe('B 1234 XYZ');
+    expect(after.note).toContain('Supplier: Sopir Budi');
+    expect(after.lines[0]).toMatchObject({ boxShipped: 2, status: 'OPEN' });
+    expect(after.lines[0]!.kanbans.map((k) => k.status)).toEqual(['SHIPPED', 'SHIPPED']);
+
+    const evs = await db
+      .select({ type: kanbanEvents.type })
+      .from(kanbanEvents)
+      .where(
+        inArray(
+          kanbanEvents.kanbanId,
+          after.lines[0]!.kanbans.map((k) => k.id),
+        ),
+      );
+    expect(evs.filter((e) => e.type === 'SHIPPED')).toHaveLength(2);
+    const audit = await db.select({ action: auditLogs.action }).from(auditLogs)
+      .where(and(eq(auditLogs.entity, 'TT_PICKLIST_H'), eq(auditLogs.entityId, String(issued.id))))
+      .orderBy(asc(auditLogs.id));
+    expect(audit.map((row) => row.action)).toEqual(['ISSUE', 'CONFIRM_SHIPMENT']);
+
+    // 6.3.4: setelah SHIPPED tidak bisa diubah supplier
+    await expect(
+      svc.confirmShipment(
+        issued.id,
+        { lines: [{ picklistLineId: lineId, boxShipped: 1 }] },
+        { vendorId, userId: actor.userId },
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('kurang, kebijakan REVISION → revisi 1 (nomor sama) berisi line sisa, kanban sisa pindah dan tetap PRINTED', async () => {
+    await setPolicy('REVISION');
+    jobs.length = 0;
+    // Hanya part A yang ber-PO di fixture ini (F-18), jadi satu line 3 box.
+    const issued = await svc.issueManual(
+      { vendorId, deliveryDate: '2026-09-25', lines: [{ vendorPartId: vpA, boxes: 3 }] },
+      actor,
+    );
+    const detail = await svc.get(issued.id, null);
+    const [lineA] = detail.lines;
+
+    const out = await svc.confirmShipment(
+      issued.id,
+      { lines: [{ picklistLineId: lineA!.id, boxShipped: 1 }] },
+      { vendorId, userId: actor.userId },
+    );
+    expect(out).toMatchObject({ status: 'SHIPPED', short: true, policy: 'REVISION' });
+    expect(out.revision).toMatchObject({ revision: 1, lineCount: 1 });
+
+    // rev 0: line A SHORT 1/3
+    const rev0 = await svc.get(issued.id, null);
+    expect(rev0.lines.map((l) => [l.boxShipped, l.status])).toEqual([[1, 'SHORT']]);
+    // rev 1: nomor sama, ISSUED, satu line = sisa 2 box, PO diwarisi
+    const rev1 = await svc.get(out.revision!.id, null);
+    expect(rev1).toMatchObject({
+      picklistNo: issued.picklistNo,
+      revision: 1,
+      status: 'ISSUED',
+      deliveryDate: '2026-09-26',
+    });
+    expect(rev1.lines).toHaveLength(1);
+    expect(rev1.lines[0]).toMatchObject({
+      vendorPartId: vpA,
+      boxOrdered: 2,
+      pcs: 200,
+      sapPoNo: lineA!.sapPoNo,
+      sapPoItem: lineA!.sapPoItem,
+    });
+
+    // kanban: serial 1 SHIPPED tinggal di rev 0; serial 2–3 PRINTED pindah ke line rev 1
+    const k0 = await kanbanRows(issued.id);
+    expect(k0.map((k) => [k.serial, k.status])).toEqual([[1, 'SHIPPED']]);
+    const k1 = await kanbanRows(out.revision!.id);
+    expect(k1.map((k) => [k.serial, k.status, k.picklistLineId])).toEqual([
+      [2, 'PRINTED', rev1.lines[0]!.id],
+      [3, 'PRINTED', rev1.lines[0]!.id],
+    ]);
+
+    // revisi dirender & diberitahukan lewat antrean (F-27, F-31)
+    expect(jobs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'render-pdf', payload: { picklistId: out.revision!.id } }),
+        expect.objectContaining({
+          name: 'send-notification',
+          payload: { kind: 'PICKLIST_REVISED', picklistId: out.revision!.id },
+        }),
+      ]),
+    );
+  });
+
+  it('kurang, kebijakan CARRY_OVER → kanban sisa CANCELLED, line SHORT, tanpa revisi', async () => {
+    await setPolicy('CARRY_OVER');
+    const issued = await svc.issueManual(
+      { vendorId, deliveryDate: '2026-09-25', lines: [{ vendorPartId: vpA, boxes: 3 }] },
+      actor,
+    );
+    const lineId = (await svc.get(issued.id, null)).lines[0]!.id;
+
+    const out = await svc.confirmShipment(
+      issued.id,
+      { lines: [{ picklistLineId: lineId, boxShipped: 2 }] },
+      { vendorId, userId: actor.userId },
+    );
+    expect(out).toMatchObject({ short: true, policy: 'CARRY_OVER', revision: null });
+
+    const after = await svc.get(issued.id, null);
+    expect(after.lines[0]).toMatchObject({ boxShipped: 2, status: 'SHORT' });
+    expect(after.lines[0]!.kanbans.map((k) => k.status)).toEqual([
+      'SHIPPED',
+      'SHIPPED',
+      'CANCELLED',
+    ]);
+    const [rev1] = await db
+      .select({ id: picklistHeaders.id })
+      .from(picklistHeaders)
+      .where(
+        and(eq(picklistHeaders.picklistNo, issued.picklistNo), eq(picklistHeaders.revision, 1)),
+      );
+    expect(rev1).toBeUndefined();
+  });
+
+  it('melebihi order → 422; vendor lain → 404; line tidak lengkap → 422', async () => {
+    const issued = await svc.issueManual(
+      { vendorId, deliveryDate: '2026-09-25', lines: [{ vendorPartId: vpA, boxes: 1 }] },
+      actor,
+    );
+    const lineId = (await svc.get(issued.id, null)).lines[0]!.id;
+    await expect(
+      svc.confirmShipment(
+        issued.id,
+        { lines: [{ picklistLineId: lineId, boxShipped: 2 }] },
+        { vendorId, userId: actor.userId },
+      ),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    await expect(
+      svc.confirmShipment(
+        issued.id,
+        { lines: [{ picklistLineId: lineId, boxShipped: 1 }] },
+        { vendorId: vendorId + 999, userId: actor.userId },
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(
+      svc.confirmShipment(
+        issued.id,
+        { lines: [{ picklistLineId: 999999, boxShipped: 1 }] },
+        { vendorId, userId: actor.userId },
+      ),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    // masih ISSUED — tidak ada yang berubah
+    expect((await svc.get(issued.id, null)).status).toBe('ISSUED');
   });
 });

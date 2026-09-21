@@ -1,120 +1,76 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { eq, and, lt, asc, type Database } from '@ares/db';
-import { sapOutbox } from '@ares/db';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { and, asc, eq, inArray, lt, sapOutbox, type Database } from '@ares/db';
 import { InjectDb } from '../db/db.module';
+import { SAP_GATEWAY, type SapGateway } from './sap.gateway';
 
-/** Berhenti mencoba setelah sekian kali; sisanya perlu dilihat orang. */
 const MAX_ATTEMPTS = 8;
 
-/**
- * Mengirim dokumen dari outbox ke tabel MS SQL yang dibaca SAP.
- *
- * BELUM TERSAMBUNG KE SERVER SUNGGUHAN — lihat catatan di kirimKeMsSql().
- *
- * ── Kenapa koneksinya terpisah dari MSSQL_* ───────────────────────────────
- *
- * MSSQL_* yang sudah ada menunjuk J922 dengan user `guest_ro`: baca-saja,
- * untuk MENARIK data mesin. Tujuan SAP adalah sebaliknya — database lain,
- * user yang boleh MENULIS. Memakai satu set kredensial untuk dua arah berarti
- * memberi hak tulis pada koneksi yang seharusnya hanya membaca, dan itu hak
- * yang tidak akan pernah dicabut lagi setelah terlanjur diberikan.
- *
- * Karena itu SAP_MSSQL_* berdiri sendiri. Lihat .env.example.
- */
+/** Mengirim antrean outbox melalui gateway yang dipilih dengan SAP_GATEWAY. */
 @Injectable()
 export class SapWriterService {
   private readonly logger = new Logger(SapWriterService.name);
 
-  constructor(@InjectDb() private readonly db: Database) {}
+  constructor(
+    @InjectDb() private readonly db: Database,
+    @Inject(SAP_GATEWAY) private readonly gateway: SapGateway,
+  ) {}
 
   get aktif(): boolean {
-    return process.env.SAP_MSSQL_ENABLED === 'true';
+    return this.gateway.enabled;
   }
 
-  async flush(): Promise<{ terkirim: number; gagal: number; dilewati: number }> {
+  get mode(): SapGateway['mode'] {
+    return this.gateway.mode;
+  }
+
+  async flush(ids?: number[]): Promise<{ terkirim: number; gagal: number; dilewati: number }> {
     const antre = await this.db
-      .select()
+      .select({ id: sapOutbox.id })
       .from(sapOutbox)
-      .where(and(eq(sapOutbox.status, 'PENDING'), lt(sapOutbox.attempts, MAX_ATTEMPTS)))
+      .where(and(eq(sapOutbox.status, 'PENDING'), lt(sapOutbox.attempts, MAX_ATTEMPTS),
+        ids ? inArray(sapOutbox.id, ids) : undefined))
       .orderBy(asc(sapOutbox.occurredAt))
       .limit(100);
 
     if (antre.length === 0) return { terkirim: 0, gagal: 0, dilewati: 0 };
-
     if (!this.aktif) {
-      /*
-       * Dokumennya TIDAK ditandai apa pun saat pengiriman mati.
-       *
-       * Menandainya SENT akan berbohong; menandainya FAILED akan menghabiskan
-       * jatah percobaan sebelum servernya bahkan tersedia. Dibiarkan PENDING,
-       * sehingga begitu SAP_MSSQL_ENABLED dinyalakan seluruh tunggakan
-       * terkirim apa adanya.
-       */
-      this.logger.debug(`${antre.length} dokumen menunggu; pengiriman ke SAP belum dinyalakan`);
+      this.logger.debug(`${antre.length} dokumen menunggu; gateway ${this.mode} belum aktif`);
       return { terkirim: 0, gagal: 0, dilewati: antre.length };
     }
 
     let terkirim = 0;
     let gagal = 0;
+    let dilewati = 0;
+    for (const candidate of antre) {
+      const hasil = await this.db.transaction(async (tx) => {
+        /* Kunci yang sama dipakai pembatalan receipt. Periksa ulang sesudah lock. */
+        const [row] = await tx.select().from(sapOutbox)
+          .where(eq(sapOutbox.id, candidate.id)).for('update');
+        if (!row || row.status !== 'PENDING' || row.attempts >= MAX_ATTEMPTS) return 'SKIP';
 
-    for (const row of antre) {
-      try {
-        const sapDocNumber = await this.kirimKeMsSql(row);
-        await this.db
-          .update(sapOutbox)
-          .set({
-            status: 'SENT',
-            sentAt: new Date(),
-            sapDocNumber,
-            lastError: null,
+        try {
+          const sapDocNumber = await this.gateway.send(row);
+          await tx.update(sapOutbox).set({
+            status: 'SENT', sentAt: new Date(), sapDocNumber, lastError: null,
             attempts: row.attempts + 1,
-          })
-          .where(eq(sapOutbox.id, row.id));
-        terkirim++;
-      } catch (err) {
-        const pesan = err instanceof Error ? err.message : String(err);
-        await this.db
-          .update(sapOutbox)
-          .set({
-            status: 'FAILED',
-            attempts: row.attempts + 1,
-            lastError: pesan.slice(0, 1000),
-          })
-          .where(eq(sapOutbox.id, row.id));
-        gagal++;
-        this.logger.warn(`dokumen outbox ${row.id} gagal dikirim: ${pesan}`);
-      }
+          }).where(eq(sapOutbox.id, row.id));
+          return 'SENT';
+        } catch (err) {
+          const pesan = err instanceof Error ? err.message : String(err);
+          await tx.update(sapOutbox).set({
+            status: 'FAILED', attempts: row.attempts + 1, lastError: pesan.slice(0, 1000),
+          }).where(eq(sapOutbox.id, row.id));
+          this.logger.warn(`dokumen outbox ${row.id} gagal dikirim: ${pesan}`);
+          return 'FAILED';
+        }
+      });
+      if (hasil === 'SENT') terkirim += 1;
+      else if (hasil === 'FAILED') gagal += 1;
+      else dilewati += 1;
     }
 
-    this.logger.log(`kirim ke SAP: ${terkirim} berhasil, ${gagal} gagal`);
-    return { terkirim, gagal, dilewati: 0 };
-  }
-
-  /**
-   * BELUM DIIMPLEMENTASIKAN — kerangka, bukan kode yang berjalan.
-   *
-   * Yang harus dikerjakan saat menyambungkannya:
-   *
-   *  1. Tambahkan paket `mssql`, baca kredensial dari SAP_MSSQL_*.
-   *  2. Sepakati BENTUK TABEL di sisi MS SQL bersama tim SAP. Dugaan awal:
-   *     satu tabel kepala + satu tabel baris, mengikuti penamaan mereka
-   *     (mis. TT_MES_MOVEMENT_H / _L).
-   *  3. Kirim `IDEMPOTENCY_KEY` ikut serta, dan minta sisi MS SQL memberinya
-   *     unique index. Itulah yang menahan dokumen dobel saat jaringan
-   *     tersendat — bukan logika di sini.
-   *  4. Sepakati apakah nomor dokumen material dari SAP dikembalikan. Kalau
-   *     ya, kembalikan dari fungsi ini supaya tersimpan di SAP_DOC_NUMBER dan
-   *     jejaknya bisa ditelusuri dua arah.
-   *
-   * Yang perlu dipegang: koneksi ini hanya dipakai worker. Web app tidak
-   * pernah menyentuh MS SQL langsung — itu penyebab request web ikut lambat
-   * di sistem lama ketika jaringan ke server sedang bermasalah.
-   */
-  private async kirimKeMsSql(row: typeof sapOutbox.$inferSelect): Promise<string | null> {
-    void row;
-    throw new Error(
-      'Pengiriman ke MS SQL belum diimplementasikan. ' +
-        'Bentuk tabel tujuan dan movement type harus disepakati tim SAP lebih dulu.',
-    );
+    if (terkirim > 0 || gagal > 0)
+      this.logger.log(`gateway ${this.mode}: ${terkirim} berhasil, ${gagal} gagal`);
+    return { terkirim, gagal, dilewati };
   }
 }
