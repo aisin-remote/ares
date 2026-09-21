@@ -32,6 +32,9 @@ import {
   vendorCutoffs,
   parts,
   holidays,
+  consumptions,
+  mesFailures,
+  orderQueues,
 } from '@ares/db';
 import type { PicklistStatus, ReceiptStatus } from '@ares/contracts';
 import { getEntityDef, type MasterEntity } from '@ares/contracts';
@@ -675,6 +678,83 @@ export async function getReceiptDetail(id: number) {
 }
 
 export type ReceiptDetail = NonNullable<Awaited<ReturnType<typeof getReceiptDetail>>>;
+
+// ─── Konsumsi MES dan antrean order (F-10–F-12) ───────────────────────────
+
+export async function listConsumptions(opts: { q?: string; line?: string; from?: string; to?: string }) {
+  const db = getDb();
+  return db.select({
+    id: consumptions.id,
+    sourceKey: consumptions.sourceKey,
+    sourceRecordKey: consumptions.sourceRecordKey,
+    firstConsumptionId: sql<number>`(select min(c.ID) from TT_CONSUMPTION c where c.SOURCE_RECORD_KEY = ${consumptions.sourceRecordKey} and c.QTY > 0)`,
+    reversedAt: sql<Date | null>`(select max(c.CREATED_AT) from TT_CONSUMPTION c where c.SOURCE_RECORD_KEY = ${consumptions.sourceRecordKey} and c.QTY < 0)`,
+    closedQueueCount: sql<number>`(select count(*) from TT_CONSUMPTION c join TT_ORDER_QUEUE q on q.ID = c.QUEUE_ID where c.SOURCE_RECORD_KEY = ${consumptions.sourceRecordKey} and c.QTY > 0 and q.STATUS = 'CLOSED')`,
+    parentPartNo: sql<string>`(select p.PART_NO from TM_PARTS p where p.ID = ${consumptions.parentPartId})`,
+    componentPartNo: parts.partNo,
+    componentName: parts.name,
+    qty: consumptions.qty,
+    line: consumptions.line,
+    occurredAt: consumptions.occurredAt,
+    vendorName: vendors.name,
+    cutoffAt: orderQueues.cutoffAt,
+  }).from(consumptions)
+    .innerJoin(parts, eq(consumptions.componentPartId, parts.id))
+    .innerJoin(orderQueues, eq(consumptions.queueId, orderQueues.id))
+    .innerJoin(vendorParts, eq(orderQueues.vendorPartId, vendorParts.id))
+    .innerJoin(vendors, eq(vendorParts.vendorId, vendors.id))
+    .where(and(
+      sql`${consumptions.qty} > 0`,
+      opts.q ? or(
+        like(parts.partNo, `%${opts.q}%`),
+        like(parts.name, `%${opts.q}%`),
+        sql`exists (select 1 from TM_PARTS p where p.ID = ${consumptions.parentPartId} and (p.PART_NO like ${`%${opts.q}%`} or p.NAME like ${`%${opts.q}%`}))`,
+      ) : undefined,
+      opts.line ? eq(consumptions.line, opts.line) : undefined,
+      opts.from ? gte(consumptions.occurredAt, new Date(`${opts.from}T00:00:00+07:00`)) : undefined,
+      opts.to ? lt(consumptions.occurredAt, new Date(new Date(`${opts.to}T00:00:00+07:00`).getTime() + 86_400_000)) : undefined,
+    ))
+    .orderBy(desc(consumptions.occurredAt), desc(consumptions.id))
+    .limit(200);
+}
+
+export async function listConsumptionFailures(opts: { q?: string; line?: string; from?: string; to?: string }) {
+  const db = getDb();
+  return db.select().from(mesFailures).where(and(
+    opts.q ? or(like(mesFailures.partNo, `%${opts.q}%`), like(mesFailures.error, `%${opts.q}%`)) : undefined,
+    opts.line ? eq(mesFailures.line, opts.line) : undefined,
+    opts.from ? gte(mesFailures.occurredAt, new Date(`${opts.from}T00:00:00+07:00`)) : undefined,
+    opts.to ? lt(mesFailures.occurredAt, new Date(new Date(`${opts.to}T00:00:00+07:00`).getTime() + 86_400_000)) : undefined,
+  )).orderBy(desc(mesFailures.updatedAt)).limit(200);
+}
+
+export async function listOpenOrderQueues() {
+  const db = getDb();
+  const rows = await db.select({
+    id: orderQueues.id,
+    vendorName: vendors.name,
+    partNo: parts.partNo,
+    partName: parts.name,
+    backNo: vendorParts.backNo,
+    qtyPerBox: vendorParts.qtyPerBox,
+    pcs: orderQueues.pcs,
+    carryOverPcs: orderQueues.carryOverPcs,
+    hold: orderQueues.hold,
+    blockedReason: orderQueues.blockedReason,
+    blockedAt: orderQueues.blockedAt,
+    cutoffAt: orderQueues.cutoffAt,
+    updatedAt: orderQueues.updatedAt,
+  }).from(orderQueues)
+    .innerJoin(vendorParts, eq(orderQueues.vendorPartId, vendorParts.id))
+    .innerJoin(parts, eq(vendorParts.partId, parts.id))
+    .innerJoin(vendors, eq(vendorParts.vendorId, vendors.id))
+    .where(eq(orderQueues.status, 'OPEN'))
+    .orderBy(asc(orderQueues.cutoffAt), asc(vendors.name), asc(parts.partNo));
+  return rows.map((row) => ({
+    ...row,
+    boxes: Math.round(((row.pcs + row.carryOverPcs) / row.qtyPerBox) * 100) / 100,
+  }));
+}
 
 // ─── Stok WH (F-41) ─────────────────────────────────────────────────────────
 

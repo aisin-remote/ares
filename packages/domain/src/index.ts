@@ -5,3 +5,5 @@ export * from './receiving';
 export * from './receipt-cancel';
 export * from './picklist';
 export * from './shipment';
+export * from './consumption';
+export * from './queue-control';

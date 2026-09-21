@@ -10,8 +10,7 @@
  *
  * Nama tabel TM_/TT_ huruf besar (konvensi MIS), properti camelCase.
  * Fase 1: org, sap, master, picklist (+ receipt, kanban, scan), stock.
- * Menyusul fase 2 (PRD §12): TT_CONSUMPTION, TT_ORDER_QUEUE,
- * TT_QUEUE_ADJUSTMENT, dan kunci cutoff supplier × jam × tanggal (6.2.4).
+ * Fase 2: konsumsi MES dan antrean order per cutoff.
  */
 export * from './_shared';
 export * from './org';
@@ -20,3 +19,4 @@ export * from './master';
 export * from './picklist';
 export * from './stock';
 export * from './audit';
+export * from './consumption';

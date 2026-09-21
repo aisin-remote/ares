@@ -19,6 +19,7 @@ const jakarta = Plus_Jakarta_Sans({
 export const metadata: Metadata = {
   title: 'ARES',
   description: 'ARES — e-Kanban Supplier',
+  icons: { icon: '/icon.svg' },
 };
 
 /*

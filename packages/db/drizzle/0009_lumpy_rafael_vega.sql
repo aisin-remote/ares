@@ -1,0 +1,2 @@
+ALTER TABLE `TT_ORDER_QUEUE` ADD `BLOCKED_REASON` varchar(1000);--> statement-breakpoint
+ALTER TABLE `TT_ORDER_QUEUE` ADD `BLOCKED_AT` timestamp;

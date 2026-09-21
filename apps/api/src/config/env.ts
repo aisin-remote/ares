@@ -39,7 +39,14 @@ const envSchema = z.object({
   // PRD 8.2: API aplikasi produksi (MES) yang ditarik job mes-sync.
   MES_API_URL: z.string().optional(),
   MES_API_TOKEN: z.string().optional(),
+  MES_GATEWAY: z.enum(['fake', 'http']).default('fake'),
   MES_SYNC_ENABLED: envBoolean(false),
+  MES_SYNC_INTERVAL_SEC: z.coerce.number().int().positive().default(120),
+
+  // F-16: evaluasi antrean yang sudah mencapai cutoff dan terbitkan picklist.
+  CUTOFF_ENABLED: envBoolean(true),
+  CUTOFF_INTERVAL_SEC: z.coerce.number().int().positive().default(60),
+  CUTOFF_SYSTEM_USER_NPK: z.string().min(1).default('ADMIN'),
 
   WEB_ORIGIN: z.string().default('http://127.0.0.1:3000'),
 

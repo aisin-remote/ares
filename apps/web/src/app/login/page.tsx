@@ -5,6 +5,7 @@ import { motion } from 'motion/react';
 import { AlertCircle, ArrowRight } from 'lucide-react';
 import { loginAction, type LoginState } from './actions';
 import { durations, easeSoft } from '@/components/motion/transitions';
+import { BrandMark } from '@/components/shell/brand-mark';
 
 const initial: LoginState = {};
 
@@ -12,15 +13,14 @@ export default function LoginPage() {
   const [state, formAction, pending] = useActionState(loginAction, initial);
 
   return (
-    <main className="grid min-h-screen place-items-center p-5">
-      {/*
-        Animasi kemunculan memakai CSS, bukan Motion.
+    <main className="relative grid min-h-screen place-items-center overflow-hidden p-5">
+      <div className="login-intro pointer-events-none absolute inset-0 z-10 grid place-items-center bg-canvas" aria-hidden>
+        <span className="login-intro-mark">
+          <BrandMark className="scale-125" />
+        </span>
+      </div>
 
-        Ini halaman login: kalau JavaScript gagal dimuat dan formnya ikut
-        tersembunyi, pengguna terkunci di luar sistem sepenuhnya. Animasi CSS
-        tetap menampilkan form apa pun yang terjadi pada bundle.
-      */}
-      <div className="a-stagger w-full max-w-[420px] rounded-panel border border-line bg-shell p-9 shadow-shell">
+      <div className="login-card-enter a-stagger w-full max-w-[420px] rounded-panel border border-line bg-shell p-9 shadow-shell">
         <div>
           <div className="text-[24px] font-extrabold leading-none tracking-tight">ARES</div>
           <p className="mt-2 text-[14px] text-ink-muted">

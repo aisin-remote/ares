@@ -42,3 +42,9 @@ export type ShortShipPolicy = (typeof SHORT_SHIP_POLICIES)[number];
 /** F-05: cutoff jatuh di libur → maju ke hari kerja sebelumnya (BEFORE) atau mundur (AFTER). */
 export const HOLIDAY_SHIFTS = ['BEFORE', 'AFTER'] as const;
 export type HolidayShift = (typeof HOLIDAY_SHIFTS)[number];
+
+export const ORDER_QUEUE_STATUSES = ['OPEN', 'CLOSED'] as const;
+export type OrderQueueStatus = (typeof ORDER_QUEUE_STATUSES)[number];
+
+export const MES_RECORD_STATUSES = ['PENDING', 'PROCESSED', 'FAILED'] as const;
+export type MesRecordStatus = (typeof MES_RECORD_STATUSES)[number];

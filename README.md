@@ -2,7 +2,9 @@
 
 Order ke supplier dari konsumsi aktual di line: hasil produksi ditarik dari MES → dikonversi ke kebutuhan komponen per BOM → menumpuk di antrean per supplier → pada jam cutoff menjadi **picklist** + **kanban** (satu QR per box) yang diunduh supplier lewat portal → saat barang datang, picklist dan tiap kanban discan → **Good Receipt** diposting ke SAP lewat outbox.
 
-Spesifikasi: [`docs/PRD.md`](docs/PRD.md). Aturan kerja untuk agen/developer: [`CLAUDE.md`](CLAUDE.md).
+Spesifikasi: [`docs/PRD.md`](docs/PRD.md). Panduan interaktif per pengguna:
+[`docs/USER-FLOW.html`](docs/USER-FLOW.html). Aturan kerja untuk agen/developer:
+[`CLAUDE.md`](CLAUDE.md).
 
 > **Status: kerangka.** Auth, shell UI, outbox SAP, queue, dan seed sudah jalan end-to-end. Skema, aturan bisnis, dan modul dibangun per fase (PRD §12), irisan vertikal dulu.
 

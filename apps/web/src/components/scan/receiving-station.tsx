@@ -202,6 +202,7 @@ export function ReceivingStation({
           >
             <input
               ref={inputRef}
+              autoFocus
               value={code}
               onChange={(e) => setCode(e.target.value)}
               // Sebagian scanner mengakhiri tembakan dengan Tab, bukan Enter.

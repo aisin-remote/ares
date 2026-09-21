@@ -6,9 +6,17 @@ fitur ada di `docs/PRD.md` bagian 12.
 
 Aturan main: satu baris selesai → hapus dari sini, jangan dibiarkan jadi arsip.
 
-Terakhir diperbarui: 2026-09-21 (Fase 2 langkah pertama: BOM, stok WH, menu fase).
+Terakhir diperbarui: 2026-09-21 (Fase 2 langkah keempat: cutoff otomatis dan blocked PO).
 
 ## 1. Verifikasi yang belum jalan
+
+- [x] **Loop MES → antrean → cutoff diverifikasi end-to-end lewat API (2026-09-21):**
+      part jadi `FG-TEST-001` dengan BOM 2 komponen (×2, ×1) → `POST /consumption`
+      30 pcs → konsumsi 60 + 30 pcs, stok −60/−30, dua antrean OPEN pada cutoff 10:00;
+      kirim ulang record yang sama → `DUPLICATE`; `POST /cutoff/run` → picklist AUTO
+      `PL-260921-0300` (1 box + 1 box, PO item terisi, 2 kanban), antrean CLOSED,
+      carry-over 6 pcs pindah ke antrean OPEN cutoff 15:00. Tampilan `/mes` dan
+      `/queue` di browser belum dilihat — opsional, logikanya sudah terbukti.
 
 - [ ] **Halaman `/stock`, `/stock/[partId]`, dan alat BOM di `/master/bom` belum
       dilihat di browser** (server dev tidak menyala saat dibuat; API & DB-nya
@@ -74,10 +82,6 @@ outbox PENDING (GR 101, key RCP-260921-0010) dalam 15 detik.)
       dua stasiun untuk satu truk, perlu `DEVICE_ID` di sesi + dedupe per sesi tetap.
       `TT_RECEIPT_H.DEVICE_ID` dan `TT_SCAN_EVENT.DEVICE_ID` sekarang selalu NULL
       (operator login sebagai user, token device belum dipakai di receiving).
-- [ ] **CARRY_OVER belum mengembalikan pcs ke antrean (6.3.2).** `confirmShipment`
-      sudah menandai line SHORT dan kanban sisa CANCELLED; `boxShort × qtyPerBox`
-      tersedia dari domain, tinggal ditulis ke `TT_ORDER_QUEUE` begitu tabelnya ada
-      (fase 2). Sampai saat itu box yang kurang harus diorder ulang manual oleh PPIC.
       Ditandai `ponytail:` di `PicklistService.confirmShipment`.
 - [ ] **Tanggal kirim revisi = tanggal asal + 1 hari kalender** (bukan hari kerja
       berikutnya, 6.2). Ikut diperbaiki bersama kalender cutoff fase 2; sampai
@@ -128,9 +132,9 @@ outbox PENDING (GR 101, key RCP-260921-0010) dalam 15 detik.)
       mulai berbeda tetap berlaku sampai `EFFECTIVE_TO`-nya diisi. Kalau format
       Excel dari SAP hanya memuat komposisi terkini, tambahkan opsi "tutup versi
       lama pada tanggal mulai baru" saat F-48 dikerjakan.
-- [ ] **`GET /master/bom/explode` membaca seluruh TM_BOM tiap panggilan** — cukup
-      untuk 3.000 vendor part (PRD §9); cache per tanggal kalau F-10 memanggilnya
-      per record MES.
+- [ ] **Urai BOM konsumsi membaca seluruh TM_BOM per record MES.** Cukup untuk
+      pilot; batch/cache per tanggal bila pengukuran sinkronisasi produksi mulai
+      mendekati interval `MES_SYNC_INTERVAL_SEC`.
 
 - [ ] **`WORKER_ONLY` hanya komentar di `queue/queue.module.ts`.** Di `pnpm dev`,
       worker dan API hidup satu proses; render PDF ratusan kanban akan menahan

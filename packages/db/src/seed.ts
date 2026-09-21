@@ -98,6 +98,15 @@ async function main() {
       // F-42: penyesuaian stok WH manual oleh PPIC (admin sebagai cadangan).
       { roleId: roleId('admin'), action: 'stock.adjust' },
       { roleId: roleId('ppic'), action: 'stock.adjust' },
+      // F-10–F-12: pemantauan MES serta jalur push manual saat integrasi ditest.
+      { roleId: roleId('admin'), action: 'mes.read' },
+      { roleId: roleId('admin'), action: 'mes.write' },
+      { roleId: roleId('admin'), action: 'consumption.push' },
+      { roleId: roleId('ppic'), action: 'mes.read' },
+      { roleId: roleId('ppic'), action: 'mes.write' },
+      { roleId: roleId('ppic'), action: 'consumption.push' },
+      { roleId: roleId('admin'), action: 'queue.write' },
+      { roleId: roleId('ppic'), action: 'queue.write' },
     ],
   );
 

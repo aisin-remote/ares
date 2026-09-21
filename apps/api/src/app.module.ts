@@ -14,6 +14,7 @@ import { StockModule } from './stock/stock.module';
 import { DocumentModule } from './document/document.module';
 import { SapModule } from './sap/sap.module';
 import { MasterModule } from './master/master.module';
+import { MesModule } from './mes/mes.module';
 import { HealthController } from './health/health.controller';
 import { loadEnv } from './config/env';
 
@@ -31,6 +32,7 @@ import { loadEnv } from './config/env';
     AuthModule,
     SapModule,
     MasterModule,
+    MesModule,
     PicklistModule,
     ReceivingModule,
     NotifyModule,

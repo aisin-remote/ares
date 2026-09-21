@@ -4,6 +4,9 @@ Panduan ini menyiapkan server uji dan menjalankan kriteria Fase 1 PRD §12:
 20 picklist manual untuk dua supplier pilot, dari penerbitan sampai penerimaan
 dan outbox GR. Mode `fake` memvalidasi alur ARES tanpa menulis ke SAP.
 
+Untuk penjelasan alur harian yang lebih ringkas bagi PPIC, supplier, warehouse,
+admin, dan tim MES, buka [`USER-FLOW.html`](USER-FLOW.html).
+
 ## 1. Siapkan server uji
 
 Prasyarat: Node.js 20+, pnpm 9.15.9, Docker, dan akses browser dari jaringan

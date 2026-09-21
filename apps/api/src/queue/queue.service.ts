@@ -89,6 +89,21 @@ export class QueueService implements OnModuleDestroy {
     this.logger.log(`jadwal ${jobName} diset: ${pattern}`);
   }
 
+  /** Job berulang dengan interval tetap, dipakai polling MES. */
+  async addRepeatingEvery(
+    queue: QueueName,
+    jobName: string,
+    payload: Record<string, unknown>,
+    everyMs: number,
+  ): Promise<void> {
+    await this.get(queue).upsertJobScheduler(
+      `repeat:${jobName}`,
+      { every: everyMs },
+      { name: jobName, data: payload },
+    );
+    this.logger.log(`jadwal ${jobName} diset tiap ${everyMs / 1000} detik`);
+  }
+
   async onModuleDestroy(): Promise<void> {
     for (const queue of this.queues.values()) {
       await queue.close().catch(() => undefined);

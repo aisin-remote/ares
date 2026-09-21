@@ -1,0 +1,727 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Panduan Alur Pengguna ARES</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --canvas: #e6e0d8;
+      --shell: #ffffff;
+      --surface: #f7f6f3;
+      --card: #ffffff;
+      --line: #ebeae5;
+      --line-strong: #d8d5cc;
+      --ink: #16160f;
+      --soft: #55554e;
+      --muted: #85857d;
+      --accent: #111110;
+      --accent-soft: #2a2a26;
+      --ok: #16803e;
+      --ok-bg: #eaf7ee;
+      --warn: #b45309;
+      --warn-bg: #fff7e6;
+      --bad: #c52b2b;
+      --bad-bg: #fff0f0;
+      --live: #4f46e5;
+      --live-bg: #efefff;
+      --shadow: 0 20px 60px -34px rgb(22 22 15 / .28);
+      --radius: 24px;
+    }
+
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --canvas: #0e0e0c;
+      --shell: #16160f;
+      --surface: #1b1b16;
+      --card: #211f1a;
+      --line: #2d2b25;
+      --line-strong: #454238;
+      --ink: #f3f1ea;
+      --soft: #c0bdb4;
+      --muted: #96938a;
+      --accent: #f3f1ea;
+      --accent-soft: #ffffff;
+      --ok: #54d786;
+      --ok-bg: #132b1d;
+      --warn: #f1ba53;
+      --warn-bg: #332612;
+      --bad: #ff8686;
+      --bad-bg: #381919;
+      --live: #aaa6ff;
+      --live-bg: #272440;
+      --shadow: 0 20px 60px -34px rgb(0 0 0 / .9);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--canvas);
+      color: var(--ink);
+      font: 15px/1.55 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    button, input { font: inherit; }
+    button { color: inherit; }
+    a { color: inherit; }
+    .skip-link {
+      position: fixed;
+      z-index: 99;
+      top: 10px;
+      left: 10px;
+      transform: translateY(-140%);
+      border-radius: 999px;
+      background: var(--ink);
+      color: var(--shell);
+      padding: 10px 16px;
+    }
+    .skip-link:focus { transform: none; }
+
+    .app {
+      width: min(1440px, calc(100% - 32px));
+      min-height: calc(100vh - 32px);
+      margin: 16px auto;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 32px;
+      background: var(--shell);
+      box-shadow: var(--shadow);
+    }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      min-height: 84px;
+      padding: 18px 28px;
+      border-bottom: 1px solid var(--line);
+      background: color-mix(in srgb, var(--shell) 92%, transparent);
+    }
+    .brand { display: flex; align-items: center; gap: 13px; }
+    .brand-mark {
+      position: relative;
+      display: grid;
+      width: 42px;
+      height: 42px;
+      flex: none;
+      place-items: center;
+      border-radius: 12px;
+      background: var(--ink);
+      color: var(--shell);
+      font: 700 15px ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    .brand-dot {
+      position: absolute;
+      top: -2px;
+      right: -2px;
+      width: 11px;
+      height: 11px;
+      border: 2px solid var(--shell);
+      border-radius: 50%;
+      background: #16a34a;
+    }
+    .brand-name { font-size: 15px; font-weight: 800; letter-spacing: .18em; line-height: 1; }
+    .brand-sub { margin-top: 6px; color: var(--muted); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+    .top-actions { display: flex; align-items: center; gap: 8px; }
+    .icon-button, .print-button {
+      display: inline-flex;
+      min-height: 42px;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--surface);
+      cursor: pointer;
+      transition: border-color .18s ease, transform .18s ease, background .18s ease;
+    }
+    .icon-button { width: 42px; padding: 0; font-size: 18px; }
+    .print-button { padding: 0 16px; font-weight: 700; }
+    .icon-button:hover, .print-button:hover { border-color: var(--line-strong); transform: translateY(-1px); }
+    .icon-button:focus-visible, .print-button:focus-visible, .role-tab:focus-visible, .flow-node:focus-visible, .step-toggle:focus-visible {
+      outline: 3px solid color-mix(in srgb, var(--live) 28%, transparent);
+      outline-offset: 2px;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(280px, .6fr);
+      gap: 32px;
+      padding: 56px 48px 42px;
+      background:
+        radial-gradient(circle at 86% 16%, color-mix(in srgb, var(--ok) 9%, transparent), transparent 26%),
+        var(--surface);
+    }
+    .eyebrow { margin: 0 0 10px; color: var(--ok); font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    h1 { max-width: 760px; margin: 0; font-size: clamp(36px, 5vw, 68px); line-height: .98; letter-spacing: -.055em; }
+    .hero-copy { max-width: 690px; margin: 22px 0 0; color: var(--soft); font-size: clamp(16px, 2vw, 19px); }
+    .hero-note {
+      align-self: end;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--card);
+      padding: 24px;
+    }
+    .hero-note strong { display: block; margin-bottom: 8px; font-size: 17px; }
+    .hero-note p { margin: 0; color: var(--soft); }
+    .version { display: inline-flex; margin-top: 18px; border-radius: 999px; background: var(--ok-bg); color: var(--ok); padding: 6px 10px; font-size: 12px; font-weight: 800; }
+
+    .content { padding: 40px 48px 56px; }
+    .section-head { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-bottom: 20px; }
+    .section-head h2, .role-heading h2 { margin: 0; font-size: clamp(24px, 3vw, 34px); letter-spacing: -.035em; }
+    .section-head p { max-width: 560px; margin: 0; color: var(--muted); }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 10px;
+      margin-bottom: 48px;
+    }
+    .flow-node {
+      position: relative;
+      min-height: 142px;
+      padding: 18px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: var(--surface);
+      text-align: left;
+      cursor: pointer;
+      transition: transform .2s ease, border-color .2s ease, background .2s ease;
+    }
+    .flow-node:hover { transform: translateY(-3px); border-color: var(--line-strong); background: var(--card); }
+    .flow-node::after {
+      content: "→";
+      position: absolute;
+      top: 15px;
+      right: 14px;
+      color: var(--muted);
+      font-size: 18px;
+    }
+    .flow-node:last-child::after { content: "↺"; }
+    .flow-number { display: block; color: var(--muted); font: 700 11px ui-monospace, monospace; letter-spacing: .1em; }
+    .flow-node strong { display: block; margin-top: 28px; font-size: 16px; }
+    .flow-node small { display: block; margin-top: 5px; color: var(--soft); line-height: 1.35; }
+
+    .guide-layout { display: grid; grid-template-columns: 238px minmax(0, 1fr); gap: 28px; align-items: start; }
+    .role-nav {
+      position: sticky;
+      top: 16px;
+      display: grid;
+      gap: 7px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      padding: 10px;
+    }
+    .role-tab {
+      display: grid;
+      grid-template-columns: 36px 1fr;
+      gap: 10px;
+      align-items: center;
+      min-height: 52px;
+      border: 0;
+      border-radius: 15px;
+      background: transparent;
+      padding: 8px 10px;
+      text-align: left;
+      cursor: pointer;
+    }
+    .role-tab:hover { background: var(--card); }
+    .role-tab[aria-selected="true"] { background: var(--ink); color: var(--shell); }
+    .role-icon { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 11px; background: color-mix(in srgb, currentColor 8%, transparent); font-size: 12px; font-weight: 900; }
+    .role-tab[aria-selected="true"] .role-icon { background: color-mix(in srgb, var(--shell) 14%, transparent); }
+    .role-tab strong { display: block; font-size: 14px; }
+    .role-tab small { display: block; margin-top: 1px; color: var(--muted); font-size: 11px; }
+    .role-tab[aria-selected="true"] small { color: color-mix(in srgb, var(--shell) 68%, transparent); }
+
+    .role-panel { min-width: 0; }
+    .role-panel[hidden] { display: none; }
+    .role-heading {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 24px;
+      align-items: start;
+      margin-bottom: 22px;
+    }
+    .role-heading p { max-width: 720px; margin: 8px 0 0; color: var(--soft); font-size: 16px; }
+    .menu-pills { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; max-width: 330px; }
+    .pill, .path, .tag {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      white-space: nowrap;
+      font-size: 12px;
+      font-weight: 750;
+    }
+    .pill { background: var(--surface); padding: 7px 10px; color: var(--soft); }
+    .path { background: var(--live-bg); color: var(--live); padding: 5px 9px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .tag { padding: 5px 9px; }
+    .tag.ok { background: var(--ok-bg); color: var(--ok); }
+    .tag.warn { background: var(--warn-bg); color: var(--warn); }
+    .tag.bad { background: var(--bad-bg); color: var(--bad); }
+
+    .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 28px; }
+    .summary-card { border: 1px solid var(--line); border-radius: 18px; background: var(--card); padding: 18px; }
+    .summary-card small { color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+    .summary-card p { margin: 8px 0 0; color: var(--soft); }
+
+    .progress-row { display: flex; align-items: center; gap: 14px; margin: 0 0 14px; }
+    .progress-track { height: 8px; flex: 1; overflow: hidden; border-radius: 999px; background: var(--line); }
+    .progress-bar { width: 0; height: 100%; border-radius: inherit; background: var(--ok); transition: width .28s ease; }
+    .progress-label { min-width: 94px; color: var(--muted); font-size: 12px; text-align: right; }
+    .reset-button { border: 0; background: transparent; color: var(--muted); padding: 4px; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+
+    .steps { display: grid; gap: 10px; }
+    .step {
+      display: grid;
+      grid-template-columns: 48px minmax(0, 1fr) auto;
+      gap: 16px;
+      align-items: start;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: var(--surface);
+      padding: 18px;
+      transition: opacity .2s ease, border-color .2s ease, background .2s ease;
+    }
+    .step.is-done { opacity: .64; background: var(--ok-bg); border-color: color-mix(in srgb, var(--ok) 22%, var(--line)); }
+    .step-number { display: grid; width: 44px; height: 44px; place-items: center; border-radius: 14px; background: var(--card); font: 800 14px ui-monospace, monospace; }
+    .step.is-done .step-number { background: var(--ok); color: white; }
+    .step h3 { margin: 0; font-size: 17px; }
+    .step p { margin: 5px 0 0; color: var(--soft); }
+    .step-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 11px; }
+    .step-toggle {
+      width: 34px;
+      height: 34px;
+      border: 1px solid var(--line-strong);
+      border-radius: 50%;
+      background: var(--card);
+      cursor: pointer;
+      font-weight: 900;
+    }
+    .step.is-done .step-toggle { border-color: var(--ok); background: var(--ok); color: white; }
+
+    .help-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 24px; }
+    .help-card { border: 1px solid var(--line); border-radius: 20px; background: var(--card); padding: 20px; }
+    .help-card h3 { margin: 0 0 12px; font-size: 16px; }
+    .check-list { display: grid; gap: 9px; margin: 0; padding: 0; list-style: none; }
+    .check-list li { position: relative; padding-left: 24px; color: var(--soft); }
+    .check-list li::before { position: absolute; left: 0; color: var(--ok); content: "✓"; font-weight: 900; }
+    details { border-top: 1px solid var(--line); }
+    details:first-of-type { border-top: 0; }
+    summary { padding: 11px 0; cursor: pointer; font-weight: 750; }
+    details p { margin: -3px 0 13px; color: var(--soft); }
+
+    .reference { margin-top: 56px; padding-top: 40px; border-top: 1px solid var(--line); }
+    .reference-grid { display: grid; grid-template-columns: 1.2fr .8fr; gap: 18px; }
+    .reference-card { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); padding: 24px; }
+    .reference-card h3 { margin: 0 0 6px; font-size: 20px; }
+    .reference-card > p { margin: 0 0 18px; color: var(--soft); }
+    .status-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .status-item { border-radius: 15px; background: var(--card); padding: 13px; }
+    .status-item strong { display: block; font-size: 13px; }
+    .status-item span { display: block; margin-top: 3px; color: var(--soft); font-size: 12px; }
+    .code-box { margin-top: 10px; border: 1px solid var(--line); border-radius: 15px; background: var(--card); padding: 14px; }
+    .code-box code { display: block; overflow-wrap: anywhere; color: var(--live); font: 700 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .code-box small { display: block; margin-top: 5px; color: var(--muted); }
+    .callout { margin-top: 18px; border-left: 3px solid var(--warn); border-radius: 4px 15px 15px 4px; background: var(--warn-bg); padding: 14px 16px; color: var(--soft); }
+    footer { display: flex; justify-content: space-between; gap: 20px; margin-top: 46px; color: var(--muted); font-size: 12px; }
+
+    @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+    .role-panel:not([hidden]) { animation: rise .24s ease-out; }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+    }
+    @media (max-width: 1040px) {
+      .flow { grid-template-columns: repeat(3, 1fr); }
+      .guide-layout { grid-template-columns: 1fr; }
+      .role-nav { position: static; grid-template-columns: repeat(5, minmax(150px, 1fr)); overflow-x: auto; }
+      .role-tab { min-width: 150px; }
+    }
+    @media (max-width: 760px) {
+      .app { width: 100%; min-height: 100vh; margin: 0; border: 0; border-radius: 0; }
+      .topbar { padding: 14px 18px; }
+      .print-button span { display: none; }
+      .hero { grid-template-columns: 1fr; padding: 42px 22px 30px; }
+      .content { padding: 30px 20px 42px; }
+      .section-head, .role-heading { grid-template-columns: 1fr; display: grid; }
+      .menu-pills { justify-content: flex-start; }
+      .flow { grid-template-columns: 1fr 1fr; }
+      .flow-node { min-height: 120px; }
+      .role-nav { grid-template-columns: repeat(5, minmax(140px, 1fr)); margin-inline: -20px; padding-inline: 20px; border-inline: 0; border-radius: 0; }
+      .summary-grid, .help-grid, .reference-grid { grid-template-columns: 1fr; }
+      .step { grid-template-columns: 42px minmax(0, 1fr); }
+      .step-number { width: 40px; height: 40px; }
+      .step-toggle { grid-column: 1 / -1; width: 100%; border-radius: 999px; }
+      .status-list { grid-template-columns: 1fr; }
+      footer { display: block; }
+    }
+    @media print {
+      :root, :root[data-theme="dark"] { color-scheme: light; --canvas: #fff; --shell: #fff; --surface: #f7f7f5; --card: #fff; --line: #ddd; --line-strong: #bbb; --ink: #111; --soft: #444; --muted: #666; }
+      body { background: white; font-size: 11px; }
+      .app { width: 100%; margin: 0; border: 0; box-shadow: none; }
+      .top-actions, .role-nav, .progress-row { display: none; }
+      .hero { padding: 28px 0; }
+      .content { padding: 22px 0; }
+      .flow { grid-template-columns: repeat(6, 1fr); break-inside: avoid; }
+      .flow-node { min-height: 100px; padding: 12px; }
+      .guide-layout { display: block; }
+      .role-panel[hidden] { display: block; margin-top: 36px; }
+      .role-panel { animation: none !important; break-before: page; }
+      .step, .help-card, .reference-card { break-inside: avoid; }
+      .step-toggle { display: none; }
+      .reference { break-before: page; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#panduan">Lewati ke panduan</a>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand" aria-label="ARES e-Kanban Supplier">
+        <span class="brand-mark" aria-hidden="true">A<span class="brand-dot"></span></span>
+        <span>
+          <span class="brand-name">ARES</span>
+          <span class="brand-sub">e-Kanban Supplier</span>
+        </span>
+      </div>
+      <div class="top-actions">
+        <button class="icon-button" id="themeButton" type="button" aria-label="Ganti tema" title="Ganti tema">◐</button>
+        <button class="print-button" type="button" onclick="window.print()" title="Cetak semua peran">⌁ <span>Cetak panduan</span></button>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Panduan operasional</p>
+          <h1>Satu alur,<br>banyak peran.</h1>
+          <p class="hero-copy">Pilih peran untuk melihat apa yang harus dikerjakan, urutan langkahnya, tanda pekerjaan selesai, dan tindakan saat terjadi kendala.</p>
+        </div>
+        <aside class="hero-note">
+          <strong>Cara memakai panduan</strong>
+          <p>Pilih peran, lalu centang setiap langkah. Progres tersimpan di browser ini sehingga panduan bisa dilanjutkan pada kunjungan berikutnya.</p>
+          <span class="version">Fase 2 · 21 September 2026</span>
+        </aside>
+      </section>
+
+      <div class="content">
+        <section aria-labelledby="alur-besar">
+          <div class="section-head">
+            <div><p class="eyebrow">Gambaran besar</p><h2 id="alur-besar">Perjalanan satu kebutuhan part</h2></div>
+            <p>Klik kotak untuk membuka panduan peran terkait. Proses berulang dari produksi sampai stok kembali tersedia.</p>
+          </div>
+          <div class="flow" aria-label="Alur ARES dari MES sampai SAP">
+            <button class="flow-node" data-role-jump="mes" type="button"><span class="flow-number">01</span><strong>Produksi selesai</strong><small>MES mengirim hasil produksi</small></button>
+            <button class="flow-node" data-role-jump="ppic" type="button"><span class="flow-number">02</span><strong>Konsumsi & antrean</strong><small>ARES menghitung kebutuhan part</small></button>
+            <button class="flow-node" data-role-jump="ppic" type="button"><span class="flow-number">03</span><strong>Cutoff</strong><small>Picklist dan kanban terbit</small></button>
+            <button class="flow-node" data-role-jump="supplier" type="button"><span class="flow-number">04</span><strong>Supplier kirim</strong><small>Unduh, cetak, dan konfirmasi</small></button>
+            <button class="flow-node" data-role-jump="warehouse" type="button"><span class="flow-number">05</span><strong>Barang diterima</strong><small>Scan picklist dan tiap kanban</small></button>
+            <button class="flow-node" data-role-jump="admin" type="button"><span class="flow-number">06</span><strong>GR ke SAP</strong><small>ARES mengirim lewat outbox</small></button>
+          </div>
+        </section>
+
+        <section id="panduan" aria-labelledby="panduan-title">
+          <div class="section-head">
+            <div><p class="eyebrow">Panduan per pengguna</p><h2 id="panduan-title">Saya masuk sebagai...</h2></div>
+          </div>
+
+          <div class="guide-layout">
+            <nav class="role-nav" role="tablist" aria-label="Pilih peran pengguna">
+              <button class="role-tab" role="tab" id="tab-ppic" aria-selected="true" aria-controls="panel-ppic" data-role="ppic" type="button"><span class="role-icon">PP</span><span><strong>PPIC</strong><small>Kontrol order</small></span></button>
+              <button class="role-tab" role="tab" id="tab-supplier" aria-selected="false" aria-controls="panel-supplier" data-role="supplier" type="button"><span class="role-icon">SP</span><span><strong>Supplier</strong><small>Siapkan kiriman</small></span></button>
+              <button class="role-tab" role="tab" id="tab-warehouse" aria-selected="false" aria-controls="panel-warehouse" data-role="warehouse" type="button"><span class="role-icon">WH</span><span><strong>Warehouse</strong><small>Terima barang</small></span></button>
+              <button class="role-tab" role="tab" id="tab-admin" aria-selected="false" aria-controls="panel-admin" data-role="admin" type="button"><span class="role-icon">AD</span><span><strong>Admin</strong><small>Jaga sistem</small></span></button>
+              <button class="role-tab" role="tab" id="tab-mes" aria-selected="false" aria-controls="panel-mes" data-role="mes" type="button"><span class="role-icon">ME</span><span><strong>Produksi / MES</strong><small>Kirim hasil produksi</small></span></button>
+            </nav>
+
+            <div id="rolePanels"></div>
+          </div>
+        </section>
+
+        <section class="reference" aria-labelledby="referensi-title">
+          <div class="section-head">
+            <div><p class="eyebrow">Referensi cepat</p><h2 id="referensi-title">Status dan kode scan</h2></div>
+            <p>Gunakan bagian ini saat nama status atau isi barcode terlihat membingungkan.</p>
+          </div>
+          <div class="reference-grid">
+            <article class="reference-card">
+              <h3>Status picklist</h3>
+              <p>Urutan normal bergerak dari diterbitkan sampai selesai.</p>
+              <div class="status-list">
+                <div class="status-item"><strong>ISSUED · Terbit</strong><span>Order sudah dibuat, belum diunduh supplier.</span></div>
+                <div class="status-item"><strong>DOWNLOADED · Diunduh</strong><span>Supplier sudah mengambil dokumen.</span></div>
+                <div class="status-item"><strong>SHIPPED · Dikirim</strong><span>Supplier sudah mengonfirmasi pengiriman.</span></div>
+                <div class="status-item"><strong>PARTIAL · Sebagian</strong><span>Barang diterima kurang dari jumlah kirim.</span></div>
+                <div class="status-item"><strong>COMPLETE · Selesai</strong><span>Seluruh box yang diharapkan sudah diterima.</span></div>
+                <div class="status-item"><strong>CANCELLED · Dibatalkan</strong><span>Order dihentikan dan tidak boleh diproses lagi.</span></div>
+              </div>
+            </article>
+            <article class="reference-card">
+              <h3>Isi barcode yang benar</h3>
+              <p>Scanner mengirim teks berikut, bukan URL halaman.</p>
+              <div class="code-box"><code>ARES:P:PL-260921-0044-0</code><small>Barcode picklist: awalan ARES:P, nomor picklist, lalu revisi.</small></div>
+              <div class="code-box"><code>ARES:K:&lt;ID-KANBAN&gt;</code><small>QR kanban: awalan ARES:K dan ID unik yang tercetak di kartu.</small></div>
+              <div class="callout"><strong>Jangan scan tautan halaman.</strong><br><code>http://127.0.0.1:3000/picklist/44</code> hanya alamat layar, bukan isi barcode.</div>
+            </article>
+          </div>
+        </section>
+
+        <footer>
+          <span>ARES · Panduan alur pengguna</span>
+          <span>Sumber proses: PRD ARES §2, §4, §5, §6, dan §8</span>
+        </footer>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const roles = {
+      ppic: {
+        title: 'PPIC',
+        description: 'Memastikan kebutuhan part berubah menjadi order yang benar, supplier merespons tepat waktu, dan kendala operasional ditangani.',
+        menus: ['Dashboard', 'Antrean Order', 'Picklist', 'Stok WH', 'Setting'],
+        summary: [
+          ['Mulai dari', 'Dashboard untuk melihat order hari ini, supplier tertinggal, antrean blocked, dan GR gagal.'],
+          ['Fokus utama', 'Periksa pengecualian. Order normal akan terbit otomatis saat cutoff.'],
+          ['Selesai ketika', 'Picklist terbit, supplier mengonfirmasi, dan penerimaan tidak menyisakan kendala.']
+        ],
+        steps: [
+          ['Buka Dashboard', 'Periksa picklist hari ini per status, supplier yang belum mengunduh atau mengonfirmasi, serta GR yang gagal.', '/dashboard', 'Setiap awal shift'],
+          ['Tinjau konsumsi dan antrean', 'Pastikan hasil produksi masuk ke Konsumsi dan PCS terkumpul pada vendor part serta cutoff yang benar.', '/consumption · /queue', 'Rutin sebelum cutoff'],
+          ['Tangani antrean bermasalah', 'Untuk jumlah yang salah, tambah atau kurangi PCS dengan alasan. Gunakan hold jika vendor part belum boleh diterbitkan.', '/queue', 'Alasan wajib'],
+          ['Pastikan master dan PO siap', 'Jika antrean berstatus Blocked, lengkapi vendor part atau PO aktif. Antrean tetap OPEN sampai masalah selesai.', '/master/vendorParts', 'Jangan buat ulang antrean'],
+          ['Biarkan cutoff berjalan', 'Saat jam cutoff tercapai, ARES mengubah PCS menjadi box dan menerbitkan satu picklist per supplier. Tombol Jalankan cutoff dipakai untuk uji atau kebutuhan operasional.', '/queue', 'Otomatis'],
+          ['Pantau respons supplier', 'Order baru harus diunduh lalu dikonfirmasi. Hubungi supplier jika status tertahan di ISSUED atau DOWNLOADED.', '/picklist', 'Lihat waktu status'],
+          ['Tangani pembatalan dan SAP', 'Picklist dapat dibatalkan sebelum SHIPPED. Untuk GR gagal, buka SAP Outbox lalu retry atau hold sesuai keputusan.', '/picklist · /sap', 'Tercatat di audit']
+        ],
+        success: ['Tidak ada antrean Blocked tanpa tindak lanjut.', 'Picklist cutoff terbit satu kali dan jumlah box sesuai.', 'Supplier yang terlambat sudah ditindaklanjuti.', 'GR gagal sudah di-retry atau di-hold dengan alasan jelas.'],
+        issues: [
+          ['Antrean tidak terbit saat cutoff', 'Periksa status hold, alasan blocked, vendor part aktif, dan PO aktif. Setelah diperbaiki, jalankan cutoff kembali.'],
+          ['Jumlah order kurang atau lebih', 'Koreksi PCS selama antrean masih OPEN. Setelah menjadi picklist, gunakan proses pembatalan atau order manual sesuai kondisi.'],
+          ['Supplier belum membuka order', 'Periksa status ISSUED di Dashboard, lalu hubungi supplier. PPIC dapat mencetak ulang dokumen bila diperlukan.'],
+          ['GR gagal', 'Buka SAP Outbox, baca pesan error, perbaiki penyebab, lalu Retry. Hold dipakai agar worker tidak mengirim ulang sebelum masalah selesai.']
+        ]
+      },
+      supplier: {
+        title: 'Supplier',
+        description: 'Mengambil order milik supplier sendiri, mencetak satu kanban untuk setiap box, lalu mengonfirmasi jumlah yang benar-benar dikirim.',
+        menus: ['Order berjalan', 'Riwayat'],
+        summary: [
+          ['Login dengan', 'Email supplier. Akun hanya dapat melihat order vendor yang terhubung ke akun tersebut.'],
+          ['Dokumen utama', 'PDF picklist untuk pengiriman dan PDF kanban untuk ditempel satu per box.'],
+          ['Selesai ketika', 'Jumlah kirim, ETA, dan nomor kendaraan sudah dikonfirmasi sebelum barang berangkat.']
+        ],
+        steps: [
+          ['Buka Order berjalan', 'Pilih order baru dengan status Terbit. Periksa tanggal kirim, jam datang, cycle, part, dan jumlah box.', '/portal', 'Data supplier sendiri'],
+          ['Unduh dua dokumen', 'Unduh PDF picklist dan PDF kanban. Unduhan pertama mengubah status order menjadi Diunduh.', '/portal/{id}', 'Simpan file asli'],
+          ['Cetak dan pasang kanban', 'Cetak sesuai ukuran asli. Tempel tepat satu kartu kanban pada setiap box dan pastikan QR tidak terlipat atau tertutup.', 'PDF kanban', '1 box = 1 kanban'],
+          ['Siapkan jumlah aktual', 'Hitung box yang benar-benar siap dikirim untuk setiap part. Jumlah boleh lebih sedikit dari order, tetapi tidak boleh lebih.', '/portal/{id}', 'Short shipment diperbolehkan'],
+          ['Konfirmasi pengiriman', 'Isi jumlah box dikirim per part, ETA, nomor kendaraan, dan catatan bila ada. Kirim konfirmasi sebelum truk berangkat.', '/portal/{id}', 'Tidak bisa diubah setelah dikirim'],
+          ['Sertakan picklist', 'Bawa picklist bersama pengiriman. Warehouse akan memindai barcode picklist lalu QR pada setiap box.', 'Dokumen fisik', 'QR harus terbaca'],
+          ['Periksa Riwayat', 'Setelah penerimaan, lihat perbandingan jumlah dikirim dan diterima. Hubungi PPIC jika ada selisih yang tidak sesuai.', '/portal/riwayat', 'Jejak penerimaan']
+        ],
+        success: ['Semua box memiliki kanban yang berbeda.', 'Jumlah konfirmasi sama dengan jumlah fisik yang berangkat.', 'ETA dan nomor kendaraan terisi benar.', 'Status order sudah Dikirim sebelum tiba di pabrik.'],
+        issues: [
+          ['Order tidak terlihat', 'Pastikan login memakai email vendor yang benar. Jika tetap tidak ada, hubungi PPIC atau Admin untuk memeriksa mapping akun.'],
+          ['PDF belum siap', 'Tunggu sebentar lalu muat ulang halaman. Pembuatan PDF berjalan di worker setelah picklist terbit.'],
+          ['Pengiriman kurang', 'Isi jumlah aktual yang lebih kecil. ARES mengikuti kebijakan supplier: carry over atau revisi.'],
+          ['QR rusak atau tidak terbaca', 'Cetak ulang PDF yang sama. Jangan membuat QR baru sendiri karena ID kanban harus berasal dari ARES.']
+        ]
+      },
+      warehouse: {
+        title: 'Warehouse / Receiving',
+        description: 'Memeriksa kedatangan dengan scan. Setiap box hanya dihitung jika QR kanbannya cocok dengan picklist yang sedang dibuka.',
+        menus: ['Sesi Scan', 'Penerimaan'],
+        summary: [
+          ['Mulai dari', 'Kolom scan picklist. Saat halaman terbuka, input sudah siap menerima tembakan scanner.'],
+          ['Urutan wajib', 'Scan barcode picklist lebih dulu, lalu scan setiap QR kanban pada box.'],
+          ['Selesai ketika', 'Sesi ditutup, selisih diberi alasan, dan receipt tercatat.']
+        ],
+        steps: [
+          ['Scan barcode picklist', 'Arahkan scanner ke barcode pada dokumen. Formatnya ARES:P:nomor-revisi, bukan URL halaman.', '/receiving', 'Membuka sesi'],
+          ['Cocokkan informasi kiriman', 'Periksa supplier, nomor picklist, part, dan jumlah box yang dikirim sebelum membongkar semuanya.', '/receiving/{id}', 'Hentikan jika salah supplier'],
+          ['Scan setiap kanban', 'Scan satu QR pada setiap box. Counter per part bertambah saat scan diterima.', '/receiving/{id}', '1 box = 1 scan'],
+          ['Ikuti umpan balik', 'Hijau berarti diterima, kuning berarti sudah pernah discan, merah berarti kode salah atau milik picklist lain.', 'Layar & bunyi', 'Scan dobel tidak menambah jumlah'],
+          ['Bandingkan fisik dan layar', 'Sebelum menutup sesi, pastikan jumlah box di area bongkar sama dengan counter yang tampil.', '/receiving/{id}', 'Cek semua line'],
+          ['Tutup sesi', 'Jika lengkap, tutup langsung. Jika kurang, isi alasan yang jelas sebelum menutup.', '/receiving/{id}', 'Alasan wajib bila selisih'],
+          ['Periksa ringkasan receipt', 'Pastikan status Complete atau Partial dan jumlah diterima benar. Jika salah, batalkan sebelum GR berstatus SENT.', '/receiving/{id}/ringkasan', 'Batalkan secepatnya jika salah']
+        ],
+        success: ['Setiap box fisik memiliki satu hasil scan OK.', 'Tidak ada kode merah yang diabaikan.', 'Selisih mempunyai alasan yang bisa dipahami PPIC.', 'Ringkasan receipt sama dengan jumlah fisik yang diterima.'],
+        issues: [
+          ['Barcode picklist ditolak', 'Pastikan yang discan adalah barcode pada PDF, dengan format ARES:P:PL-...-revisi. Nomor atau URL saja tidak diterima.'],
+          ['Hasil SUDAH DISCAN', 'Box sudah dihitung pada sesi ini. Jangan scan ulang dan jangan menambah counter manual.'],
+          ['Kanban DITOLAK', 'Pisahkan box. Periksa apakah kanban milik picklist lain, sudah diterima sebelumnya, atau format QR tidak sah.'],
+          ['Salah tutup receipt', 'Segera buka daftar Penerimaan dan batalkan sebelum GR terkirim. Setelah GR SENT, hubungi PPIC/Admin untuk proses pembalik.']
+        ]
+      },
+      admin: {
+        title: 'Admin',
+        description: 'Menjaga akun, master, koneksi MES/SAP, dan jejak audit agar pengguna operasional dapat bekerja tanpa mengubah data langsung di database.',
+        menus: ['Master Data', 'Setting', 'Sinkron MES', 'SAP Outbox'],
+        summary: [
+          ['Tanggung jawab', 'Akun dan peran, mapping supplier, kesiapan master, serta kesehatan integrasi.'],
+          ['Prinsip aman', 'Perbaiki melalui layar ARES dan simpan alasan. Hindari perubahan langsung di database.'],
+          ['Selesai ketika', 'Worker aktif, error tertangani, dan seluruh tindakan penting memiliki audit.']
+        ],
+        steps: [
+          ['Siapkan akun pengguna', 'Buat user, pilih peran, dan hubungkan vendor khusus untuk akun supplier. Berikan password sementara melalui jalur yang aman.', '/master/users', 'Supplier wajib punya vendor'],
+          ['Jaga master utama', 'Pastikan nomor SAP supplier dan part terisi, vendor part aktif, qty per box benar, serta BOM berlaku.', '/master/vendors · /master/parts', 'Nomor SAP wajib'],
+          ['Atur kalender operasi', 'Pelihara cutoff supplier, jam datang, lead day, aturan pembulatan, kebijakan short shipment, dan hari libur.', '/settings/*', 'Periksa simulasi cutoff'],
+          ['Pantau sinkron MES', 'Periksa status job dan cursor. Pada mode fake, data uji dapat dimasukkan dari layar lalu ditarik manual.', '/mes', 'Mode sesuai environment'],
+          ['Pantau SAP Outbox', 'Periksa item Pending, Failed, Held, dan Sent. Baca error sebelum melakukan retry.', '/sap', 'Fake menghasilkan FAKE-&lt;n&gt;'],
+          ['Tahan atau kirim ulang dengan benar', 'Hold item yang belum aman dikirim. Setelah penyebab diperbaiki, gunakan Retry agar worker mencoba kembali.', '/sap', 'Aksi tercatat'],
+          ['Gunakan audit saat investigasi', 'Telusuri siapa mengubah master, menerbitkan atau membatalkan dokumen, menutup receipt, dan retry outbox.', 'TT_AUDIT_LOG', 'Sertakan waktu & user']
+        ],
+        success: ['Setiap supplier login hanya melihat datanya sendiri.', 'Cutoff dan hari libur menghasilkan jadwal yang benar.', 'Job MES dan SAP berjalan tanpa error yang dibiarkan.', 'Perubahan penting dapat dilacak ke pengguna dan waktu kejadian.'],
+        issues: [
+          ['Supplier melihat data yang salah', 'Nonaktifkan akun bila perlu, lalu periksa mapping Vendor pada Master User.'],
+          ['Sinkron MES berhenti', 'Periksa status gateway, URL/token untuk mode HTTP, dan record gagal. Jangan maju paksa cursor sebelum master diperbaiki.'],
+          ['SAP terus gagal', 'Hold item, simpan pesan error, lalu koordinasikan payload dan koneksi dengan tim SAP sebelum retry.'],
+          ['Lupa password', 'Reset dari Master User. Pastikan password baru diberikan hanya kepada pemilik akun.']
+        ]
+      },
+      mes: {
+        title: 'Produksi / MES',
+        description: 'Mengirim hasil produksi yang sudah final ke ARES. ARES memakai data ini untuk menghitung konsumsi komponen dan menambah antrean order.',
+        menus: ['MES produksi', 'Sinkron MES (monitor)'],
+        summary: [
+          ['Data sumber', 'ID hasil produksi yang unik, part jadi, jumlah, line, dan waktu produksi.'],
+          ['Arah utama', 'MES mengirim ke POST /consumption. Mode tarik berkala tersedia sebagai fallback.'],
+          ['Selesai ketika', 'Satu hasil produksi menghasilkan konsumsi komponen, mutasi stok minus, dan antrean vendor part.']
+        ],
+        steps: [
+          ['Finalisasi hasil produksi', 'Kirim hanya record yang sudah sah dengan ID MES unik. Jangan memakai ID baru untuk mengulang record yang sama.', 'MES', 'ID unik wajib'],
+          ['Kirim ke ARES', 'MES mengirim payload hasil produksi ke endpoint konsumsi. Waktu produksi menentukan versi BOM dan cutoff tujuan.', 'POST /consumption', 'Push utama'],
+          ['Terima hasil validasi', 'Jika data valid, ARES menyimpan source key MES:id. Pengiriman ulang ID yang sama tidak menggandakan data.', 'Respons API', 'Idempoten'],
+          ['ARES mengurai BOM', 'Untuk setiap komponen, ARES menghitung jumlah konsumsi dari qty produksi dikali qty per pada BOM yang berlaku.', 'Otomatis', 'Per komponen'],
+          ['ARES memperbarui stok dan antrean', 'Stok WH komponen berkurang dan PCS pada antrean vendor part aktif bertambah untuk cutoff berikutnya.', '/consumption · /queue', 'Otomatis'],
+          ['Tangani record gagal', 'Jika BOM atau vendor part belum lengkap, catat respons gagal dan minta PPIC/Admin memperbaiki master sebelum mencoba lagi.', '/consumption', 'Jangan ganti ID sumber'],
+          ['Pantau fallback tarik', 'Jika push belum tersedia, job mes-sync mengambil record berdasarkan cursor. Cursor hanya maju setelah record berhasil diproses.', '/mes', 'Fallback']
+        ],
+        success: ['Setiap record memakai ID sumber yang stabil dan unik.', 'Waktu produksi serta line dikirim dengan benar.', 'Retry record yang sama tidak menambah konsumsi dua kali.', 'Record gagal ditindaklanjuti tanpa mengubah identitas sumber.'],
+        issues: [
+          ['Respons 422', 'Master untuk part, BOM, atau vendor part belum lengkap. Simpan pesan error dan koordinasikan ke PPIC/Admin.'],
+          ['Konsumsi tidak terlihat', 'Periksa ID part, waktu produksi, dan respons API. Admin dapat melihat status job/cursor pada Sinkron MES.'],
+          ['Record terkirim dua kali', 'Gunakan ID sumber yang sama. ARES akan mengenalinya dan tidak membuat transaksi kedua.'],
+          ['Record produksi dibatalkan', 'Hubungi PPIC untuk pembalikan selama konsumsi masih berada di antrean OPEN. Setelah cutoff, koreksi mengikuti proses dokumen.']
+        ]
+      }
+    };
+
+    const panels = document.getElementById('rolePanels');
+    const escapeHtml = (value) => String(value).replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
+
+    function panelHtml(key, role) {
+      const menuHtml = role.menus.map((menu) => `<span class="pill">${escapeHtml(menu)}</span>`).join('');
+      const summaryHtml = role.summary.map(([label, body]) => `<article class="summary-card"><small>${escapeHtml(label)}</small><p>${escapeHtml(body)}</p></article>`).join('');
+      const stepHtml = role.steps.map(([title, body, path, note], index) => `
+        <article class="step" data-step="${index}">
+          <span class="step-number">${String(index + 1).padStart(2, '0')}</span>
+          <div><h3>${escapeHtml(title)}</h3><p>${escapeHtml(body)}</p><div class="step-meta"><span class="path">${path}</span><span class="tag ok">${escapeHtml(note)}</span></div></div>
+          <button class="step-toggle" type="button" aria-label="Tandai langkah ${index + 1} selesai" aria-pressed="false">✓</button>
+        </article>`).join('');
+      const successHtml = role.success.map((item) => `<li>${escapeHtml(item)}</li>`).join('');
+      const issueHtml = role.issues.map(([title, body]) => `<details><summary>${escapeHtml(title)}</summary><p>${escapeHtml(body)}</p></details>`).join('');
+      return `
+        <section class="role-panel" id="panel-${key}" role="tabpanel" aria-labelledby="tab-${key}" ${key === 'ppic' ? '' : 'hidden'}>
+          <div class="role-heading"><div><p class="eyebrow">Alur kerja</p><h2>${escapeHtml(role.title)}</h2><p>${escapeHtml(role.description)}</p></div><div class="menu-pills" aria-label="Menu yang sering dipakai">${menuHtml}</div></div>
+          <div class="summary-grid">${summaryHtml}</div>
+          <div class="progress-row"><div class="progress-track" aria-hidden="true"><div class="progress-bar"></div></div><span class="progress-label">0 dari ${role.steps.length}</span><button class="reset-button" type="button">Reset</button></div>
+          <div class="steps">${stepHtml}</div>
+          <div class="help-grid">
+            <article class="help-card"><h3>✓ Pekerjaan dianggap selesai jika</h3><ul class="check-list">${successHtml}</ul></article>
+            <article class="help-card"><h3>Saat ada kendala</h3>${issueHtml}</article>
+          </div>
+        </section>`;
+    }
+
+    panels.innerHTML = Object.entries(roles).map(([key, role]) => panelHtml(key, role)).join('');
+
+    function storageKey(role) { return `ares-user-flow:${role}`; }
+    function readProgress(role) {
+      try { return new Set(JSON.parse(localStorage.getItem(storageKey(role)) || '[]')); }
+      catch { return new Set(); }
+    }
+    function writeProgress(role, done) {
+      try { localStorage.setItem(storageKey(role), JSON.stringify([...done])); } catch {}
+    }
+    function paintProgress(role) {
+      const panel = document.getElementById(`panel-${role}`);
+      const done = readProgress(role);
+      const steps = [...panel.querySelectorAll('.step')];
+      steps.forEach((step, index) => {
+        const complete = done.has(index);
+        step.classList.toggle('is-done', complete);
+        const button = step.querySelector('.step-toggle');
+        button.setAttribute('aria-pressed', String(complete));
+        button.setAttribute('aria-label', complete ? `Batalkan tanda selesai langkah ${index + 1}` : `Tandai langkah ${index + 1} selesai`);
+      });
+      panel.querySelector('.progress-bar').style.width = `${steps.length ? done.size / steps.length * 100 : 0}%`;
+      panel.querySelector('.progress-label').textContent = `${done.size} dari ${steps.length}`;
+    }
+
+    function selectRole(role, focusTab = false) {
+      document.querySelectorAll('.role-tab').forEach((tab) => {
+        const selected = tab.dataset.role === role;
+        tab.setAttribute('aria-selected', String(selected));
+        tab.tabIndex = selected ? 0 : -1;
+        if (selected && focusTab) tab.focus();
+      });
+      document.querySelectorAll('.role-panel').forEach((panel) => { panel.hidden = panel.id !== `panel-${role}`; });
+      paintProgress(role);
+      history.replaceState(null, '', `#${role}`);
+    }
+
+    document.querySelectorAll('.role-tab').forEach((tab) => {
+      tab.addEventListener('click', () => selectRole(tab.dataset.role));
+      tab.addEventListener('keydown', (event) => {
+        if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+        event.preventDefault();
+        const tabs = [...document.querySelectorAll('.role-tab')];
+        const next = (tabs.indexOf(tab) + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+        selectRole(tabs[next].dataset.role, true);
+      });
+    });
+
+    document.querySelectorAll('.role-panel').forEach((panel) => {
+      const role = panel.id.replace('panel-', '');
+      panel.querySelectorAll('.step-toggle').forEach((button, index) => {
+        button.addEventListener('click', () => {
+          const done = readProgress(role);
+          done.has(index) ? done.delete(index) : done.add(index);
+          writeProgress(role, done);
+          paintProgress(role);
+        });
+      });
+      panel.querySelector('.reset-button').addEventListener('click', () => {
+        writeProgress(role, new Set());
+        paintProgress(role);
+      });
+      paintProgress(role);
+    });
+
+    document.querySelectorAll('[data-role-jump]').forEach((button) => {
+      button.addEventListener('click', () => {
+        selectRole(button.dataset.roleJump);
+        document.getElementById('panduan').scrollIntoView({ behavior: 'smooth' });
+      });
+    });
+
+    const themeButton = document.getElementById('themeButton');
+    const savedTheme = (() => { try { return localStorage.getItem('ares-user-flow:theme'); } catch { return null; } })();
+    if (savedTheme === 'dark') document.documentElement.dataset.theme = 'dark';
+    themeButton.addEventListener('click', () => {
+      const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+      document.documentElement.dataset.theme = next;
+      try { localStorage.setItem('ares-user-flow:theme', next); } catch {}
+    });
+
+    const initialRole = location.hash.slice(1);
+    selectRole(roles[initialRole] ? initialRole : 'ppic');
+  </script>
+</body>
+</html>
