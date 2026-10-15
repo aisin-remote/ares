@@ -1,4 +1,6 @@
 import 'server-only';
+import { isIP } from 'node:net';
+import { headers as requestHeaders } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getToken } from './session';
 
@@ -22,6 +24,7 @@ export async function apiFetch<T>(
   const { authenticated = true, ...rest } = init;
   const headers = new Headers(rest.headers);
   headers.set('Content-Type', 'application/json');
+  await forwardClientAddress(headers);
 
   if (authenticated) {
     const token = await getToken();
@@ -65,6 +68,7 @@ export class ApiRequestError extends Error {
  */
 export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
   const headers = new Headers();
+  await forwardClientAddress(headers);
   const token = await getToken();
   if (token) headers.set('Authorization', `Bearer ${token}`);
   const res = await fetch(`${BASE}${path}`, {
@@ -83,4 +87,18 @@ export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
     );
   }
   return res.json() as Promise<T>;
+}
+
+/**
+ * Next memanggil API lewat loopback. Teruskan IP yang sudah ditetapkan reverse
+ * proxy agar rate limit API tidak menganggap semua pengguna sebagai 127.0.0.1.
+ */
+async function forwardClientAddress(outbound: Headers): Promise<void> {
+  try {
+    const inbound = await requestHeaders();
+    const address = inbound.get('x-real-ip')?.trim();
+    if (address && isIP(address)) outbound.set('X-Forwarded-For', address);
+  } catch {
+    // Tidak ada request aktif (mis. build); API tetap melihat alamat loopback.
+  }
 }

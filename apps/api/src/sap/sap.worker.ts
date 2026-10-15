@@ -41,7 +41,11 @@ export class SapWorker implements OnModuleInit, OnModuleDestroy {
           return hasil;
         }
         if (job.name === JOBS.FLUSH_SAP_OUTBOX) {
-          return this.writer.flush();
+          const ids = Array.isArray(job.data?.ids)
+            ? job.data.ids.filter((id: unknown): id is number => Number.isInteger(id))
+            : undefined;
+          const plantId = Number.isInteger(job.data?.plantId) ? Number(job.data.plantId) : undefined;
+          return this.writer.flush(ids, plantId);
         }
         return undefined;
       },

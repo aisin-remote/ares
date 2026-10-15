@@ -29,7 +29,7 @@ export function OpenSessionForm() {
   return (
     <form action={action} className="flex flex-col gap-3">
       <label htmlFor="kode-picklist" className="text-[14px] font-semibold">
-        Barcode picklist
+        Barcode Order Sheet
       </label>
       <div className="flex gap-2">
         <input
@@ -39,7 +39,7 @@ export function OpenSessionForm() {
           autoComplete="off"
           autoCapitalize="off"
           spellCheck={false}
-          placeholder="ARES:P:PL-260921-0011-0"
+          placeholder="ARES:P:826092300100"
           className="tabular h-12 min-w-0 flex-1 rounded-2xl border border-line bg-surface px-4 text-[16px] font-semibold outline-none transition-colors duration-200 placeholder:text-[14px] placeholder:font-normal placeholder:text-ink-muted focus:border-ink focus:bg-card"
         />
         <button
@@ -58,7 +58,7 @@ export function OpenSessionForm() {
         </p>
       ) : (
         <p className="text-[13px] text-ink-muted">
-          Scan barcode di lembar picklist. Kalau sesi untuk picklist itu masih terbuka, Anda
+          Scan barcode di lembar Order Sheet. Kalau sesi untuk Order Sheet itu masih terbuka, Anda
           langsung melanjutkannya.
         </p>
       )}

@@ -1,14 +1,18 @@
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
 import { ClipboardList, Plus, Send, Download, Truck, CheckCircle2 } from 'lucide-react';
 import { PICKLIST_STATUSES, type PicklistStatus } from '@ares/contracts';
+import { orderSheetDisplayNo } from '@ares/domain';
 import { getPicklistCounts, listPicklists } from '@/lib/queries';
-import { getSessionUser } from '@/lib/session';
+import { requirePermission } from '@/lib/session';
 import { PageHeader } from '@/components/ui/page-header';
 import { StatCard } from '@/components/ui/stat-card';
 import { Card, CardHeader } from '@/components/ui/card';
-import { Table, Th, Td, Tr, EmptyState } from '@/components/ui/table';
+import { Table, Th, Td, EmptyState } from '@/components/ui/table';
+import { ClickableRow } from '@/components/ui/clickable-row';
 import { Reveal, Stagger, StaggerItem } from '@/components/motion/reveal';
 import { STATUS_LABEL, STATUS_TONE, jam, tanggal } from '@/components/picklist/status';
+import { ArrivalIndicator } from '@/components/picklist/schedule-indicator';
 import { cn } from '@/components/ui/cn';
 
 export const dynamic = 'force-dynamic';
@@ -34,13 +38,15 @@ export default async function PicklistPage({
    * ke portal), tetapi scope tetap diambil dari sesi. Penjagaan menu gampang
    * terlewat saat halaman baru ditambah; penjagaan di query tidak.
    */
-  const sesi = await getSessionUser();
-  const scope = sesi?.vendorId ?? null;
+  const sesi = await requirePermission('picklist.read');
+  if (sesi.plantId == null) notFound();
+  const scope = sesi.vendorId ?? null;
 
   const [hitungan, { data, meta }] = await Promise.all([
-    getPicklistCounts(scope),
-    listPicklists(scope, { page, perPage: PER_PAGE, status: saring }),
+    getPicklistCounts(scope, sesi.plantId),
+    listPicklists(scope, { page, perPage: PER_PAGE, plantId: sesi.plantId, status: saring }),
   ]);
+  const now = new Date();
 
   const tautanHalaman = (p: number) =>
     saring ? `/picklist?status=${saring}&page=${p}` : `/picklist?page=${p}`;
@@ -48,8 +54,8 @@ export default async function PicklistPage({
   return (
     <>
       <PageHeader
-        crumbs={[{ label: 'Picklist' }]}
-        title="Picklist"
+        crumbs={[{ label: 'Order Sheet' }]}
+        title="Order Sheet"
         description={`${meta.total} order ke supplier, masing-masing dengan kanban satu per box`}
         actions={
           <Link
@@ -96,7 +102,7 @@ export default async function PicklistPage({
         <Card>
           <CardHeader
             icon={ClipboardList}
-            title="Daftar picklist"
+            title="Daftar Order Sheet"
             subtitle={`${meta.total} dokumen`}
             actions={
               <div className="flex flex-wrap gap-1.5">
@@ -117,22 +123,22 @@ export default async function PicklistPage({
               </div>
             }
           />
-          <Table>
+          <Table scroll>
             <thead>
               <tr>
-                <Th>Nomor</Th>
+                <Th sticky="left">Nomor</Th>
                 <Th>Supplier</Th>
                 <Th>Tanggal kirim</Th>
                 <Th>Jam datang</Th>
                 <Th align="right">Line</Th>
                 <Th align="right">Box</Th>
-                <Th>Status</Th>
+                <Th sticky="right">Status</Th>
               </tr>
             </thead>
             <tbody>
               {data.length === 0 ? (
                 <EmptyState colSpan={7}>
-                  Belum ada picklist pada saringan ini. Mulai dengan{' '}
+                  Belum ada Order Sheet pada saringan ini. Mulai dengan{' '}
                   <Link href="/picklist/baru" className="font-semibold text-ink underline">
                     order manual
                   </Link>
@@ -140,20 +146,26 @@ export default async function PicklistPage({
                 </EmptyState>
               ) : (
                 data.map((p) => (
-                  <Tr key={p.id}>
-                    <Td strong className="tabular whitespace-nowrap">
-                      <Link href={`/picklist/${p.id}`} className="hover:underline">
-                        {p.picklistNo}
-                        {p.revision > 0 ? (
-                          <span className="font-normal text-ink-muted"> rev {p.revision}</span>
-                        ) : null}
+                  <ClickableRow key={p.id} href={`/picklist/${p.publicId}`}>
+                    <Td strong sticky="left" className="tabular whitespace-nowrap">
+                      <Link href={`/picklist/${p.publicId}`} className="hover:underline">
+                        {orderSheetDisplayNo(p.picklistNo, p.revision)}
                       </Link>
                       {p.type === 'MANUAL' ? (
                         <span className="ml-2 text-[12px] font-normal text-ink-muted">manual</span>
                       ) : null}
                     </Td>
                     <Td>{p.vendorName}</Td>
-                    <Td className="tabular whitespace-nowrap">{tanggal(p.deliveryDate)}</Td>
+                    <Td className="tabular whitespace-nowrap">
+                      {tanggal(p.deliveryDate)}
+                      <ArrivalIndicator
+                        deliveryDate={p.deliveryDate}
+                        arrivalTime={p.arrivalTime}
+                        status={p.status}
+                        now={now}
+                        className="mt-1 block w-fit"
+                      />
+                    </Td>
                     <Td className="tabular">{jam(p.arrivalTime)}</Td>
                     <Td align="right" className="tabular">
                       {p.lineCount}
@@ -161,7 +173,7 @@ export default async function PicklistPage({
                     <Td align="right" className="tabular">
                       {p.boxOrdered}
                     </Td>
-                    <Td>
+                    <Td sticky="right">
                       <span
                         className={cn(
                           'inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-1 text-[12px] font-semibold',
@@ -171,7 +183,7 @@ export default async function PicklistPage({
                         {STATUS_LABEL[p.status] ?? p.status}
                       </span>
                     </Td>
-                  </Tr>
+                  </ClickableRow>
                 ))
               )}
             </tbody>

@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import type { Database } from '@ares/db';
 import { InjectDb } from '../db/db.module';
@@ -36,19 +36,21 @@ export class HealthController {
     try {
       await withTimeout(this.db.execute(sql`SELECT 1`), 3000, 'ping database');
       checks.database = 'ok';
-    } catch (err) {
-      checks.database = err instanceof Error ? err.message : 'error';
+    } catch {
+      checks.database = 'gagal';
       healthy = false;
     }
 
     try {
       await withTimeout(this.redis.client.ping(), 2000, 'ping redis');
       checks.redis = 'ok';
-    } catch (err) {
-      checks.redis = err instanceof Error ? err.message : 'error';
+    } catch {
+      checks.redis = 'gagal';
       healthy = false;
     }
 
-    return { status: healthy ? 'ok' : 'degraded', checks, at: new Date().toISOString() };
+    const result = { status: healthy ? 'ok' : 'degraded', checks, at: new Date().toISOString() };
+    if (!healthy) throw new ServiceUnavailableException(result);
+    return result;
   }
 }

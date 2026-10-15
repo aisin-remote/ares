@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nextCutoff } from './cutoff';
+import { nextCutoff, nextScheduledDelivery } from './cutoff';
 
 const schedule = {
   cutoffTime: '10:00:00',
@@ -55,5 +55,38 @@ describe('nextCutoff (PRD 6.2)', () => {
         holidays: ['2026-09-18', '2026-09-21'],
       })?.cutoffAt,
     ).toEqual(new Date('2026-09-22T03:00:00Z'));
+  });
+});
+
+describe('nextScheduledDelivery', () => {
+  it('memakai DAY jadwal receiving sebagai tanggal auto ordering', () => {
+    expect(nextScheduledDelivery({
+      notBeforeDate: '2026-09-22', // Selasa
+      slots: [{ dayOfWeek: 5, arrivalTime: '08:00:00' }],
+      workdays: '1,2,3,4,5',
+      holidayShift: 'AFTER',
+      holidays: [],
+    })).toEqual({
+      deliveryDate: '2026-09-25',
+      arrivalTime: '08:00:00',
+      arrivalAt: new Date('2026-09-25T01:00:00Z'),
+    });
+  });
+
+  it('memilih ETA pertama pada hari yang sama dan menggeser jadwal libur', () => {
+    expect(nextScheduledDelivery({
+      notBeforeDate: '2026-09-21',
+      slots: [
+        { dayOfWeek: 1, arrivalTime: '16:30:00' },
+        { dayOfWeek: 1, arrivalTime: '04:00:00' },
+      ],
+      workdays: '1,2,3,4,5',
+      holidayShift: 'AFTER',
+      holidays: ['2026-09-21'],
+    })).toEqual({
+      deliveryDate: '2026-09-22',
+      arrivalTime: '04:00:00',
+      arrivalAt: new Date('2026-09-21T21:00:00Z'),
+    });
   });
 });

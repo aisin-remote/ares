@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import { orderSheetDisplayNo } from '@ares/domain';
+import { notFound } from 'next/navigation';
 import { Boxes, CheckCircle2, ScanLine, Truck } from 'lucide-react';
 import { RECEIPT_STATUSES, type ReceiptStatus } from '@ares/contracts';
 import { getReceiptCounts, listReceipts } from '@/lib/queries';
@@ -11,7 +13,7 @@ import { OpenSessionForm } from '@/components/scan/open-session-form';
 import { STATUS_LABEL, STATUS_TONE, waktu } from '@/components/picklist/status';
 import { cn } from '@/components/ui/cn';
 import { CancelReceipt } from '@/components/scan/cancel-receipt';
-import { getSessionUser } from '@/lib/session';
+import { requirePermission } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,17 +37,17 @@ export default async function ReceivingPage({
 }: {
   searchParams: Promise<{ page?: string; status?: string }>;
 }) {
-  const sp = await searchParams;
+  const [sp, user] = await Promise.all([searchParams, requirePermission('receipt.read')]);
   const page = Math.max(1, Math.floor(Number(sp.page ?? 1)) || 1);
   const status = sp.status ?? 'ALL';
   const saring = (RECEIPT_STATUSES as readonly string[]).includes(status)
     ? (status as ReceiptStatus)
     : undefined;
+  if (user.plantId == null) notFound();
 
-  const [hitungan, { data, meta }, user] = await Promise.all([
-    getReceiptCounts(),
-    listReceipts({ page, perPage: PER_PAGE, status: saring }),
-    getSessionUser(),
+  const [hitungan, { data, meta }] = await Promise.all([
+    getReceiptCounts(user.plantId),
+    listReceipts({ page, perPage: PER_PAGE, plantId: user.plantId, status: saring }),
   ]);
 
   const tautanHalaman = (p: number) =>
@@ -92,7 +94,7 @@ export default async function ReceivingPage({
             <CardHeader
               icon={ScanLine}
               title="Buka sesi scan"
-              subtitle="Scan barcode picklist di lembar order supplier untuk mulai menerima"
+              subtitle="Scan barcode Order Sheet di lembar order supplier untuk mulai menerima"
             />
             <CardDivider />
             <CardBody>
@@ -130,19 +132,19 @@ export default async function ReceivingPage({
               <thead>
                 <tr>
                   <Th>Receipt</Th>
-                  <Th>Picklist</Th>
+                  <Th>Order Sheet</Th>
                   <Th>Supplier</Th>
                   <Th>Dibuka</Th>
                   <Th align="right">Box discan</Th>
                   <Th>Sesi</Th>
-                  <Th>Picklist</Th>
+                  <Th>Order Sheet</Th>
                   <Th>Aksi</Th>
                 </tr>
               </thead>
               <tbody>
                 {data.length === 0 ? (
                   <EmptyState colSpan={8}>
-                    Belum ada sesi scan pada saringan ini. Scan barcode picklist di atas untuk
+                    Belum ada sesi scan pada saringan ini. Scan barcode Order Sheet di atas untuk
                     membuka sesi pertama.
                   </EmptyState>
                 ) : (
@@ -152,8 +154,8 @@ export default async function ReceivingPage({
                         <Link
                           href={
                             r.status === 'OPEN'
-                              ? `/receiving/${r.id}`
-                              : `/receiving/${r.id}/ringkasan`
+                              ? `/receiving/${r.publicId}`
+                              : `/receiving/${r.publicId}/ringkasan`
                           }
                           className="hover:underline"
                         >
@@ -161,11 +163,8 @@ export default async function ReceivingPage({
                         </Link>
                       </Td>
                       <Td className="tabular whitespace-nowrap">
-                        <Link href={`/picklist/${r.picklistId}`} className="hover:underline">
-                          {r.picklistNo}
-                          {r.revision > 0 ? (
-                            <span className="text-ink-muted"> rev {r.revision}</span>
-                          ) : null}
+                        <Link href={`/picklist/${r.picklistPublicId}`} className="hover:underline">
+                          {orderSheetDisplayNo(r.picklistNo, r.revision)}
                         </Link>
                       </Td>
                       <Td>{r.vendorName}</Td>
@@ -194,11 +193,12 @@ export default async function ReceivingPage({
                         </span>
                       </Td>
                       <Td>
-                        {r.status !== 'CANCELLED' && r.grStatus !== 'SENT' &&
-                        (user?.role === 'admin' || user?.role === 'warehouse') ? (
-                          <CancelReceipt id={r.id} />
-                        ) : r.grStatus === 'SENT' ? (
-                          <span className="text-[12px] text-ink-muted">GR terkirim</span>
+                        {r.status !== 'CANCELLED'
+                        && (user?.role === 'admin' || user?.role === 'ppic') ? (
+                          <CancelReceipt
+                            id={r.publicId}
+                            reversal={Boolean(r.grStatus && ['PROCESSING', 'STAGED', 'POSTED'].includes(r.grStatus))}
+                          />
                         ) : '—'}
                       </Td>
                     </Tr>

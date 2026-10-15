@@ -7,6 +7,7 @@
  */
 import type { KanbanStatus, PicklistStatus } from '@ares/contracts';
 import { assertTransition } from './picklist';
+import { orderSheetBaseNo, orderSheetDisplayNo } from './order-number';
 
 // ─── 8.3 Kode scan ──────────────────────────────────────────────────────────
 
@@ -36,6 +37,11 @@ export function parseScanCode(raw: string): ScanCode | null {
   const s = raw.trim().toUpperCase();
   const k = /^ARES:K:([0-9A-Z]{26})$/.exec(s);
   if (k) return { kind: 'KANBAN', id: k[1]! };
+  const order = /^ARES:P:([789]\d{11})$/.exec(s);
+  if (order) {
+    const parsed = orderSheetBaseNo(order[1]!);
+    if (parsed) return { kind: 'PICKLIST', no: parsed.baseNo, revision: parsed.revision };
+  }
   const p = /^ARES:P:([A-Z]+-\d{6}-\d+)-(\d+)$/.exec(s);
   if (p) return { kind: 'PICKLIST', no: p[1]!, revision: Number(p[2]) };
   return null;
@@ -49,7 +55,11 @@ export function parseScanCode(raw: string): ScanCode | null {
  * tidak bisa dibuka (F-34).
  */
 export function formatScanCode(code: ScanCode): string {
-  return code.kind === 'KANBAN' ? `ARES:K:${code.id}` : `ARES:P:${code.no}-${code.revision}`;
+  if (code.kind === 'KANBAN') return `ARES:K:${code.id}`;
+  const displayNo = orderSheetDisplayNo(code.no, code.revision);
+  return /^[789]\d{11}$/.test(displayNo)
+    ? `ARES:P:${displayNo}`
+    : `ARES:P:${code.no}-${code.revision}`;
 }
 
 // ─── 6.4 Validasi scan kanban ───────────────────────────────────────────────
@@ -100,7 +110,7 @@ export function validateKanbanScan(
   if (!kanban) return reject('Kode tidak dikenal');
   // Revisi memakai nomor yang sama (F-25), jadi pembandingnya nomor saja.
   if (kanban.picklistNo !== session.picklistNo) {
-    return reject(`Kanban picklist ${kanban.picklistNo}-${kanban.picklistRevision}`);
+    return reject(`Kanban Order Sheet ${kanban.picklistNo}-${kanban.picklistRevision}`);
   }
   switch (kanban.status) {
     case 'SHIPPED':

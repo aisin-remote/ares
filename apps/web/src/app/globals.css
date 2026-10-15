@@ -132,6 +132,9 @@
 @layer base {
   html {
     background: var(--color-canvas);
+    /* Menyamakan kepadatan antarmuka dengan browser pada zoom 90% tanpa
+       meminta setiap pengguna mengubah pengaturan zoom sendiri. */
+    zoom: 0.9;
   }
 
   body {
@@ -154,7 +157,32 @@
   }
 }
 
+/* Dokumen cetak dan generator PDF harus mempertahankan ukuran fisiknya. */
+@media print {
+  html {
+    zoom: 1;
+  }
+}
+
 @layer utilities {
+  /* `zoom` juga mengecilkan satuan viewport. Kompensasi ini menjaga shell,
+     halaman login, dan mode fullscreen tetap memenuhi layar sebenarnya. */
+  .min-h-screen {
+    min-height: 111.111vh;
+  }
+  .h-screen {
+    height: 111.111vh;
+  }
+  .h-dvh {
+    height: 111.111dvh;
+  }
+  .min-h-dvh {
+    min-height: 111.111dvh;
+  }
+  .w-screen {
+    width: 111.111vw;
+  }
+
   /* Scrollbar tipis; scrollbar tebal bawaan merusak kesan kartu yang bersih. */
   .scroll-slim {
     scrollbar-width: thin;
@@ -318,9 +346,15 @@
   }
 }
 
+/*
+ * Lapisan pembuka menahan tulisan yang sudah jadi sepersekian detik sebelum
+ * memudar — tanpa jeda itu kartu login menimpa goresan terakhir dan yang
+ * terlihat hanya kedipan. 83% dari 2,4s = ±2,0s: tulisan selesai ~1,2s, jadi
+ * namanya sempat terbaca utuh dulu.
+ */
 @keyframes login-intro-layer {
   0%,
-  68% {
+  83% {
     opacity: 1;
     visibility: visible;
   }
@@ -341,6 +375,69 @@
   }
 }
 
+/* Satu goresan huruf: ditarik dari pangkal ke ujung seperti ditulis tangan. */
+@keyframes tulis-goresan {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Efek “vault unlocked”: sapuan cahaya hanya muncul ketika password berubah kuat. */
+@keyframes password-vault-ring {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-ok) 0%, transparent);
+  }
+  45% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-ok) 15%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-ok) 0%, transparent);
+  }
+}
+
+@keyframes password-vault-scan {
+  0% {
+    opacity: 0;
+    transform: translateX(-140%) skewX(-18deg);
+  }
+  22% {
+    opacity: 0.75;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(340%) skewX(-18deg);
+  }
+}
+
+@keyframes password-shield-arrive {
+  0% {
+    opacity: 0;
+    transform: rotate(-22deg) scale(0.35);
+  }
+  65% {
+    opacity: 1;
+    transform: rotate(5deg) scale(1.18);
+  }
+  100% {
+    opacity: 1;
+    transform: rotate(0) scale(1);
+  }
+}
+
+@keyframes password-message-arrive {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 @layer utilities {
   .a-rise {
     animation: avi-rise 0.38s var(--ease-out-soft) backwards;
@@ -351,15 +448,99 @@
   }
 
   .login-intro {
-    animation: login-intro-layer 1.2s ease forwards;
+    animation: login-intro-layer 2.4s ease forwards;
   }
 
   .login-intro-mark {
     animation: login-intro-mark 0.55s var(--ease-out-soft) backwards;
   }
 
+  /*
+   * Nama aplikasi ditulis goresan demi goresan (pola splash Threads).
+   *
+   * `pathLength="1"` di SVG membuat semua goresan sepanjang 1 satuan, jadi
+   * satu aturan cukup untuk garis pendek maupun lengkung panjang — tanpa
+   * mengukur path lewat JavaScript. Jedanya 70ms: cukup terbaca sebagai
+   * urutan menulis, belum terasa menunggu. Sebelas goresan selesai ~1,0 detik,
+   * lalu lapisannya memudar.
+   */
+  .tulis-nama path {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    animation: tulis-goresan 0.3s var(--ease-out-soft) forwards;
+  }
+  .tulis-nama path:nth-child(1) {
+    animation-delay: 60ms;
+  }
+  .tulis-nama path:nth-child(2) {
+    animation-delay: 130ms;
+  }
+  .tulis-nama path:nth-child(3) {
+    animation-delay: 200ms;
+  }
+  .tulis-nama path:nth-child(4) {
+    animation-delay: 270ms;
+  }
+  .tulis-nama path:nth-child(5) {
+    animation-delay: 340ms;
+  }
+  .tulis-nama path:nth-child(6) {
+    animation-delay: 410ms;
+  }
+  .tulis-nama path:nth-child(7) {
+    animation-delay: 480ms;
+  }
+  .tulis-nama path:nth-child(8) {
+    animation-delay: 550ms;
+  }
+  .tulis-nama path:nth-child(9) {
+    animation-delay: 620ms;
+  }
+  .tulis-nama path:nth-child(10) {
+    animation-delay: 690ms;
+  }
+  /* Huruf S digores paling lama karena satu tarikan penuh. */
+  .tulis-nama path:nth-child(11) {
+    animation-delay: 760ms;
+    animation-duration: 0.42s;
+  }
+
+  /* Tagline menyusul setelah tulisannya jadi, bukan bersamaan. */
+  .login-intro-tagline {
+    animation: avi-fade 0.34s var(--ease-out-soft) 1.18s backwards;
+  }
+
   .login-card-enter {
-    animation: avi-rise 0.42s var(--ease-out-soft) 1.08s backwards;
+    animation: avi-rise 0.42s var(--ease-out-soft) 2.18s backwards;
+  }
+
+  .password-vault-open {
+    animation: password-vault-ring 0.75s var(--ease-out-soft);
+  }
+
+  .password-vault-scan {
+    position: absolute;
+    inset: 1px auto 1px 0;
+    z-index: 10;
+    width: 34%;
+    border-radius: 1rem;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in srgb, var(--color-ok) 20%, transparent),
+      color-mix(in srgb, white 62%, transparent),
+      transparent
+    );
+    pointer-events: none;
+    animation: password-vault-scan 0.9s var(--ease-out-soft) forwards;
+  }
+
+  .password-strong-message {
+    animation: password-message-arrive 0.42s var(--ease-out-soft) 120ms backwards;
+  }
+
+  .password-strong-shield {
+    animation: password-shield-arrive 0.58s var(--ease-out-soft) 130ms backwards;
   }
 
   /*
@@ -371,18 +552,42 @@
   .a-stagger > * {
     animation: avi-rise 0.38s var(--ease-out-soft) backwards;
   }
-  .a-stagger > *:nth-child(1) { animation-delay: 0ms; }
-  .a-stagger > *:nth-child(2) { animation-delay: 45ms; }
-  .a-stagger > *:nth-child(3) { animation-delay: 90ms; }
-  .a-stagger > *:nth-child(4) { animation-delay: 135ms; }
-  .a-stagger > *:nth-child(5) { animation-delay: 180ms; }
-  .a-stagger > *:nth-child(6) { animation-delay: 225ms; }
-  .a-stagger > *:nth-child(7) { animation-delay: 270ms; }
-  .a-stagger > *:nth-child(8) { animation-delay: 315ms; }
-  .a-stagger > *:nth-child(9) { animation-delay: 360ms; }
-  .a-stagger > *:nth-child(10) { animation-delay: 405ms; }
-  .a-stagger > *:nth-child(11) { animation-delay: 450ms; }
-  .a-stagger > *:nth-child(n + 12) { animation-delay: 495ms; }
+  .a-stagger > *:nth-child(1) {
+    animation-delay: 0ms;
+  }
+  .a-stagger > *:nth-child(2) {
+    animation-delay: 45ms;
+  }
+  .a-stagger > *:nth-child(3) {
+    animation-delay: 90ms;
+  }
+  .a-stagger > *:nth-child(4) {
+    animation-delay: 135ms;
+  }
+  .a-stagger > *:nth-child(5) {
+    animation-delay: 180ms;
+  }
+  .a-stagger > *:nth-child(6) {
+    animation-delay: 225ms;
+  }
+  .a-stagger > *:nth-child(7) {
+    animation-delay: 270ms;
+  }
+  .a-stagger > *:nth-child(8) {
+    animation-delay: 315ms;
+  }
+  .a-stagger > *:nth-child(9) {
+    animation-delay: 360ms;
+  }
+  .a-stagger > *:nth-child(10) {
+    animation-delay: 405ms;
+  }
+  .a-stagger > *:nth-child(11) {
+    animation-delay: 450ms;
+  }
+  .a-stagger > *:nth-child(n + 12) {
+    animation-delay: 495ms;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -391,6 +596,13 @@
   }
 
   .login-card-enter {
+    animation: none;
+  }
+
+  .password-vault-open,
+  .password-vault-scan,
+  .password-strong-message,
+  .password-strong-shield {
     animation: none;
   }
 }

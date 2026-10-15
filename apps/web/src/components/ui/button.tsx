@@ -1,8 +1,6 @@
 'use client';
 
-import { motion } from 'motion/react';
 import type { LucideIcon } from 'lucide-react';
-import { durations, easeSoft } from '../motion/transitions';
 import { cn } from './cn';
 
 /**
@@ -50,17 +48,18 @@ export function Button({
   }[variant];
 
   return (
-    <motion.button
+    <button
       type={type}
       onClick={onClick}
       disabled={disabled}
-      whileHover={disabled ? undefined : { scale: 1.02 }}
-      whileTap={disabled ? undefined : { scale: 0.97 }}
-      transition={{ duration: durations.fast, ease: easeSoft }}
       className={cn(
         'inline-flex items-center justify-center rounded-full font-semibold',
         'outline-none focus-visible:ring-2 focus-visible:ring-ink/20 focus-visible:ring-offset-2',
-        'transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-50',
+        // Umpan balik sentuh cukup transform CSS. Sebelumnya dua nilai skala ini
+        // memakai Motion, yang menarik pustakanya ke hampir setiap komponen klien.
+        'transition duration-200 ease-out-soft',
+        'hover:scale-[1.02] active:scale-[0.97]',
+        'disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 disabled:active:scale-100',
         sizes,
         variants,
         className,
@@ -69,6 +68,6 @@ export function Button({
       {Icon ? <Icon className="size-[18px]" strokeWidth={2.2} aria-hidden /> : null}
       {children}
       {Trailing ? <Trailing className="size-4 opacity-70" strokeWidth={2.2} aria-hidden /> : null}
-    </motion.button>
+    </button>
   );
 }

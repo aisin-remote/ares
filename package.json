@@ -2,7 +2,7 @@
   "name": "ares",
   "private": true,
   "version": "0.1.0",
-  "description": "ARES - e-Kanban Supplier (order dari konsumsi, picklist & kanban, portal supplier, receiving scan, GR ke SAP)",
+  "description": "ARES - e-Kanban Supplier (order dari konsumsi, Order Sheet & kanban, portal supplier, receiving scan, GR ke SAP)",
   "packageManager": "pnpm@9.15.9",
   "engines": { "node": ">=20.9.0" },
   "scripts": {

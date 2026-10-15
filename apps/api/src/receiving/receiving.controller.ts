@@ -4,7 +4,6 @@ import {
   Controller,
   Get,
   Param,
-  ParseIntPipe,
   Post,
   Req,
 } from '@nestjs/common';
@@ -48,42 +47,52 @@ export class ReceivingController {
 
   /** F-35: progres per line. */
   @Get(':id')
-  @RequirePermission('receipt.open')
-  get(@Param('id', ParseIntPipe) id: number) {
-    return this.receiving.get(id);
+  @RequirePermission('receipt.read')
+  async get(@Param('id') reference: string, @Req() req: Request) {
+    const actor = actorOf(req);
+    return this.receiving.get(await this.receiving.resolveId(reference, actor.plantId), actor.plantId);
   }
 
   /** F-36/F-38: satu scan kanban; `clientRef` dikembalikan apa adanya. */
   @Post(':id/scan')
   @RequirePermission('receipt.scan')
   async scan(
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id') reference: string,
     @Body(new ZodValidationPipe(scanReceiptSchema)) body: ScanReceiptInput,
     @Req() req: Request,
   ) {
-    const out = await this.receiving.scan(id, body.code, actorOf(req));
+    const actor = actorOf(req);
+    const out = await this.receiving.scan(
+      await this.receiving.resolveId(reference, actor.plantId), body.code, actor,
+    );
     return { ...out, clientRef: body.clientRef ?? null };
   }
 
   /** F-37: tutup sesi; alasan wajib bila ada yang kurang (6.5.2). */
   @Post(':id/close')
   @RequirePermission('receipt.close')
-  close(
-    @Param('id', ParseIntPipe) id: number,
+  async close(
+    @Param('id') reference: string,
     @Body(new ZodValidationPipe(closeReceiptSchema)) body: CloseReceiptInput,
     @Req() req: Request,
   ) {
-    return this.receiving.close(id, body.reason, actorOf(req));
+    const actor = actorOf(req);
+    return this.receiving.close(
+      await this.receiving.resolveId(reference, actor.plantId), body.reason, actor,
+    );
   }
 
-  /** F-40: PPIC membatalkan sebelum GR terkirim. */
+  /** F-40: PPIC membatalkan receipt; GR yang sudah keluar menghasilkan reversal 102. */
   @Post(':id/cancel')
   @RequirePermission('receipt.cancel')
-  cancel(
-    @Param('id', ParseIntPipe) id: number,
+  async cancel(
+    @Param('id') reference: string,
     @Body(new ZodValidationPipe(cancelReceiptSchema)) body: CancelReceiptInput,
     @Req() req: Request,
   ) {
-    return this.receiving.cancel(id, body.reason, actorOf(req));
+    const actor = actorOf(req);
+    return this.receiving.cancel(
+      await this.receiving.resolveId(reference, actor.plantId), body.reason, actor,
+    );
   }
 }

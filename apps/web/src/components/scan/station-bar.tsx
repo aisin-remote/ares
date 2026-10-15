@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, DoorClosed } from 'lucide-react';
+import { orderSheetDisplayNo } from '@ares/domain';
 
 /**
  * Bilah atas layar stasiun receiving (PRD §10.4).
@@ -58,13 +59,7 @@ export function StationBar({
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2 sm:gap-3">
             <span className="tabular truncate text-[20px] font-extrabold leading-none tracking-tight sm:text-[26px]">
-              {picklistNo}
-              {revision > 0 ? (
-                <span className="text-[14px] font-semibold text-ink-muted sm:text-[16px]">
-                  {' '}
-                  rev {revision}
-                </span>
-              ) : null}
+              {orderSheetDisplayNo(picklistNo, revision)}
             </span>
             <span className="hidden shrink-0 rounded-full border border-line px-3 py-1 text-[12px] font-semibold sm:inline">
               Jam datang {arrivalTime}

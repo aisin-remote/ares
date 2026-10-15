@@ -20,3 +20,5 @@ export * from './picklist';
 export * from './stock';
 export * from './audit';
 export * from './consumption';
+export * from './delivery';
+export * from './auth';

@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useEffect, useId, useState } from 'react';
+import { useActionState, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
@@ -9,6 +9,8 @@ import type { EntityDef, FieldDef, MasterEntity } from '@ares/contracts';
 import { saveMasterAction, type FormState } from '@/app/(app)/master/actions';
 import { durations, easeSoft, springSoft } from '../motion/transitions';
 import { cn } from '../ui/cn';
+import { SelectSearch } from '../ui/select-search';
+import { useFeedback } from '../ui/feedback-provider';
 
 export type RefOptions = Record<string, Array<{ value: number; label: string; short?: string }>>;
 
@@ -49,18 +51,25 @@ export function MasterForm({
 }) {
   const [state, formAction, pending] = useActionState(saveMasterAction, initial);
   const router = useRouter();
+  const feedback = useFeedback();
+  const handled = useRef(false);
   const titleId = useId();
+  const isEdit = Boolean(row);
   // Portal hanya bisa dibuat setelah komponen hidup di browser; saat render
   // di server document belum ada.
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
   useEffect(() => {
-    if (state.ok) {
+    if (state.ok && !handled.current) {
+      handled.current = true;
+      feedback.success(
+        isEdit ? `${def.singular} berhasil diperbarui` : `${def.singular} berhasil ditambahkan`,
+      );
       onClose();
       router.refresh();
     }
-  }, [state.ok, onClose, router]);
+  }, [state.ok, isEdit, def.singular, feedback, onClose, router]);
 
   // Esc menutup panel — jalan pintas yang diharapkan ada pada panel semacam ini.
   useEffect(() => {
@@ -82,8 +91,6 @@ export function MasterForm({
       document.body.style.overflow = prev;
     };
   }, [open]);
-
-  const isEdit = Boolean(row);
 
   if (!mounted) return null;
 
@@ -253,56 +260,60 @@ function Field({
     <div>
       <label htmlFor={id} className="mb-2 block text-[14px] font-semibold">
         {field.label}
-        {field.required && !(isEdit && field.kind === 'password') ? <span className="ml-1 text-ng">*</span> : null}
+        {field.required && !(isEdit && field.kind === 'password') ? (
+          <span className="ml-1 text-ng">*</span>
+        ) : null}
       </label>
 
       {field.kind === 'select' ? (
-        <select
+        <SelectSearch
           id={id}
           name={field.name}
           required={field.required && !isEdit}
-          defaultValue={value === undefined || value === null ? String(field.defaultValue ?? '') : String(value)}
-          className={inputClass}
-        >
-          <option value="">— pilih —</option>
-          {(field.options ?? []).map((o) => (
-            <option key={o} value={o}>
-              {o}
-            </option>
-          ))}
-        </select>
+          defaultValue={
+            value === undefined || value === null ? String(field.defaultValue ?? '') : String(value)
+          }
+          options={(field.options ?? []).map((option) => ({ value: option, label: option }))}
+        />
       ) : field.kind === 'reference' ? (
-        <select
+        <SelectSearch
           id={id}
           name={field.name}
           required={field.required && !isEdit}
           defaultValue={value === undefined || value === null ? '' : String(value)}
-          className={inputClass}
-        >
-          <option value="">— pilih —</option>
-          {options.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
+          options={options}
+        />
       ) : (
         <input
           id={id}
           name={field.name}
           required={field.required && !isEdit}
-          type={field.kind === 'number' || field.kind === 'decimal' ? 'number' : field.kind === 'date' ? 'date' : field.kind === 'time' ? 'time' : field.kind === 'password' ? 'password' : 'text'}
+          type={
+            field.kind === 'number' || field.kind === 'decimal'
+              ? 'number'
+              : field.kind === 'date'
+                ? 'date'
+                : field.kind === 'time'
+                  ? 'time'
+                  : field.kind === 'password'
+                    ? 'password'
+                    : 'text'
+          }
           step={field.kind === 'decimal' ? 'any' : undefined}
-          inputMode={field.kind === 'number' ? 'numeric' : field.kind === 'decimal' ? 'decimal' : undefined}
+          inputMode={
+            field.kind === 'number' ? 'numeric' : field.kind === 'decimal' ? 'decimal' : undefined
+          }
           autoComplete={field.kind === 'password' ? 'new-password' : undefined}
           min={field.min}
           maxLength={field.kind === 'text' || field.kind === 'password' ? field.max : undefined}
-          defaultValue={field.kind === 'password' ? '' :
-            value === undefined || value === null
-              ? field.defaultValue !== undefined && !Number.isNaN(field.defaultValue)
-                ? String(field.defaultValue)
-                : ''
-              : String(value)
+          defaultValue={
+            field.kind === 'password'
+              ? ''
+              : value === undefined || value === null
+                ? field.defaultValue !== undefined && !Number.isNaN(field.defaultValue)
+                  ? String(field.defaultValue)
+                  : ''
+                : String(value)
           }
           className={inputClass}
         />

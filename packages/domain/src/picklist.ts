@@ -17,6 +17,30 @@ export interface PoCandidate {
   validTo: string | null;
 }
 
+export interface PoOpenQtyInput {
+  openQty: number;
+  /** Total pcs aktif pada PO item dikurangi pcs yang sudah diterima. */
+  outstandingPcs: number;
+  /** Pcs yang hendak diterbitkan sekarang. */
+  newPcs: number;
+}
+
+/** F-19: satu keputusan murni yang dipakai order manual dan cutoff otomatis. */
+export function checkPoOpenQty(input: PoOpenQtyInput): {
+  allowed: boolean;
+  reason: 'PO_OPEN_QTY' | null;
+  availablePcs: number;
+  projectedPcs: number;
+} {
+  for (const [name, value] of Object.entries(input)) {
+    if (!Number.isInteger(value) || value < 0) throw new Error(`${name} harus bilangan bulat ≥ 0`);
+  }
+  const availablePcs = Math.max(0, input.openQty - input.outstandingPcs);
+  const projectedPcs = input.outstandingPcs + input.newPcs;
+  const allowed = projectedPcs <= input.openQty;
+  return { allowed, reason: allowed ? null : 'PO_OPEN_QTY', availablePcs, projectedPcs };
+}
+
 function isValidOn(c: PoCandidate, date: string): boolean {
   if (c.validFrom && date < c.validFrom) return false;
   if (c.validTo && date > c.validTo) return false;

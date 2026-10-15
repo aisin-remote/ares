@@ -7,6 +7,7 @@ import { RefreshCw, Check, AlertCircle, RotateCcw, PauseCircle } from 'lucide-re
 import { collectNowAction, holdAction, retryAction } from '@/app/(app)/sap/actions';
 import { durations, easeSoft } from '../motion/transitions';
 import { cn } from '../ui/cn';
+import { useFeedback } from '../ui/feedback-provider';
 
 /**
  * Tombol untuk mengumpulkan sekarang dan mencoba ulang yang gagal.
@@ -20,18 +21,24 @@ export function OutboxActions({ idGagal, idDitahan }: { idGagal: number[]; idDit
   const [pending, startTransition] = useTransition();
   const [sibuk, setSibuk] = useState(false);
   const router = useRouter();
+  const feedback = useFeedback();
 
   async function kumpulkan() {
     setSibuk(true);
     const res = await collectNowAction();
     setSibuk(false);
-    if ('error' in res) return setPesan({ tone: 'bad', text: res.error });
+    if ('error' in res) {
+      setPesan({ tone: 'bad', text: res.error });
+      feedback.error('Pengumpulan dokumen gagal', res.error);
+      return;
+    }
     setPesan({
       tone: 'ok',
       text: `${res.dikumpulkan} dokumen siap kirim, ${res.ditahan} ditahan, ${res.dilewati} dilewati${
         res.dilepas > 0 ? `, ${res.dilepas} dilepas dari tahanan` : ''
       }.`,
     });
+    feedback.success('Dokumen SAP selesai diperiksa', `${res.dikumpulkan} dokumen siap dikirim.`);
     startTransition(() => router.refresh());
   }
 
@@ -39,8 +46,19 @@ export function OutboxActions({ idGagal, idDitahan }: { idGagal: number[]; idDit
     setSibuk(true);
     const res = await retryAction([...idGagal, ...idDitahan]);
     setSibuk(false);
-    if ('error' in res) return setPesan({ tone: 'bad', text: res.error });
-    setPesan({ tone: 'ok', text: `${res.diulang} dokumen dikembalikan ke antrean kirim.` });
+    if ('error' in res) {
+      setPesan({ tone: 'bad', text: res.error });
+      feedback.error('Percobaan ulang gagal', res.error);
+      return;
+    }
+    setPesan({
+      tone: res.diulang > 0 ? 'ok' : 'bad',
+      text: `${res.diulang} dokumen dijadwalkan ulang${res.tetapDitahan ? `, ${res.tetapDitahan} masih ditahan karena validasi` : ''}.`,
+    });
+    if (res.diulang > 0)
+      feedback.success('Dokumen masuk antrean kirim', `${res.diulang} dokumen akan dicoba worker.`);
+    else
+      feedback.error('Dokumen masih ditahan', 'Perbaiki alasan validasi yang ditampilkan pada tabel.');
     startTransition(() => router.refresh());
   }
 
@@ -48,8 +66,16 @@ export function OutboxActions({ idGagal, idDitahan }: { idGagal: number[]; idDit
     setSibuk(true);
     const res = await holdAction(idGagal);
     setSibuk(false);
-    if ('error' in res) return setPesan({ tone: 'bad', text: res.error });
+    if ('error' in res) {
+      setPesan({ tone: 'bad', text: res.error });
+      feedback.error('Dokumen gagal ditahan', res.error);
+      return;
+    }
     setPesan({ tone: 'ok', text: `${res.ditahan} dokumen ditahan sampai dicoba ulang.` });
+    feedback.success(
+      'Dokumen berhasil ditahan',
+      `${res.ditahan} dokumen tidak akan dikirim otomatis.`,
+    );
     startTransition(() => router.refresh());
   }
 
@@ -78,8 +104,12 @@ export function OutboxActions({ idGagal, idDitahan }: { idGagal: number[]; idDit
       ) : null}
 
       {idGagal.length > 0 ? (
-        <button type="button" onClick={() => void tahan()} disabled={sibuk || pending}
-          className="inline-flex h-11 items-center gap-2 rounded-full border border-line px-5 text-[14px] font-semibold transition-colors hover:border-warn hover:text-warn disabled:opacity-50">
+        <button
+          type="button"
+          onClick={() => void tahan()}
+          disabled={sibuk || pending}
+          className="inline-flex h-11 items-center gap-2 rounded-full border border-line px-5 text-[14px] font-semibold transition-colors hover:border-warn hover:text-warn disabled:opacity-50"
+        >
           <PauseCircle className="size-4" strokeWidth={1.9} aria-hidden />
           Tahan {idGagal.length} yang gagal
         </button>

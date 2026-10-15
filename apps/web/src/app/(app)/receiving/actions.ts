@@ -24,22 +24,22 @@ export async function openReceiptAction(
   formData: FormData,
 ): Promise<{ error: string | null }> {
   const code = String(formData.get('code') ?? '').trim();
-  if (!code) return { error: 'Scan atau ketik barcode picklist dulu.' };
+  if (!code) return { error: 'Scan atau ketik barcode Order Sheet dulu.' };
 
-  let id: number;
+  let publicId: string;
   try {
-    const res = await apiFetch<{ id: number }>('/receipts/open', {
+    const res = await apiFetch<{ publicId: string }>('/receipts/open', {
       method: 'POST',
       body: JSON.stringify({ code }),
     });
-    id = res.id;
+    publicId = res.publicId;
   } catch (err) {
     unstable_rethrow(err);
     return { error: toMessage(err) };
   }
   revalidatePath('/receiving');
   // redirect() melempar; sengaja di luar try supaya tidak ikut tertangkap.
-  redirect(`/receiving/${id}`);
+  redirect(`/receiving/${publicId}`);
 }
 
 export interface ScanOutcome {
@@ -59,7 +59,7 @@ export interface ScanOutcome {
  * membuat operator menunggu.
  */
 export async function scanReceiptAction(input: {
-  receiptId: number;
+  receiptId: string;
   code: string;
   clientRef: string;
 }): Promise<ScanOutcome | { error: string }> {
@@ -76,8 +76,10 @@ export async function scanReceiptAction(input: {
 
 export interface CloseOutcome {
   id: number;
+  publicId: string;
   receiptNo: string;
   picklistId: number;
+  picklistPublicId: string;
   picklistNo: string;
   picklistStatus: string;
   missingCount: number;
@@ -85,7 +87,7 @@ export interface CloseOutcome {
 
 /** F-37: tutup sesi; 422 dari API (alasan wajib, 6.5.2) dikembalikan sebagai pesan. */
 export async function closeReceiptAction(
-  receiptId: number,
+  receiptId: string,
   reason: string,
 ): Promise<CloseOutcome | { error: string }> {
   try {
@@ -95,7 +97,7 @@ export async function closeReceiptAction(
     });
     revalidatePath('/receiving');
     revalidatePath(`/receiving/${receiptId}/ringkasan`);
-    revalidatePath(`/picklist/${res.picklistId}`);
+    revalidatePath(`/picklist/${res.picklistPublicId}`);
     return res;
   } catch (err) {
     unstable_rethrow(err);
@@ -103,19 +105,19 @@ export async function closeReceiptAction(
   }
 }
 
-/** F-40: batalkan sesi selama GR belum berstatus SENT. */
+/** F-40: batalkan receipt; GR yang sudah keluar akan dibuatkan dokumen pembalik. */
 export async function cancelReceiptAction(
-  receiptId: number,
+  receiptId: string,
   reason: string,
-): Promise<{ id: number; status: 'CANCELLED'; picklistId: number } | { error: string }> {
+): Promise<{ id: number; publicId: string; status: 'CANCELLED'; picklistId: number; picklistPublicId: string; reversalOutboxId: number | null } | { error: string }> {
   try {
-    const res = await apiFetch<{ id: number; status: 'CANCELLED'; picklistId: number }>(
+    const res = await apiFetch<{ id: number; publicId: string; status: 'CANCELLED'; picklistId: number; picklistPublicId: string; reversalOutboxId: number | null }>(
       `/receipts/${receiptId}/cancel`,
       { method: 'POST', body: JSON.stringify({ reason }) },
     );
     revalidatePath('/receiving');
     revalidatePath(`/receiving/${receiptId}/ringkasan`);
-    revalidatePath(`/picklist/${res.picklistId}`);
+    revalidatePath(`/picklist/${res.picklistPublicId}`);
     revalidatePath('/sap');
     return res;
   } catch (err) {

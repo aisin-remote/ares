@@ -31,6 +31,11 @@ describe('parseScanCode (8.3)', () => {
       no: 'PL-260917-0042',
       revision: 2,
     });
+    expect(parseScanCode('ARES:P:726092300201')).toEqual({
+      kind: 'PICKLIST',
+      no: '726092300200',
+      revision: 1,
+    });
   });
 
   it('toleran terhadap spasi dan huruf kecil dari scanner', () => {
@@ -62,6 +67,12 @@ describe('formatDocNo (F-21)', () => {
   it('barcode picklist dari nomor ini terbaca kembali oleh parseScanCode (8.3)', () => {
     const no = formatDocNo('PL', d, 42);
     expect(parseScanCode(`ARES:P:${no}-0`)).toEqual({ kind: 'PICKLIST', no, revision: 0 });
+  });
+
+  it('barcode Order Sheet baru membawa nomor recovery yang tercetak', () => {
+    const code = formatScanCode({ kind: 'PICKLIST', no: '826092300100', revision: 3 });
+    expect(code).toBe('ARES:P:826092300103');
+    expect(parseScanCode(code)).toEqual({ kind: 'PICKLIST', no: '826092300100', revision: 3 });
   });
 });
 
@@ -110,9 +121,9 @@ describe('validateKanbanScan (6.4)', () => {
     expect(v.message).toContain('sesi lain');
   });
 
-  it('milik picklist lain → merah "Kanban picklist <nomor>"', () => {
+  it('milik Order Sheet lain → merah "Kanban Order Sheet <nomor>"', () => {
     const v = validateKanbanScan({ ...base, picklistNo: 'PL-260917-0001' }, session);
-    expect(v).toEqual({ result: 'REJECTED', message: 'Kanban picklist PL-260917-0001-0' });
+    expect(v).toEqual({ result: 'REJECTED', message: 'Kanban Order Sheet PL-260917-0001-0' });
   });
 
   it('CANCELLED → ditolak', () => {

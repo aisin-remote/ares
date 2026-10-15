@@ -17,6 +17,8 @@ const BASE = process.env.API_URL ?? 'http://127.0.0.1:3001';
 const JALUR: Record<string, string> = {
   pdf: 'pdf',
   kanban: 'kanban.pdf',
+  csv: 'order-sheet.csv',
+  semua: 'dokumen.zip',
 };
 
 export async function GET(
@@ -25,14 +27,16 @@ export async function GET(
 ) {
   const { id, kind } = await params;
   const jalur = JALUR[kind];
-  if (!jalur || !/^\d+$/.test(id)) {
+  const validReference = /^\d+$/.test(id)
+    || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+  if (!jalur || !validReference) {
     return new Response('Dokumen tidak dikenal', { status: 404 });
   }
 
   const token = await getToken();
   if (!token) return Response.redirect(new URL('/login', request.url), 307);
 
-  const hulu = await fetch(`${BASE}/picklists/${id}/${jalur}`, {
+  const hulu = await fetch(`${BASE}/picklists/${encodeURIComponent(id)}/${jalur}`, {
     headers: { Authorization: `Bearer ${token}` },
     cache: 'no-store',
   });
@@ -49,9 +53,9 @@ export async function GET(
 
   return new Response(hulu.body, {
     headers: {
-      'Content-Type': 'application/pdf',
+      'Content-Type': hulu.headers.get('content-type') ?? 'application/octet-stream',
       'Content-Disposition':
-        hulu.headers.get('content-disposition') ?? `attachment; filename="picklist-${id}.pdf"`,
+        hulu.headers.get('content-disposition') ?? `attachment; filename="order-sheet-${id}.pdf"`,
       // Nomor picklist tetap sama saat direvisi (F-25): PDF lama tidak boleh
       // tersaji dari cache browser atau proxy pabrik.
       'Cache-Control': 'no-store',

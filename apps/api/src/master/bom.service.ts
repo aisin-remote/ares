@@ -206,6 +206,9 @@ async function parseWorkbook(
   }
   const ws = wb.worksheets[0];
   if (!ws) throw new BadRequestException('Berkas Excel tidak punya lembar kerja');
+  if (ws.actualRowCount > 20_000 || ws.columnCount > 20) {
+    throw new BadRequestException('Berkas BOM terlalu besar; maksimal 20.000 baris dan 20 kolom');
+  }
 
   const parsed: ParsedRow[] = [];
   const errors: ImportRowError[] = [];
@@ -228,6 +231,8 @@ async function parseWorkbook(
     const from = toIsoDate(cell(4));
     const to = toIsoDate(cell(5));
     if (!a || !b) errors.push({ row: n, message: 'Part jadi dan komponen wajib diisi' });
+    else if (a.length > 64 || b.length > 64)
+      errors.push({ row: n, message: 'Nomor part maksimal 64 karakter' });
     else if (!Number.isFinite(qtyPer) || qtyPer <= 0)
       errors.push({ row: n, message: 'Qty per harus angka lebih dari 0' });
     else if (!from) errors.push({ row: n, message: 'Berlaku dari harus tanggal (YYYY-MM-DD)' });

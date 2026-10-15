@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { confirmShipment, ShipmentError, type ShipmentLineInput } from './shipment';
+import { confirmShipment, overrideShippedBoxes, ShipmentError, type ShipmentLineInput } from './shipment';
 
 const k = (
   id: string,
@@ -17,6 +17,23 @@ const LINE_A: ShipmentLineInput = {
   boxShipped: 3,
   kanbans: [k('a1', 1), k('a2', 2), k('a3', 3)],
 };
+
+describe('overrideShippedBoxes (6.3.4)', () => {
+  it('menghasilkan status SHORT saat PPIC menurunkan jumlah kirim', () => {
+    expect(overrideShippedBoxes([
+      { picklistLineId: 10, boxOrdered: 4, boxShipped: 3 },
+    ])).toEqual([{ picklistLineId: 10, boxShipped: 3, boxShort: 1, status: 'SHORT' }]);
+  });
+
+  it('menolak angka negatif, pecahan, melebihi order, dan seluruh line nol', () => {
+    expect(() => overrideShippedBoxes([{ picklistLineId: 1, boxOrdered: 2, boxShipped: -1 }])).toThrow();
+    expect(() => overrideShippedBoxes([{ picklistLineId: 1, boxOrdered: 2, boxShipped: 1.5 }])).toThrow();
+    expect(() => overrideShippedBoxes([{ picklistLineId: 1, boxOrdered: 2, boxShipped: 3 }])).toThrow();
+    expect(() => overrideShippedBoxes([{ picklistLineId: 1, boxOrdered: 2, boxShipped: 0 }])).toThrow(
+      /tanpa satu pun box/,
+    );
+  });
+});
 const LINE_B: ShipmentLineInput = {
   picklistLineId: 2,
   boxOrdered: 2,

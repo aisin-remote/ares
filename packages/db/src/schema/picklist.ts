@@ -10,6 +10,7 @@ import {
   index,
 } from 'drizzle-orm/mysql-core';
 import { relations } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
 import {
   PICKLIST_STATUSES,
   PICKLIST_TYPES,
@@ -34,10 +35,12 @@ export const picklistHeaders = mysqlTable(
   'TT_PICKLIST_H',
   {
     id: pk(),
+    /** UUID untuk URL/API; BIGINT tetap dipakai sebagai FK internal. */
+    publicId: varchar('PUBLIC_ID', { length: 36 }).notNull().$defaultFn(() => randomUUID()),
     plantId: fk('PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    /** Dari TM_SEQUENCE, mis. PL-260917-0042. Barcode: ARES:P:<NO>-<REV> (8.3). */
+    /** Format plant+YYMMDD+running+recovery, mis. 826092300100. */
     picklistNo: varchar('PICKLIST_NO', { length: 32 }).notNull(),
     /** Revisi (F-25) memakai nomor yang sama; hanya memuat line yang belum diterima. */
     revision: int('REVISION').notNull().default(0),
@@ -60,7 +63,10 @@ export const picklistHeaders = mysqlTable(
     pdfReadyAt: timestamp('PDF_READY_AT'),
     /** Unduhan pertama supplier (F-29). */
     downloadedAt: timestamp('DOWNLOADED_AT'),
+    /** F-08: terisi saat worker pertama kali mengambil pengingat jenis ini. */
+    downloadReminderAt: timestamp('DOWNLOAD_REMINDER_AT'),
     shippedAt: timestamp('SHIPPED_AT'),
+    confirmReminderAt: timestamp('CONFIRM_REMINDER_AT'),
     eta: timestamp('ETA'),
     vehicleNo: varchar('VEHICLE_NO', { length: 32 }),
     note: varchar('NOTE', { length: 255 }),
@@ -68,6 +74,7 @@ export const picklistHeaders = mysqlTable(
     ...timestamps,
   },
   (t) => [
+    uniqueIndex('TT_PICKLIST_H_PUBLIC_ID_UNIQUE').on(t.publicId),
     uniqueIndex('TT_PICKLIST_H_NO_REV_UNIQUE').on(t.picklistNo, t.revision),
     index('TT_PICKLIST_H_VENDOR_STATUS_IDX').on(t.vendorId, t.status),
     index('TT_PICKLIST_H_STATUS_DELIVERY_IDX').on(t.status, t.deliveryDate),
@@ -113,6 +120,8 @@ export const receiptHeaders = mysqlTable(
   'TT_RECEIPT_H',
   {
     id: pk(),
+    /** UUID untuk URL/API; BIGINT tetap dipakai sebagai FK internal. */
+    publicId: varchar('PUBLIC_ID', { length: 36 }).notNull().$defaultFn(() => randomUUID()),
     plantId: fk('PLANT_ID')
       .notNull()
       .references(() => plants.id),
@@ -131,6 +140,7 @@ export const receiptHeaders = mysqlTable(
     ...timestamps,
   },
   (t) => [
+    uniqueIndex('TT_RECEIPT_H_PUBLIC_ID_UNIQUE').on(t.publicId),
     uniqueIndex('TT_RECEIPT_H_NO_UNIQUE').on(t.receiptNo),
     index('TT_RECEIPT_H_PICKLIST_STATUS_IDX').on(t.picklistId, t.status),
   ],

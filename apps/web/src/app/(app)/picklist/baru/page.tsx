@@ -4,6 +4,9 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardHeader, CardDivider } from '@/components/ui/card';
 import { Reveal } from '@/components/motion/reveal';
 import { ManualOrderForm } from '@/components/picklist/manual-order-form';
+import { ManualOrderImport } from '@/components/picklist/manual-order-import';
+import { requirePermission } from '@/lib/session';
+import { notFound } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,6 +18,8 @@ export const dynamic = 'force-dynamic';
  * berbeda antara server dan browser membuat React mengeluh saat hidrasi.
  */
 export default async function PicklistBaruPage() {
+  const user = await requirePermission('picklist.issue');
+  if (user.plantId == null) notFound();
   const vendors = await getOrderOptions();
   const besok = new Date(Date.now() + 24 * 60 * 60 * 1000);
   const tanggalKirim = besok.toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
@@ -22,17 +27,21 @@ export default async function PicklistBaruPage() {
   return (
     <>
       <PageHeader
-        crumbs={[{ label: 'Picklist', href: '/picklist' }, { label: 'Order manual' }]}
+        crumbs={[{ label: 'Order Sheet', href: '/picklist' }, { label: 'Order manual' }]}
         title="Order manual"
-        description="Terbitkan picklist di luar cutoff — kanban dibuat satu per box"
+        description="Terbitkan Order Sheet di luar cutoff — kanban dibuat satu per box"
       />
+
+      <Reveal>
+        <ManualOrderImport />
+      </Reveal>
 
       <Reveal>
         <Card>
           <CardHeader
             icon={ClipboardList}
             title="Order baru"
-            subtitle="Nomor picklist diberikan saat terbit dan tidak pernah dipakai ulang (F-21)"
+            subtitle="Nomor Order Sheet diberikan saat terbit dan tidak pernah dipakai ulang (F-21)"
           />
           <CardDivider />
           <ManualOrderForm vendors={vendors} defaultDeliveryDate={tanggalKirim} />

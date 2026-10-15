@@ -2,8 +2,8 @@
 
 import { revalidatePath } from 'next/cache';
 import { unstable_rethrow } from 'next/navigation';
-import type { IssueManualPicklistInput } from '@ares/contracts';
-import { apiFetch, ApiRequestError } from '@/lib/api';
+import type { IssueManualPicklistInput, OverrideShipmentInput } from '@ares/contracts';
+import { apiFetch, apiUpload, ApiRequestError } from '@/lib/api';
 
 /**
  * Semua TULIS picklist lewat API Nest (aturan repo 1). Halaman hanya membaca
@@ -27,6 +27,7 @@ function rincianValidasi(body: unknown): string | null {
 
 export interface IssueResult {
   id: number;
+  publicId: string;
   picklistNo: string;
   revision: number;
   lineCount: number;
@@ -53,18 +54,57 @@ export async function issueManualAction(
   }
 }
 
+/** F-17: satu template Excel menerbitkan satu picklist manual. */
+export async function importManualAction(
+  _state: IssueResult | { error: string } | null,
+  formData: FormData,
+): Promise<IssueResult | { error: string }> {
+  const file = formData.get('file');
+  if (!(file instanceof File) || file.size === 0) return { error: 'Pilih berkas Excel (.xlsx) dulu.' };
+  const upload = new FormData();
+  upload.set('file', file, file.name);
+  try {
+    const result = await apiUpload<IssueResult>('/picklists/import', upload);
+    revalidatePath('/picklist');
+    return result;
+  } catch (err) {
+    unstable_rethrow(err);
+    return { error: toMessage(err) };
+  }
+}
+
 /** F-20 pembatalan sebelum dikirim. */
 export async function cancelPicklistAction(
-  id: number,
+  reference: string,
   reason: string,
 ): Promise<{ id: number; kanbanCount: number } | { error: string }> {
   try {
-    const res = await apiFetch<{ id: number; kanbanCount: number }>(`/picklists/${id}/cancel`, {
+    const res = await apiFetch<{ id: number; kanbanCount: number }>(`/picklists/${reference}/cancel`, {
       method: 'POST',
       body: JSON.stringify({ reason }),
     });
     revalidatePath('/picklist');
-    revalidatePath(`/picklist/${id}`);
+    revalidatePath(`/picklist/${reference}`);
+    return res;
+  } catch (err) {
+    unstable_rethrow(err);
+    return { error: toMessage(err) };
+  }
+}
+
+/** 6.3.4: koreksi jumlah box terkirim oleh PPIC sebelum receiving dibuka. */
+export async function overrideShipmentAction(
+  reference: string,
+  input: OverrideShipmentInput,
+): Promise<{ id: number; status: 'SHIPPED' } | { error: string }> {
+  try {
+    const res = await apiFetch<{ id: number; status: 'SHIPPED' }>(
+      `/picklists/${reference}/override-shipment`,
+      { method: 'POST', body: JSON.stringify(input) },
+    );
+    revalidatePath('/picklist');
+    revalidatePath(`/picklist/${reference}`);
+    revalidatePath('/queue');
     return res;
   } catch (err) {
     unstable_rethrow(err);

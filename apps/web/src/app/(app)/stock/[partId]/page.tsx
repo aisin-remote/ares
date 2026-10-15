@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Boxes, Building2, History, Package, SlidersHorizontal } from 'lucide-react';
 import { getStockLedger } from '@/lib/queries';
-import { getSessionUser } from '@/lib/session';
+import { requirePermission } from '@/lib/session';
 import { PageHeader } from '@/components/ui/page-header';
 import { StatCard } from '@/components/ui/stat-card';
 import { Card, CardHeader, CardDivider } from '@/components/ui/card';
@@ -27,10 +27,12 @@ export default async function StockLedgerPage({ params }: { params: Promise<{ pa
   const id = Number(partId);
   if (!Number.isInteger(id) || id <= 0) notFound();
 
-  const [ledger, user] = await Promise.all([getStockLedger(id), getSessionUser()]);
+  const user = await requirePermission('stock.read');
+  if (user.plantId == null) notFound();
+  const ledger = await getStockLedger(id, user.plantId);
   if (!ledger) notFound();
   // Tombolnya hanya untuk PPIC/Admin; haknya (`stock.adjust`) tetap diperiksa server.
-  const bisaSesuaikan = user?.role === 'ppic' || user?.role === 'admin';
+  const bisaSesuaikan = user.permissions.includes('stock.adjust');
 
   return (
     <>
@@ -134,9 +136,9 @@ export default async function StockLedgerPage({ params }: { params: Promise<{ pa
                     </Td>
                     <Td className="tabular">{m.sloc}</Td>
                     <Td>
-                      {m.receiptId ? (
+                      {m.receiptPublicId ? (
                         <Link
-                          href={`/receiving/${m.receiptId}/ringkasan`}
+                          href={`/receiving/${m.receiptPublicId}/ringkasan`}
                           className="tabular hover:underline"
                         >
                           {m.receiptNo}

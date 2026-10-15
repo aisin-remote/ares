@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/session';
 import { ShellFrame } from '@/components/shell/shell-frame';
+import { authorizedGroups, NAV_GROUPS } from '@/components/shell/nav-config';
 
 /**
  * Kerangka aplikasi.
@@ -29,7 +30,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (user.vendorId != null) redirect('/portal');
 
   return (
-    <ShellFrame userName={user.name} role={user.role}>
+    <ShellFrame
+      userId={user.id}
+      userName={user.name}
+      role={user.role}
+      groups={authorizedGroups(NAV_GROUPS, user.permissions)}
+    >
       {children}
     </ShellFrame>
   );

@@ -2,36 +2,38 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, ChevronDown, Bell, Settings, Menu, X } from 'lucide-react';
+import { ChevronDown, Settings, Menu, X } from 'lucide-react';
 import { IconButton } from '../ui/icon-button';
 import { durations, easeSoft } from '../motion/transitions';
+import type { NavGroup } from './nav-config';
+import { GlobalSearch } from './global-search';
+import { NotificationMenu } from './notification-menu';
 
 /**
  * Bilah atas: pencarian, aksi utama, notifikasi, dan identitas pengguna.
  *
- * Kolom pencarian melebar halus saat difokuskan — isyarat kecil bahwa fokus
- * sudah pindah ke sana, tanpa perlu garis tebal yang mengotori tampilan.
- *
- * Di layar sempit isinya menyusut menurut urutan kepentingan: pencarian lebih
- * dulu, lalu notifikasi dan pengaturan. Menu pengguna tidak pernah ikut
- * menyingkir — di situlah tombol Keluar, dan jalan ke pengaturan saat ikonnya
- * sudah disembunyikan.
+ * Pencarian membuka command palette lintas menu/data seperti stagging-body;
+ * lonceng berisi ringkasan tindakan operasional dari data ARES.
  */
 export function Topbar({
+  userId,
   userName,
   role,
+  groups,
   navOpen = false,
   onToggleNav,
   onOpenSettings,
 }: {
+  /** Dipakai NotificationMenu: penanda dibaca disimpan per akun. */
+  userId: number;
   userName: string;
   role: string | null;
+  groups: NavGroup[];
   /** Keadaan panel navigasi — hanya berpengaruh di bawah lg. */
   navOpen?: boolean;
   onToggleNav?: () => void;
   onOpenSettings?: () => void;
 }) {
-  const [focused, setFocused] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   return (
@@ -54,39 +56,14 @@ export function Topbar({
         </button>
       ) : null}
 
-      {/* Pencarian disembunyikan di layar sempit: dipersempit terus ia menyusut
-          jadi lingkaran tanpa guna, dan mendesak menu pengguna sampai keluar
-          layar — padahal di situlah satu-satunya tombol Keluar. */}
-      <motion.div
-        // Nilai awal harus berupa angka. Tanpa ini nilai terhitungnya "none",
-        // dan Motion tidak bisa menganimasikan dari sesuatu yang bukan ukuran —
-        // peringatannya muncul di konsol setiap kali halaman dibuka.
-        initial={{ maxWidth: 460 }}
-        animate={{ maxWidth: focused ? 560 : 460 }}
-        transition={{ duration: durations.base, ease: easeSoft }}
-        className="relative hidden w-full md:block"
-      >
-        <Search
-          className="pointer-events-none absolute left-4 top-1/2 size-[18px] -translate-y-1/2 text-ink-muted"
-          strokeWidth={1.8}
-          aria-hidden
-        />
-        <input
-          type="search"
-          placeholder="Cari part, line, atau nomor seri"
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          aria-label="Pencarian"
-          className="h-11 w-full rounded-full border border-line bg-surface pl-11 pr-4 text-[14px] outline-none transition-colors duration-200 placeholder:text-ink-muted focus:border-line-strong focus:bg-card"
-        />
-      </motion.div>
+      <GlobalSearch groups={groups} />
 
       <div className="ml-auto flex min-w-0 items-center gap-2 sm:gap-3">
         {/* Notifikasi menyingkir lebih dulu di layar sempit; pengaturan ikut,
             karena keduanya tidak mendesak dan yang harus selalu terjangkau
             adalah menu pengguna. */}
         <div className="hidden items-center gap-3 sm:flex">
-          <IconButton icon={Bell} label="Notifikasi" badge />
+          <NotificationMenu userId={userId} />
           <IconButton icon={Settings} label="Pengaturan tampilan" onClick={onOpenSettings} />
         </div>
 

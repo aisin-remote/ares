@@ -7,24 +7,27 @@ import {
   FileText,
   Layers,
   Loader2,
-  Printer,
-  QrCode,
   Truck,
 } from 'lucide-react';
-import { canTransition } from '@ares/domain';
-import { getPicklistDetail } from '@/lib/queries';
-import { getSessionUser } from '@/lib/session';
+import { canTransition, orderSheetDisplayNo } from '@ares/domain';
+import { getPicklistDetail, getPicklistNeighbors } from '@/lib/queries';
+import { requirePermission } from '@/lib/session';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardHeader, CardDivider } from '@/components/ui/card';
 import { InfoRow, InfoRowPair } from '@/components/ui/info-row';
 import { Table, Th, Td, Tr, EmptyState } from '@/components/ui/table';
 import { Reveal } from '@/components/motion/reveal';
 import { CancelPicklist } from '@/components/picklist/cancel-picklist';
+import { OverrideShipment } from '@/components/picklist/override-shipment';
+import { OrderStatusStepper } from '@/components/picklist/order-status-stepper';
+import { OrderNeighborNav } from '@/components/picklist/order-neighbor-nav';
+import { UnduhDokumen } from '@/components/portal/unduh-dokumen';
 import {
   LINE_STATUS_LABEL,
   STATUS_LABEL,
   STATUS_TONE,
   jam,
+  penandaKedatangan,
   tanggal,
   waktu,
 } from '@/components/picklist/status';
@@ -35,16 +38,15 @@ export const dynamic = 'force-dynamic';
 /** Detail satu picklist beserta line dan jumlah kanbannya (F-21, F-22). */
 export default async function PicklistDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  // Segmen [id] menangkap teks apa pun; tanpa penjagaan ini /picklist/abc
-  // menjadi `WHERE ID = NaN` dan berakhir 500, bukan 404.
-  const picklistId = Number(id);
-  if (!Number.isInteger(picklistId) || picklistId <= 0) notFound();
-
-  const sesi = await getSessionUser();
-  const picklist = await getPicklistDetail(sesi?.vendorId ?? null, picklistId);
+  const sesi = await requirePermission('picklist.read');
+  if (sesi.plantId == null) notFound();
+  const picklist = await getPicklistDetail(sesi.vendorId ?? null, id, sesi.plantId);
   if (!picklist) notFound();
+  const neighbors = await getPicklistNeighbors(sesi.vendorId ?? null, picklist.id, sesi.plantId);
 
   const totalKanban = picklist.lines.reduce((n, l) => n + l.kanbanCount, 0);
+  const orderNo = orderSheetDisplayNo(picklist.picklistNo, picklist.revision);
+  const penanda = penandaKedatangan(picklist.deliveryDate, picklist.arrivalTime, picklist.status);
   // Boleh dibatalkan atau tidak ditentukan tabel transisi di domain (6.6.3),
   // bukan daftar status yang ditulis ulang di layar.
   const bisaBatal = canTransition('picklist', picklist.status, 'CANCELLED');
@@ -52,32 +54,12 @@ export default async function PicklistDetailPage({ params }: { params: Promise<{
   return (
     <>
       <PageHeader
-        crumbs={[{ label: 'Picklist', href: '/picklist' }, { label: picklist.picklistNo }]}
-        title={picklist.picklistNo}
-        description={`${picklist.vendorName} — kirim ${tanggal(picklist.deliveryDate)} jam ${jam(picklist.arrivalTime)}`}
+        crumbs={[{ label: 'Order Sheet', href: '/picklist' }, { label: orderNo }]}
+        title={orderNo}
+        description={`${picklist.vendorName} — kirim ${tanggal(picklist.deliveryDate)} jam ${jam(picklist.arrivalTime)}${penanda ? ` · ${penanda.label}` : ''}`}
         actions={
-          /*
-           * Tautan biasa, bukan Button: Button komponen klien dan prop ikonnya
-           * berupa fungsi yang tidak bisa menyeberangi batas RSC. Unduhan juga
-           * memang cocok sebagai <a> — klik kanan "simpan sebagai" tetap jalan.
-           */
           picklist.pdfReadyAt && picklist.status !== 'CANCELLED' ? (
-            <>
-              <a
-                href={`/api/picklist/${picklist.id}/pdf`}
-                className="inline-flex h-11 items-center gap-2 rounded-full border border-line bg-card px-5 text-[14px] font-semibold transition-colors hover:border-ink"
-              >
-                <Printer className="size-[18px]" strokeWidth={2} aria-hidden />
-                PDF picklist
-              </a>
-              <a
-                href={`/api/picklist/${picklist.id}/kanban`}
-                className="inline-flex h-11 items-center gap-2 rounded-full bg-accent px-5 text-[14px] font-semibold text-white transition-colors hover:bg-accent-soft"
-              >
-                <QrCode className="size-[18px]" strokeWidth={2.2} aria-hidden />
-                PDF kanban
-              </a>
-            </>
+            <UnduhDokumen picklistId={picklist.publicId} siap bentuk="ringkas" />
           ) : (
             <span className="inline-flex h-11 items-center gap-2 rounded-full border border-line px-5 text-[14px] font-semibold text-ink-muted">
               {picklist.status === 'CANCELLED' ? (
@@ -92,6 +74,12 @@ export default async function PicklistDetailPage({ params }: { params: Promise<{
           )
         }
       />
+
+      <OrderNeighborNav {...neighbors} basePath="/picklist" />
+
+      <Reveal className="mb-5">
+        <OrderStatusStepper status={picklist.status} />
+      </Reveal>
 
       <Reveal>
         <Card>
@@ -108,7 +96,7 @@ export default async function PicklistDetailPage({ params }: { params: Promise<{
                 {STATUS_LABEL[picklist.status] ?? picklist.status}
               </span>
             }
-            actions={bisaBatal ? <CancelPicklist id={picklist.id} /> : null}
+            actions={bisaBatal ? <CancelPicklist id={picklist.publicId} /> : null}
           />
           <CardDivider />
           <InfoRowPair>
@@ -143,6 +131,14 @@ export default async function PicklistDetailPage({ params }: { params: Promise<{
         </Card>
       </Reveal>
 
+      {picklist.status === 'SHIPPED' &&
+      picklist.receiptCount === 0 &&
+      (sesi?.role === 'ppic' || sesi?.role === 'admin') ? (
+        <Reveal>
+          <OverrideShipment id={picklist.publicId} lines={picklist.lines} />
+        </Reveal>
+      ) : null}
+
       <Reveal className="mt-5">
         <Card>
           <CardHeader
@@ -150,10 +146,10 @@ export default async function PicklistDetailPage({ params }: { params: Promise<{
             title="Line order"
             subtitle={`${picklist.lines.length} part — kanban dicetak satu per box (F-22)`}
           />
-          <Table>
+          <Table scroll>
             <thead>
               <tr>
-                <Th>Part</Th>
+                <Th sticky="left">Part</Th>
                 <Th>Back no</Th>
                 <Th>Rak</Th>
                 <Th>PO item</Th>
@@ -162,18 +158,18 @@ export default async function PicklistDetailPage({ params }: { params: Promise<{
                 <Th align="right">Terima</Th>
                 <Th align="right">Pcs</Th>
                 <Th align="right">Kanban</Th>
-                <Th>Status</Th>
+                <Th sticky="right">Status</Th>
               </tr>
             </thead>
             <tbody>
               {picklist.lines.length === 0 ? (
                 <EmptyState colSpan={10}>
-                  Picklist ini tidak punya line — seharusnya tidak mungkin terjadi.
+                  Order Sheet ini tidak punya line — seharusnya tidak mungkin terjadi.
                 </EmptyState>
               ) : (
                 picklist.lines.map((l) => (
                   <Tr key={l.id}>
-                    <Td strong className="whitespace-nowrap">
+                    <Td strong sticky="left" className="whitespace-nowrap">
                       <span className="tabular">{l.partNo}</span>
                       <span className="ml-2 font-normal text-ink-muted">{l.partName}</span>
                     </Td>
@@ -198,7 +194,7 @@ export default async function PicklistDetailPage({ params }: { params: Promise<{
                     <Td align="right" className="tabular">
                       {l.kanbanCount}
                     </Td>
-                    <Td>{LINE_STATUS_LABEL[l.status] ?? l.status}</Td>
+                    <Td sticky="right">{LINE_STATUS_LABEL[l.status] ?? l.status}</Td>
                   </Tr>
                 ))
               )}

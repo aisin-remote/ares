@@ -51,3 +51,19 @@ export const confirmShipmentSchema = z.object({
   note: z.string().trim().max(255).optional(),
 });
 export type ConfirmShipmentInput = z.infer<typeof confirmShipmentSchema>;
+
+/** 6.3.4: koreksi jumlah kirim oleh PPIC sebelum sesi receiving dibuka. */
+export const overrideShipmentSchema = z.object({
+  lines: z
+    .array(
+      z.object({
+        picklistLineId: idSchema,
+        boxShipped: z.number().int().min(0, 'Tidak boleh negatif'),
+      }),
+    )
+    .min(1, 'Minimal satu baris')
+    .refine((lines) => new Set(lines.map((line) => line.picklistLineId)).size === lines.length,
+      'Line Order Sheet tidak boleh ganda'),
+  reason: z.string().trim().min(1, 'Alasan wajib diisi').max(255),
+});
+export type OverrideShipmentInput = z.infer<typeof overrideShipmentSchema>;

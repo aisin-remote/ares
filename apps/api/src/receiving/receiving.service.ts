@@ -5,12 +5,14 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import {
   and,
   asc,
   eq,
   inArray,
   ne,
+  or,
   sql,
   vendors,
   vendorParts,
@@ -74,7 +76,7 @@ export class ReceivingService {
    */
   async open(code: string, actor: Actor) {
     const parsed = parseScanCode(code);
-    if (parsed?.kind !== 'PICKLIST') throw new BadRequestException('Bukan barcode picklist ARES');
+    if (parsed?.kind !== 'PICKLIST') throw new BadRequestException('Bukan barcode Order Sheet ARES');
 
     const opened = await this.db.transaction(async (tx) => {
       const [pl] = await tx
@@ -84,14 +86,15 @@ export class ReceivingService {
           and(
             eq(picklistHeaders.picklistNo, parsed.no),
             eq(picklistHeaders.revision, parsed.revision),
+            eq(picklistHeaders.plantId, actor.plantId),
           ),
         )
         .for('update');
       if (!pl)
-        throw new NotFoundException(`Picklist ${parsed.no}-${parsed.revision} tidak ditemukan`);
+        throw new NotFoundException(`Order Sheet ${parsed.no}-${parsed.revision} tidak ditemukan`);
       if (!RECEIVABLE.includes(pl.status)) {
         throw new ConflictException(
-          `Picklist ${parsed.no} berstatus ${pl.status}, tidak bisa diterima`,
+          `Order Sheet ${parsed.no} berstatus ${pl.status}, tidak bisa diterima`,
         );
       }
 
@@ -102,10 +105,11 @@ export class ReceivingService {
       if (existing) return { id: existing.id, resumed: true };
 
       const receiptNo = await this.sequence.next(tx, 'RCP');
+      const publicId = randomUUID();
       const id = (
         await tx
           .insert(receiptHeaders)
-          .values({ plantId: actor.plantId, receiptNo, picklistId: pl.id, status: 'OPEN' })
+          .values({ publicId, plantId: actor.plantId, receiptNo, picklistId: pl.id, status: 'OPEN' })
           .$returningId()
       )[0]!.id;
       await writeAudit(tx, 'TT_RECEIPT_H', id, 'OPEN', actor.userId, null,
@@ -113,7 +117,7 @@ export class ReceivingService {
       return { id, resumed: false };
     });
 
-    return { ...(await this.get(opened.id)), resumed: opened.resumed };
+    return { ...(await this.get(opened.id, actor.plantId)), resumed: opened.resumed };
   }
 
   /**
@@ -126,7 +130,7 @@ export class ReceivingService {
   async scan(receiptId: number, code: string, actor: Actor) {
     const now = new Date();
     const session = await this.db.transaction(async (tx) => {
-      const s = await this.openSession(tx, receiptId);
+      const s = await this.openSession(tx, receiptId, actor.plantId);
       const parsed = parseScanCode(code);
 
       let kanban: KanbanForScan | null = null;
@@ -210,17 +214,18 @@ export class ReceivingService {
    */
   async close(receiptId: number, reason: string | undefined, actor: Actor) {
     return this.db.transaction(async (tx) => {
-      const s = await this.openSession(tx, receiptId);
+      const s = await this.openSession(tx, receiptId, actor.plantId);
       const [pl] = await tx
         .select({
           id: picklistHeaders.id,
+          publicId: picklistHeaders.publicId,
           status: picklistHeaders.status,
           plantId: picklistHeaders.plantId,
         })
         .from(picklistHeaders)
         .where(eq(picklistHeaders.id, s.picklistId))
         .for('update');
-      if (!pl) throw new NotFoundException('Picklist sesi ini tidak ditemukan');
+      if (!pl) throw new NotFoundException('Order Sheet sesi ini tidak ditemukan');
 
       const lines = await tx
         .select({
@@ -344,8 +349,10 @@ export class ReceivingService {
 
       return {
         id: s.id,
+        publicId: s.publicId,
         receiptNo: s.receiptNo,
         picklistId: pl.id,
+        picklistPublicId: pl.publicId,
         picklistNo: s.picklistNo,
         picklistStatus: finalStatus ?? pl.status,
         missingCount: closed.missingKanbanIds.length,
@@ -354,25 +361,53 @@ export class ReceivingService {
     });
   }
 
-  /** F-40: pembatalan sebelum GR terkirim, termasuk sesi yang masih OPEN. */
+  /** F-40: pembatalan receipt; GR yang sudah keluar dari ARES dibuatkan movement pembalik 102. */
   async cancel(receiptId: number, reason: string, actor: Actor) {
     return this.db.transaction(async (tx) => {
       const [receipt] = await tx.select().from(receiptHeaders)
-        .where(eq(receiptHeaders.id, receiptId)).for('update');
+        .where(and(eq(receiptHeaders.id, receiptId), eq(receiptHeaders.plantId, actor.plantId)))
+        .for('update');
       if (!receipt) throw new NotFoundException('Receipt tidak ditemukan');
       if (receipt.status === 'CANCELLED') throw new ConflictException('Receipt sudah dibatalkan');
       const [pl] = await tx.select().from(picklistHeaders)
         .where(eq(picklistHeaders.id, receipt.picklistId)).for('update');
-      if (!pl) throw new NotFoundException('Picklist receipt tidak ditemukan');
+      if (!pl) throw new NotFoundException('Order Sheet receipt tidak ditemukan');
       const [outbox] = await tx.select().from(sapOutbox)
         .where(and(eq(sapOutbox.sourceTable, 'TT_RECEIPT_H'),
           eq(sapOutbox.sourceId, receiptId), eq(sapOutbox.docType, 'GR'))).for('update');
-      if (outbox?.status === 'SENT') {
-        throw new ConflictException('GR sudah terkirim; pembatalan memerlukan GR pembalik (F-40)');
-      }
-      if (outbox && outbox.status !== 'SKIPPED') {
+      const grSudahTerkirim = outbox
+        ? ['PROCESSING', 'STAGED', 'POSTED'].includes(outbox.status)
+        : false;
+      if (outbox && !grSudahTerkirim && outbox.status !== 'SKIPPED') {
         await tx.update(sapOutbox).set({ status: 'SKIPPED', lastError: `Receipt dibatalkan: ${reason}`.slice(0, 1000) })
           .where(eq(sapOutbox.id, outbox.id));
+      }
+
+      let reversalOutboxId: number | null = null;
+      if (grSudahTerkirim && outbox) {
+        const payload = outbox.payload && typeof outbox.payload === 'object'
+          ? outbox.payload as Record<string, unknown>
+          : {};
+        const reversalReady = outbox.status === 'POSTED' && Boolean(outbox.sapDocNumber);
+        reversalOutboxId = (await tx.insert(sapOutbox).values({
+          plantId: receipt.plantId,
+          sourceTable: 'TT_RECEIPT_H',
+          sourceId: receiptId,
+          docType: 'GR_REVERSAL',
+          movementType: '102',
+          idempotencyKey: `${receipt.receiptNo}:REV`,
+          payload: {
+            ...payload,
+            docType: 'GR_REVERSAL',
+            movementType: '102',
+            idempotencyKey: `${receipt.receiptNo}:REV`,
+            reversalOf: outbox.sapDocNumber,
+            reason,
+          },
+          status: reversalReady ? 'PENDING' : 'HELD',
+          lastError: reversalReady ? null : 'Menunggu nomor dokumen GR asli dari SAP',
+          occurredAt: new Date(),
+        }).$returningId())[0]!.id;
       }
 
       const received = await tx.select({ id: kanbans.id }).from(kanbans)
@@ -385,7 +420,8 @@ export class ReceivingService {
       const autoIds = new Set(autoEvents.map((row) => row.id));
       for (const id of receivedIds) {
         await tx.update(kanbans).set({
-          status: kanbanStatusAfterReceiptCancel(autoIds.has(id)), receiptId: null, receivedAt: null,
+          status: grSudahTerkirim ? 'SHIPPED' : kanbanStatusAfterReceiptCancel(autoIds.has(id)),
+          receiptId: null, receivedAt: null,
         }).where(eq(kanbans.id, id));
       }
 
@@ -395,12 +431,12 @@ export class ReceivingService {
             ne(receiptHeaders.id, receiptId)))
           .orderBy(asc(receiptHeaders.id));
         if (other)
-          throw new ConflictException('Ada receipt lain yang sudah ditutup untuk picklist ini');
+          throw new ConflictException('Ada receipt lain yang sudah ditutup untuk Order Sheet ini');
         const missingEvents = await tx.select({ id: kanbanEvents.kanbanId }).from(kanbanEvents)
           .where(and(eq(kanbanEvents.type, 'MISSING'), eq(kanbanEvents.ref, receipt.receiptNo)));
         for (const event of missingEvents) {
           await tx.update(kanbans)
-            .set({ status: pl.shippedAt ? 'SHIPPED' : 'PRINTED' })
+            .set({ status: grSudahTerkirim ? 'SHIPPED' : pl.shippedAt ? 'SHIPPED' : 'PRINTED' })
             .where(and(eq(kanbans.id, event.id), eq(kanbans.status, 'MISSING')));
         }
 
@@ -417,7 +453,7 @@ export class ReceivingService {
         const now = new Date();
         for (const line of lines) {
           const total = line.totalReceived - line.boxReceived;
-          if (total < 0) throw new ConflictException('Jumlah box receipt tidak cocok dengan picklist');
+          if (total < 0) throw new ConflictException('Jumlah box receipt tidak cocok dengan Order Sheet');
           await tx.insert(stockMutations).values({
             plantId: receipt.plantId, partId: line.partId, sloc: this.sloc,
             deltaPcs: -line.pcsReceived, type: 'ADJUST', refTable: 'TT_RECEIPT_L', refId: line.id,
@@ -431,7 +467,9 @@ export class ReceivingService {
           }).where(eq(picklistLines.id, line.picklistLineId));
         }
         await tx.update(picklistHeaders)
-          .set({ status: picklistStatusAfterReceiptCancel(pl) })
+          .set(grSudahTerkirim
+            ? { status: 'SHIPPED', shippedAt: pl.shippedAt ?? now }
+            : { status: picklistStatusAfterReceiptCancel(pl) })
           .where(eq(picklistHeaders.id, pl.id));
       }
 
@@ -441,23 +479,47 @@ export class ReceivingService {
       await writeAudit(tx, 'TT_RECEIPT_H', receiptId, 'CANCEL', actor.userId,
         { ...receipt, picklistStatus: pl.status, outboxStatus: outbox?.status ?? null },
         { ...receipt, status: 'CANCELLED', note,
-          picklistStatus: receipt.status === 'CLOSED' ? picklistStatusAfterReceiptCancel(pl) : pl.status,
-          outboxStatus: outbox ? 'SKIPPED' : null, kanbanRestored: receivedIds.length, reason });
-      return { id: receiptId, status: 'CANCELLED' as const, picklistId: pl.id };
+          picklistStatus: receipt.status === 'CLOSED'
+            ? grSudahTerkirim ? 'SHIPPED' : picklistStatusAfterReceiptCancel(pl)
+            : pl.status,
+          outboxStatus: grSudahTerkirim ? outbox?.status : outbox ? 'SKIPPED' : null,
+          reversalOutboxId, kanbanRestored: receivedIds.length, reason });
+      return {
+        id: receiptId,
+        publicId: receipt.publicId,
+        status: 'CANCELLED' as const,
+        picklistId: pl.id,
+        picklistPublicId: pl.publicId,
+        reversalOutboxId,
+      };
     });
   }
 
+  async resolveId(reference: string, plantId: number): Promise<number> {
+    const legacyId = /^\d+$/.test(reference) ? Number(reference) : null;
+    const [row] = await this.db.select({ id: receiptHeaders.id }).from(receiptHeaders).where(and(
+      legacyId && Number.isSafeInteger(legacyId)
+        ? or(eq(receiptHeaders.publicId, reference), eq(receiptHeaders.id, legacyId))
+        : eq(receiptHeaders.publicId, reference),
+      eq(receiptHeaders.plantId, plantId),
+    )).limit(1);
+    if (!row) throw new NotFoundException('Sesi scan tidak ditemukan');
+    return row.id;
+  }
+
   /** F-35: progres per line — box diorder / dikirim / discan di sesi ini. */
-  async get(receiptId: number) {
+  async get(receiptId: number, plantId?: number) {
     const [r] = await this.db
       .select({
         id: receiptHeaders.id,
+        publicId: receiptHeaders.publicId,
         receiptNo: receiptHeaders.receiptNo,
         status: receiptHeaders.status,
         openedAt: receiptHeaders.createdAt,
         closedAt: receiptHeaders.closedAt,
         note: receiptHeaders.note,
         picklistId: picklistHeaders.id,
+        picklistPublicId: picklistHeaders.publicId,
         picklistNo: picklistHeaders.picklistNo,
         revision: picklistHeaders.revision,
         picklistStatus: picklistHeaders.status,
@@ -468,7 +530,10 @@ export class ReceivingService {
       .from(receiptHeaders)
       .innerJoin(picklistHeaders, eq(receiptHeaders.picklistId, picklistHeaders.id))
       .innerJoin(vendors, eq(picklistHeaders.vendorId, vendors.id))
-      .where(eq(receiptHeaders.id, receiptId));
+      .where(and(
+        eq(receiptHeaders.id, receiptId),
+        plantId ? eq(receiptHeaders.plantId, plantId) : undefined,
+      ));
     if (!r) throw new NotFoundException('Sesi scan tidak ditemukan');
 
     const lines = await this.db
@@ -502,19 +567,21 @@ export class ReceivingService {
   }
 
   /** Sesi harus ada dan masih OPEN; barisnya dikunci selama transaksi. */
-  private async openSession(tx: Transaction, receiptId: number) {
+  private async openSession(tx: Transaction, receiptId: number, plantId: number) {
     const [s] = await tx
       .select({
         id: receiptHeaders.id,
+        publicId: receiptHeaders.publicId,
         receiptNo: receiptHeaders.receiptNo,
         status: receiptHeaders.status,
         picklistId: receiptHeaders.picklistId,
+        picklistPublicId: picklistHeaders.publicId,
         picklistNo: picklistHeaders.picklistNo,
         picklistRevision: picklistHeaders.revision,
       })
       .from(receiptHeaders)
       .innerJoin(picklistHeaders, eq(receiptHeaders.picklistId, picklistHeaders.id))
-      .where(eq(receiptHeaders.id, receiptId))
+      .where(and(eq(receiptHeaders.id, receiptId), eq(receiptHeaders.plantId, plantId)))
       .for('update');
     if (!s) throw new NotFoundException('Sesi scan tidak ditemukan');
     if (s.status !== 'OPEN') throw new ConflictException(`Sesi ${s.receiptNo} sudah ${s.status}`);

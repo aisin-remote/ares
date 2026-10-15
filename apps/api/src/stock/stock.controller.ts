@@ -4,6 +4,7 @@ import { stockAdjustSchema, type StockAdjustInput } from '@ares/contracts';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { RequirePermission } from '../auth/permissions.guard';
 import { StockService, type StockActor } from './stock.service';
+import { StockSnapshotService } from './stock-snapshot.service';
 
 function actorOf(req: Request): StockActor {
   const p = req.principal;
@@ -15,7 +16,10 @@ function actorOf(req: Request): StockActor {
 /** F-41 dibaca halaman langsung dari DB; di sini hanya TULIS (F-42). */
 @Controller('stock')
 export class StockController {
-  constructor(private readonly stock: StockService) {}
+  constructor(
+    private readonly stock: StockService,
+    private readonly snapshot: StockSnapshotService,
+  ) {}
 
   @Post('adjust')
   @RequirePermission('stock.adjust')
@@ -24,5 +28,17 @@ export class StockController {
     @Req() req: Request,
   ) {
     return this.stock.adjust(body, actorOf(req));
+  }
+
+  /**
+   * Membekukan ulang saldo stok sekarang juga, tanpa menunggu cron.
+   *
+   * Dipakai setelah mutasi lama dikoreksi: snapshot adalah turunan, jadi
+   * menjalankan ini kembali selalu aman dan hasilnya sama.
+   */
+  @Post('snapshot')
+  @RequirePermission('stock.adjust')
+  snapshotNow() {
+    return this.snapshot.run();
   }
 }

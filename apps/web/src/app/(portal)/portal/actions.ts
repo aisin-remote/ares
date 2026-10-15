@@ -7,11 +7,12 @@ import { apiFetch, ApiRequestError } from '@/lib/api';
 
 export interface ConfirmShipmentResult {
   id: number;
+  publicId: string;
   picklistNo: string;
   status: 'SHIPPED';
   short: boolean;
-  policy: 'CARRY_OVER' | 'REVISION';
-  revision: { id: number; revision: number; lineCount: number } | null;
+  policy: 'REVISION';
+  revision: { id: number; publicId: string; revision: number; lineCount: number } | null;
 }
 
 /**
@@ -20,7 +21,7 @@ export interface ConfirmShipmentResult {
  * ke /login dengan cara melempar.
  */
 export async function confirmShipmentAction(
-  picklistId: number,
+  picklistId: string,
   input: ConfirmShipmentInput,
 ): Promise<ConfirmShipmentResult | { error: string }> {
   try {
@@ -36,5 +37,37 @@ export async function confirmShipmentAction(
     unstable_rethrow(err);
     if (err instanceof ApiRequestError) return { error: err.message };
     return { error: 'Tidak bisa menghubungi server. Periksa jaringan.' };
+  }
+}
+
+/**
+ * Supplier memperbarui atribut kemasan vendor part-nya (back number, rak,
+ * tipe box). Kolom lain ditolak API; vendorId diambil dari token di sana.
+ */
+export async function updateVendorPartAction(
+  vendorPartId: number,
+  input: { backNo: string; rack: string; boxType: string },
+): Promise<{ ok: true; changed: number } | { error: string }> {
+  try {
+    const res = await apiFetch<{ changes: unknown[] }>(
+      `/master/vendorParts/${vendorPartId}/kemasan`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({
+          backNo: input.backNo.trim(),
+          rack: input.rack.trim(),
+          boxType: input.boxType.trim(),
+        }),
+      },
+    );
+    revalidatePath('/portal/vendor-part');
+    return { ok: true, changed: res.changes.length };
+  } catch (err) {
+    unstable_rethrow(err);
+    if (err instanceof ApiRequestError) {
+      const details = (err.body as { details?: Array<{ message?: string }> } | null)?.details;
+      return { error: details?.[0]?.message ?? err.message };
+    }
+    return { error: 'Tidak bisa menghubungi server.' };
   }
 }

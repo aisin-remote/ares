@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sidebar } from './sidebar';
-import type { NavGroup } from './nav-config';
+import { NAV_GROUPS, visibleGroups, type NavGroup } from './nav-config';
 import { Topbar } from './topbar';
 import { SettingsPanel } from './settings-panel';
 import { usePreferences } from './preferences-provider';
@@ -24,6 +24,7 @@ import { durations, easeSoft } from '../motion/transitions';
  * kolomnya banyak jadi tidak terbaca.
  */
 export function ShellFrame({
+  userId,
   userName,
   role,
   groups,
@@ -31,6 +32,7 @@ export function ShellFrame({
   homeHref,
   children,
 }: {
+  userId: number;
   userName: string;
   role: string | null;
   /** Menu sidebar; kosong = menu internal (app). Portal mengoper menunya sendiri. */
@@ -43,6 +45,11 @@ export function ShellFrame({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const pathname = usePathname();
   const { prefs } = usePreferences();
+  const searchableGroups = visibleGroups(groups ?? NAV_GROUPS).filter((group) =>
+    role === 'admin' || role === 'ppic'
+      ? true
+      : group.title !== 'Setting' && group.title !== 'Master Data',
+  );
 
   // Menutup sendiri setelah berpindah halaman. Tanpa ini panel tetap menutupi
   // halaman yang baru saja dibuka, dan pengguna harus menutupnya dua kali.
@@ -109,8 +116,10 @@ export function ShellFrame({
 
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar
+          userId={userId}
           userName={userName}
           role={role}
+          groups={searchableGroups}
           navOpen={menuOpen}
           onToggleNav={() => setMenuOpen((v) => !v)}
           onOpenSettings={() => setSettingsOpen(true)}

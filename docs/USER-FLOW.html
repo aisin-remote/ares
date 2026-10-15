@@ -258,7 +258,8 @@
       font-weight: 750;
     }
     .pill { background: var(--surface); padding: 7px 10px; color: var(--soft); }
-    .path { background: var(--live-bg); color: var(--live); padding: 5px 9px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .path { background: var(--live-bg); color: var(--live); padding: 5px 9px; text-decoration: none; }
+    a.path:hover { outline: 1px solid color-mix(in srgb, var(--live) 35%, transparent); }
     .tag { padding: 5px 9px; }
     .tag.ok { background: var(--ok-bg); color: var(--ok); }
     .tag.warn { background: var(--warn-bg); color: var(--warn); }
@@ -404,7 +405,7 @@
         <aside class="hero-note">
           <strong>Cara memakai panduan</strong>
           <p>Pilih peran, lalu centang setiap langkah. Progres tersimpan di browser ini sehingga panduan bisa dilanjutkan pada kunjungan berikutnya.</p>
-          <span class="version">Fase 2 · 21 September 2026</span>
+          <span class="version">Diperbarui · 24 September 2026</span>
         </aside>
       </section>
 
@@ -417,9 +418,9 @@
           <div class="flow" aria-label="Alur ARES dari MES sampai SAP">
             <button class="flow-node" data-role-jump="mes" type="button"><span class="flow-number">01</span><strong>Produksi selesai</strong><small>MES mengirim hasil produksi</small></button>
             <button class="flow-node" data-role-jump="ppic" type="button"><span class="flow-number">02</span><strong>Konsumsi & antrean</strong><small>ARES menghitung kebutuhan part</small></button>
-            <button class="flow-node" data-role-jump="ppic" type="button"><span class="flow-number">03</span><strong>Cutoff</strong><small>Picklist dan kanban terbit</small></button>
+            <button class="flow-node" data-role-jump="ppic" type="button"><span class="flow-number">03</span><strong>Cutoff</strong><small>Order Sheet dan kanban terbit</small></button>
             <button class="flow-node" data-role-jump="supplier" type="button"><span class="flow-number">04</span><strong>Supplier kirim</strong><small>Unduh, cetak, dan konfirmasi</small></button>
-            <button class="flow-node" data-role-jump="warehouse" type="button"><span class="flow-number">05</span><strong>Barang diterima</strong><small>Scan picklist dan tiap kanban</small></button>
+            <button class="flow-node" data-role-jump="warehouse" type="button"><span class="flow-number">05</span><strong>Barang diterima</strong><small>Scan Order Sheet dan tiap kanban</small></button>
             <button class="flow-node" data-role-jump="admin" type="button"><span class="flow-number">06</span><strong>GR ke SAP</strong><small>ARES mengirim lewat outbox</small></button>
           </div>
         </section>
@@ -449,7 +450,7 @@
           </div>
           <div class="reference-grid">
             <article class="reference-card">
-              <h3>Status picklist</h3>
+              <h3>Status Order Sheet</h3>
               <p>Urutan normal bergerak dari diterbitkan sampai selesai.</p>
               <div class="status-list">
                 <div class="status-item"><strong>ISSUED · Terbit</strong><span>Order sudah dibuat, belum diunduh supplier.</span></div>
@@ -463,9 +464,9 @@
             <article class="reference-card">
               <h3>Isi barcode yang benar</h3>
               <p>Scanner mengirim teks berikut, bukan URL halaman.</p>
-              <div class="code-box"><code>ARES:P:PL-260921-0044-0</code><small>Barcode picklist: awalan ARES:P, nomor picklist, lalu revisi.</small></div>
+              <div class="code-box"><code>ARES:P:826092300100</code><small>Barcode Order Sheet: awalan ARES:P lalu nomor 12 digit. Dua digit terakhir adalah nomor recovery.</small></div>
               <div class="code-box"><code>ARES:K:&lt;ID-KANBAN&gt;</code><small>QR kanban: awalan ARES:K dan ID unik yang tercetak di kartu.</small></div>
-              <div class="callout"><strong>Jangan scan tautan halaman.</strong><br><code>http://127.0.0.1:3000/picklist/44</code> hanya alamat layar, bukan isi barcode.</div>
+              <div class="callout"><strong>Jangan scan tautan halaman.</strong><br><code>http://ares/picklist/&lt;UUID&gt;</code> hanya alamat layar, bukan isi barcode.</div>
             </article>
           </div>
         </section>
@@ -479,29 +480,33 @@
   </div>
 
   <script>
+    const appBase = location.protocol === 'http:' || location.protocol === 'https:'
+      ? location.origin
+      : 'http://127.0.0.1:3000';
     const roles = {
       ppic: {
         title: 'PPIC',
         description: 'Memastikan kebutuhan part berubah menjadi order yang benar, supplier merespons tepat waktu, dan kendala operasional ditangani.',
-        menus: ['Dashboard', 'Antrean Order', 'Picklist', 'Stok WH', 'Setting'],
+        menus: ['Dashboard', 'Antrean Order', 'Order Sheet', 'Stok WH', 'Setting'],
         summary: [
           ['Mulai dari', 'Dashboard untuk melihat order hari ini, supplier tertinggal, antrean blocked, dan GR gagal.'],
           ['Fokus utama', 'Periksa pengecualian. Order normal akan terbit otomatis saat cutoff.'],
-          ['Selesai ketika', 'Picklist terbit, supplier mengonfirmasi, dan penerimaan tidak menyisakan kendala.']
+          ['Selesai ketika', 'Order Sheet terbit, supplier mengonfirmasi, dan penerimaan tidak menyisakan kendala.']
         ],
         steps: [
-          ['Buka Dashboard', 'Periksa picklist hari ini per status, supplier yang belum mengunduh atau mengonfirmasi, serta GR yang gagal.', '/dashboard', 'Setiap awal shift'],
-          ['Tinjau konsumsi dan antrean', 'Pastikan hasil produksi masuk ke Konsumsi dan PCS terkumpul pada vendor part serta cutoff yang benar.', '/consumption · /queue', 'Rutin sebelum cutoff'],
-          ['Tangani antrean bermasalah', 'Untuk jumlah yang salah, tambah atau kurangi PCS dengan alasan. Gunakan hold jika vendor part belum boleh diterbitkan.', '/queue', 'Alasan wajib'],
-          ['Pastikan master dan PO siap', 'Jika antrean berstatus Blocked, lengkapi vendor part atau PO aktif. Antrean tetap OPEN sampai masalah selesai.', '/master/vendorParts', 'Jangan buat ulang antrean'],
-          ['Biarkan cutoff berjalan', 'Saat jam cutoff tercapai, ARES mengubah PCS menjadi box dan menerbitkan satu picklist per supplier. Tombol Jalankan cutoff dipakai untuk uji atau kebutuhan operasional.', '/queue', 'Otomatis'],
-          ['Pantau respons supplier', 'Order baru harus diunduh lalu dikonfirmasi. Hubungi supplier jika status tertahan di ISSUED atau DOWNLOADED.', '/picklist', 'Lihat waktu status'],
-          ['Tangani pembatalan dan SAP', 'Picklist dapat dibatalkan sebelum SHIPPED. Untuk GR gagal, buka SAP Outbox lalu retry atau hold sesuai keputusan.', '/picklist · /sap', 'Tercatat di audit']
+          ['Buka Dashboard', 'Periksa Order Sheet hari ini per status, supplier yang belum mengunduh atau mengonfirmasi, serta GR yang gagal.', 'Menu Dashboard', 'Setiap awal shift', '/dashboard'],
+          ['Tinjau konsumsi dan antrean', 'Pastikan hasil produksi masuk ke Konsumsi dan PCS terkumpul pada vendor part serta cutoff yang benar.', 'Menu Konsumsi', 'Rutin sebelum cutoff', '/consumption'],
+          ['Tangani antrean bermasalah', 'Untuk jumlah yang salah, tambah atau kurangi PCS dengan alasan. Gunakan hold jika vendor part belum boleh diterbitkan.', 'Menu Antrean Order', 'Alasan wajib', '/queue'],
+          ['Pastikan master dan PO siap', 'Jika antrean berstatus Blocked, lengkapi vendor part atau PO aktif. Antrean tetap OPEN sampai masalah selesai.', 'Menu Vendor Part', 'Jangan buat ulang antrean', '/master/vendorParts'],
+          ['Buat order manual bila diperlukan', 'Pilih supplier aktif mana pun tanpa dibatasi plant supplier. Semua komponen aktif supplier ditampilkan; isi jumlah box dan biarkan 0 untuk komponen yang tidak dipesan. Upload Excel memakai aturan yang sama.', 'Menu Order Sheet — Order Baru', 'Supplier global', '/picklist/baru'],
+          ['Biarkan cutoff berjalan', 'Saat jam cutoff tercapai, ARES mengubah PCS menjadi box dan menerbitkan satu Order Sheet per supplier. Tombol Jalankan cutoff dipakai untuk uji atau kebutuhan operasional.', 'Menu Antrean Order', 'Otomatis', '/queue'],
+          ['Pantau respons supplier', 'Order baru harus diunduh lalu dikonfirmasi. Hubungi supplier jika status tertahan di ISSUED atau DOWNLOADED.', 'Menu Order Sheet', 'Lihat waktu status', '/picklist'],
+          ['Tangani pembatalan dan SAP', 'Order Sheet dapat dibatalkan sebelum SHIPPED. Untuk GR gagal, buka SAP Outbox lalu retry atau hold sesuai keputusan.', 'Menu SAP Outbox', 'Tercatat di audit', '/sap']
         ],
-        success: ['Tidak ada antrean Blocked tanpa tindak lanjut.', 'Picklist cutoff terbit satu kali dan jumlah box sesuai.', 'Supplier yang terlambat sudah ditindaklanjuti.', 'GR gagal sudah di-retry atau di-hold dengan alasan jelas.'],
+        success: ['Tidak ada antrean Blocked tanpa tindak lanjut.', 'Order Sheet cutoff terbit satu kali dan jumlah box sesuai.', 'Supplier yang terlambat sudah ditindaklanjuti.', 'GR gagal sudah di-retry atau di-hold dengan alasan jelas.'],
         issues: [
           ['Antrean tidak terbit saat cutoff', 'Periksa status hold, alasan blocked, vendor part aktif, dan PO aktif. Setelah diperbaiki, jalankan cutoff kembali.'],
-          ['Jumlah order kurang atau lebih', 'Koreksi PCS selama antrean masih OPEN. Setelah menjadi picklist, gunakan proses pembatalan atau order manual sesuai kondisi.'],
+          ['Jumlah order kurang atau lebih', 'Koreksi PCS selama antrean masih OPEN. Setelah menjadi Order Sheet, gunakan proses pembatalan atau order manual sesuai kondisi.'],
           ['Supplier belum membuka order', 'Periksa status ISSUED di Dashboard, lalu hubungi supplier. PPIC dapat mencetak ulang dokumen bila diperlukan.'],
           ['GR gagal', 'Buka SAP Outbox, baca pesan error, perbaiki penyebab, lalu Retry. Hold dipakai agar worker tidak mengirim ulang sebelum masalah selesai.']
         ]
@@ -511,51 +516,52 @@
         description: 'Mengambil order milik supplier sendiri, mencetak satu kanban untuk setiap box, lalu mengonfirmasi jumlah yang benar-benar dikirim.',
         menus: ['Order berjalan', 'Riwayat'],
         summary: [
-          ['Login dengan', 'Email supplier. Akun hanya dapat melihat order vendor yang terhubung ke akun tersebut.'],
-          ['Dokumen utama', 'PDF picklist untuk pengiriman dan PDF kanban untuk ditempel satu per box.'],
+          ['Login dengan', 'Masukkan email dan password lebih dulu. Jika benar, ARES menampilkan kartu Google Authenticator untuk kode 6 digit. Akun hanya dapat melihat order vendor yang terhubung ke akun tersebut.'],
+          ['Dokumen utama', 'PDF Order Sheet, PDF kanban untuk ditempel satu per box, dan CSV untuk kebutuhan data supplier.'],
           ['Selesai ketika', 'Jumlah kirim, ETA, dan nomor kendaraan sudah dikonfirmasi sebelum barang berangkat.']
         ],
         steps: [
-          ['Buka Order berjalan', 'Pilih order baru dengan status Terbit. Periksa tanggal kirim, jam datang, cycle, part, dan jumlah box.', '/portal', 'Data supplier sendiri'],
-          ['Unduh dua dokumen', 'Unduh PDF picklist dan PDF kanban. Unduhan pertama mengubah status order menjadi Diunduh.', '/portal/{id}', 'Simpan file asli'],
+          ['Daftar akun bila belum punya', 'Dari halaman Login pilih Daftar di sini. Langkah 1 isi kode supplier, nama, dan email perusahaan. Langkah 2 buat serta ulangi password. Langkah 3 pindai QR dengan Google Authenticator, simpan setup key, lalu masukkan kode 6 digit. Semua akun baru menunggu persetujuan PPIC atau Admin.', 'Halaman Daftar Akun Supplier', 'QR berlaku 10 menit', '/register'],
+          ['Buka Order berjalan', 'Pilih order baru dengan status Terbit. Periksa tanggal kirim, jam datang, cycle, part, dan jumlah box.', 'Menu Order berjalan', 'Data supplier sendiri', '/portal'],
+          ['Unduh dokumen', 'Unduh PDF Order Sheet, PDF kanban, dan CSV. Unduhan pertama mengubah status order menjadi Diunduh.', 'Menu Order berjalan', 'Simpan file asli', '/portal'],
           ['Cetak dan pasang kanban', 'Cetak sesuai ukuran asli. Tempel tepat satu kartu kanban pada setiap box dan pastikan QR tidak terlipat atau tertutup.', 'PDF kanban', '1 box = 1 kanban'],
-          ['Siapkan jumlah aktual', 'Hitung box yang benar-benar siap dikirim untuk setiap part. Jumlah boleh lebih sedikit dari order, tetapi tidak boleh lebih.', '/portal/{id}', 'Short shipment diperbolehkan'],
-          ['Konfirmasi pengiriman', 'Isi jumlah box dikirim per part, ETA, nomor kendaraan, dan catatan bila ada. Kirim konfirmasi sebelum truk berangkat.', '/portal/{id}', 'Tidak bisa diubah setelah dikirim'],
-          ['Sertakan picklist', 'Bawa picklist bersama pengiriman. Warehouse akan memindai barcode picklist lalu QR pada setiap box.', 'Dokumen fisik', 'QR harus terbaca'],
-          ['Periksa Riwayat', 'Setelah penerimaan, lihat perbandingan jumlah dikirim dan diterima. Hubungi PPIC jika ada selisih yang tidak sesuai.', '/portal/riwayat', 'Jejak penerimaan']
+          ['Siapkan jumlah aktual', 'Hitung box yang benar-benar siap dikirim untuk setiap part. Jumlah boleh lebih sedikit dari order, tetapi tidak boleh lebih.', 'Detail Order Sheet', 'Short shipment diperbolehkan'],
+          ['Konfirmasi pengiriman', 'Isi jumlah box dikirim per part, ETA, nomor kendaraan, dan catatan bila ada. Kirim konfirmasi sebelum truk berangkat.', 'Detail Order Sheet', 'Tidak bisa diubah setelah dikirim'],
+          ['Sertakan Order Sheet', 'Bawa Order Sheet bersama pengiriman. Warehouse akan memindai barcode Order Sheet lalu QR pada setiap box.', 'Dokumen fisik', 'QR harus terbaca'],
+          ['Periksa Riwayat', 'Setelah penerimaan, lihat perbandingan jumlah dikirim dan diterima. Hubungi PPIC jika ada selisih yang tidak sesuai.', 'Menu Riwayat', 'Jejak penerimaan', '/portal/riwayat']
         ],
         success: ['Semua box memiliki kanban yang berbeda.', 'Jumlah konfirmasi sama dengan jumlah fisik yang berangkat.', 'ETA dan nomor kendaraan terisi benar.', 'Status order sudah Dikirim sebelum tiba di pabrik.'],
         issues: [
           ['Order tidak terlihat', 'Pastikan login memakai email vendor yang benar. Jika tetap tidak ada, hubungi PPIC atau Admin untuk memeriksa mapping akun.'],
-          ['PDF belum siap', 'Tunggu sebentar lalu muat ulang halaman. Pembuatan PDF berjalan di worker setelah picklist terbit.'],
-          ['Pengiriman kurang', 'Isi jumlah aktual yang lebih kecil. ARES mengikuti kebijakan supplier: carry over atau revisi.'],
+          ['PDF belum siap', 'Tunggu sebentar lalu muat ulang halaman. Pembuatan PDF berjalan di worker setelah Order Sheet terbit.'],
+          ['Pengiriman kurang', 'Isi jumlah aktual yang lebih kecil. ARES otomatis membuat Order Sheet recovery; nomor dasarnya tetap dan dua digit RR naik 01, 02, dan seterusnya.'],
           ['QR rusak atau tidak terbaca', 'Cetak ulang PDF yang sama. Jangan membuat QR baru sendiri karena ID kanban harus berasal dari ARES.']
         ]
       },
       warehouse: {
         title: 'Warehouse / Receiving',
-        description: 'Memeriksa kedatangan dengan scan. Setiap box hanya dihitung jika QR kanbannya cocok dengan picklist yang sedang dibuka.',
-        menus: ['Sesi Scan', 'Penerimaan'],
+        description: 'Memeriksa kedatangan dengan scan. Setiap box hanya dihitung jika QR kanbannya cocok dengan Order Sheet yang sedang dibuka.',
+        menus: ['Receiving'],
         summary: [
-          ['Mulai dari', 'Kolom scan picklist. Saat halaman terbuka, input sudah siap menerima tembakan scanner.'],
-          ['Urutan wajib', 'Scan barcode picklist lebih dulu, lalu scan setiap QR kanban pada box.'],
+          ['Mulai dari', 'Kolom scan Order Sheet. Saat halaman terbuka, input sudah siap menerima tembakan scanner.'],
+          ['Urutan wajib', 'Scan barcode Order Sheet lebih dulu, lalu scan setiap QR kanban pada box.'],
           ['Selesai ketika', 'Sesi ditutup, selisih diberi alasan, dan receipt tercatat.']
         ],
         steps: [
-          ['Scan barcode picklist', 'Arahkan scanner ke barcode pada dokumen. Formatnya ARES:P:nomor-revisi, bukan URL halaman.', '/receiving', 'Membuka sesi'],
-          ['Cocokkan informasi kiriman', 'Periksa supplier, nomor picklist, part, dan jumlah box yang dikirim sebelum membongkar semuanya.', '/receiving/{id}', 'Hentikan jika salah supplier'],
-          ['Scan setiap kanban', 'Scan satu QR pada setiap box. Counter per part bertambah saat scan diterima.', '/receiving/{id}', '1 box = 1 scan'],
-          ['Ikuti umpan balik', 'Hijau berarti diterima, kuning berarti sudah pernah discan, merah berarti kode salah atau milik picklist lain.', 'Layar & bunyi', 'Scan dobel tidak menambah jumlah'],
-          ['Bandingkan fisik dan layar', 'Sebelum menutup sesi, pastikan jumlah box di area bongkar sama dengan counter yang tampil.', '/receiving/{id}', 'Cek semua line'],
-          ['Tutup sesi', 'Jika lengkap, tutup langsung. Jika kurang, isi alasan yang jelas sebelum menutup.', '/receiving/{id}', 'Alasan wajib bila selisih'],
-          ['Periksa ringkasan receipt', 'Pastikan status Complete atau Partial dan jumlah diterima benar. Jika salah, batalkan sebelum GR berstatus SENT.', '/receiving/{id}/ringkasan', 'Batalkan secepatnya jika salah']
+          ['Scan barcode Order Sheet', 'Arahkan scanner ke barcode pada dokumen. Formatnya ARES:P:nomor-revisi, bukan URL halaman.', 'Menu Receiving', 'Membuka sesi', '/receiving'],
+          ['Cocokkan informasi kiriman', 'Periksa supplier, nomor Order Sheet, part, dan jumlah box yang dikirim sebelum membongkar semuanya.', 'Layar Sesi Scan', 'Hentikan jika salah supplier'],
+          ['Scan setiap kanban', 'Scan satu QR pada setiap box. Counter per part bertambah saat scan diterima.', 'Layar Sesi Scan', '1 box = 1 scan'],
+          ['Ikuti umpan balik', 'Hijau berarti diterima, kuning berarti sudah pernah discan, merah berarti kode salah atau milik Order Sheet lain.', 'Layar & bunyi', 'Scan dobel tidak menambah jumlah'],
+          ['Bandingkan fisik dan layar', 'Sebelum menutup sesi, pastikan jumlah box di area bongkar sama dengan counter yang tampil.', 'Layar Sesi Scan', 'Cek semua line'],
+          ['Tutup sesi', 'Jika lengkap, tutup langsung. Jika kurang, isi alasan yang jelas sebelum menutup.', 'Layar Sesi Scan', 'Alasan wajib bila selisih'],
+          ['Periksa ringkasan receipt', 'Pastikan status Complete atau Partial dan jumlah diterima benar. Jika salah, batalkan sebelum GR berstatus SENT.', 'Ringkasan Receiving', 'Batalkan secepatnya jika salah']
         ],
         success: ['Setiap box fisik memiliki satu hasil scan OK.', 'Tidak ada kode merah yang diabaikan.', 'Selisih mempunyai alasan yang bisa dipahami PPIC.', 'Ringkasan receipt sama dengan jumlah fisik yang diterima.'],
         issues: [
-          ['Barcode picklist ditolak', 'Pastikan yang discan adalah barcode pada PDF, dengan format ARES:P:PL-...-revisi. Nomor atau URL saja tidak diterima.'],
+          ['Barcode Order Sheet ditolak', 'Pastikan yang discan adalah barcode pada PDF, misalnya ARES:P:826092300100. Nomor tanpa awalan ARES:P atau URL halaman tidak diterima.'],
           ['Hasil SUDAH DISCAN', 'Box sudah dihitung pada sesi ini. Jangan scan ulang dan jangan menambah counter manual.'],
-          ['Kanban DITOLAK', 'Pisahkan box. Periksa apakah kanban milik picklist lain, sudah diterima sebelumnya, atau format QR tidak sah.'],
-          ['Salah tutup receipt', 'Segera buka daftar Penerimaan dan batalkan sebelum GR terkirim. Setelah GR SENT, hubungi PPIC/Admin untuk proses pembalik.']
+          ['Kanban DITOLAK', 'Pisahkan box. Periksa apakah kanban milik Order Sheet lain, sudah diterima sebelumnya, atau format QR tidak sah.'],
+          ['Salah tutup receipt', 'Segera buka daftar Receiving dan batalkan sebelum GR terkirim. Setelah GR SENT, hubungi PPIC/Admin untuk proses pembalik.']
         ]
       },
       admin: {
@@ -568,13 +574,13 @@
           ['Selesai ketika', 'Worker aktif, error tertangani, dan seluruh tindakan penting memiliki audit.']
         ],
         steps: [
-          ['Siapkan akun pengguna', 'Buat user, pilih peran, dan hubungkan vendor khusus untuk akun supplier. Berikan password sementara melalui jalur yang aman.', '/master/users', 'Supplier wajib punya vendor'],
-          ['Jaga master utama', 'Pastikan nomor SAP supplier dan part terisi, vendor part aktif, qty per box benar, serta BOM berlaku.', '/master/vendors · /master/parts', 'Nomor SAP wajib'],
-          ['Atur kalender operasi', 'Pelihara cutoff supplier, jam datang, lead day, aturan pembulatan, kebijakan short shipment, dan hari libur.', '/settings/*', 'Periksa simulasi cutoff'],
-          ['Pantau sinkron MES', 'Periksa status job dan cursor. Pada mode fake, data uji dapat dimasukkan dari layar lalu ditarik manual.', '/mes', 'Mode sesuai environment'],
-          ['Pantau SAP Outbox', 'Periksa item Pending, Failed, Held, dan Sent. Baca error sebelum melakukan retry.', '/sap', 'Fake menghasilkan FAKE-&lt;n&gt;'],
-          ['Tahan atau kirim ulang dengan benar', 'Hold item yang belum aman dikirim. Setelah penyebab diperbaiki, gunakan Retry agar worker mencoba kembali.', '/sap', 'Aksi tercatat'],
-          ['Gunakan audit saat investigasi', 'Telusuri siapa mengubah master, menerbitkan atau membatalkan dokumen, menutup receipt, dan retry outbox.', 'TT_AUDIT_LOG', 'Sertakan waktu & user']
+          ['Tinjau pendaftaran supplier', 'Supplier mendaftar sendiri memakai kode supplier dan memasang Google Authenticator. Periksa identitas, email, dan vendor yang terhubung sebelum mengaktifkan akun dari daftar user.', 'Menu User & Peran', 'Semua akun baru perlu persetujuan', '/master/users'],
+          ['Jaga master utama', 'Pastikan nomor SAP supplier dan part terisi, vendor part aktif, qty per box benar, serta BOM berlaku.', 'Menu Master Data', 'Nomor SAP wajib', '/master/vendors'],
+          ['Atur kalender operasi', 'Pelihara cutoff supplier, jam datang, lead day, aturan pembulatan, dan hari libur.', 'Menu Cutoff Supplier', 'Periksa simulasi cutoff', '/settings/cutoff'],
+          ['Pantau sinkron MES', 'Periksa status job dan cursor. Pada mode fake, data uji dapat dimasukkan dari layar lalu ditarik manual.', 'Menu Sinkron MES', 'Mode sesuai environment', '/mes'],
+          ['Pantau SAP Outbox', 'Periksa item Pending, Failed, Held, dan Sent. Baca error sebelum melakukan retry.', 'Menu SAP Outbox', 'Fake menghasilkan FAKE-&lt;n&gt;', '/sap'],
+          ['Tahan atau kirim ulang dengan benar', 'Hold item yang belum aman dikirim. Setelah penyebab diperbaiki, gunakan Retry agar worker mencoba kembali.', 'Menu SAP Outbox', 'Aksi tercatat', '/sap'],
+          ['Gunakan audit saat investigasi', 'Telusuri siapa mengubah master, menerbitkan atau membatalkan dokumen, menutup receipt, dan retry outbox.', 'Catatan Audit Sistem', 'Sertakan waktu & user']
         ],
         success: ['Setiap supplier login hanya melihat datanya sendiri.', 'Cutoff dan hari libur menghasilkan jadwal yang benar.', 'Job MES dan SAP berjalan tanpa error yang dibiarkan.', 'Perubahan penting dapat dilacak ke pengguna dan waktu kejadian.'],
         issues: [
@@ -590,17 +596,17 @@
         menus: ['MES produksi', 'Sinkron MES (monitor)'],
         summary: [
           ['Data sumber', 'ID hasil produksi yang unik, part jadi, jumlah, line, dan waktu produksi.'],
-          ['Arah utama', 'MES mengirim ke POST /consumption. Mode tarik berkala tersedia sebagai fallback.'],
+          ['Arah utama', 'MES mengirim hasil produksi ke layanan konsumsi ARES. Mode tarik berkala tersedia sebagai fallback.'],
           ['Selesai ketika', 'Satu hasil produksi menghasilkan konsumsi komponen, mutasi stok minus, dan antrean vendor part.']
         ],
         steps: [
           ['Finalisasi hasil produksi', 'Kirim hanya record yang sudah sah dengan ID MES unik. Jangan memakai ID baru untuk mengulang record yang sama.', 'MES', 'ID unik wajib'],
-          ['Kirim ke ARES', 'MES mengirim payload hasil produksi ke endpoint konsumsi. Waktu produksi menentukan versi BOM dan cutoff tujuan.', 'POST /consumption', 'Push utama'],
+          ['Kirim ke ARES', 'MES mengirim payload hasil produksi ke layanan konsumsi. Waktu produksi menentukan versi BOM dan cutoff tujuan.', 'Integrasi MES ke ARES', 'Push utama'],
           ['Terima hasil validasi', 'Jika data valid, ARES menyimpan source key MES:id. Pengiriman ulang ID yang sama tidak menggandakan data.', 'Respons API', 'Idempoten'],
           ['ARES mengurai BOM', 'Untuk setiap komponen, ARES menghitung jumlah konsumsi dari qty produksi dikali qty per pada BOM yang berlaku.', 'Otomatis', 'Per komponen'],
-          ['ARES memperbarui stok dan antrean', 'Stok WH komponen berkurang dan PCS pada antrean vendor part aktif bertambah untuk cutoff berikutnya.', '/consumption · /queue', 'Otomatis'],
-          ['Tangani record gagal', 'Jika BOM atau vendor part belum lengkap, catat respons gagal dan minta PPIC/Admin memperbaiki master sebelum mencoba lagi.', '/consumption', 'Jangan ganti ID sumber'],
-          ['Pantau fallback tarik', 'Jika push belum tersedia, job mes-sync mengambil record berdasarkan cursor. Cursor hanya maju setelah record berhasil diproses.', '/mes', 'Fallback']
+          ['ARES memperbarui stok dan antrean', 'Stok WH komponen berkurang dan PCS pada antrean vendor part aktif bertambah untuk cutoff berikutnya.', 'Menu Konsumsi', 'Otomatis', '/consumption'],
+          ['Tangani record gagal', 'Jika BOM atau vendor part belum lengkap, catat respons gagal dan minta PPIC/Admin memperbaiki master sebelum mencoba lagi.', 'Menu Konsumsi', 'Jangan ganti ID sumber', '/consumption'],
+          ['Pantau fallback tarik', 'Jika push belum tersedia, job mes-sync mengambil record berdasarkan cursor. Cursor hanya maju setelah record berhasil diproses.', 'Menu Sinkron MES', 'Fallback', '/mes']
         ],
         success: ['Setiap record memakai ID sumber yang stabil dan unik.', 'Waktu produksi serta line dikirim dengan benar.', 'Retry record yang sama tidak menambah konsumsi dua kali.', 'Record gagal ditindaklanjuti tanpa mengubah identitas sumber.'],
         issues: [
@@ -618,12 +624,17 @@
     function panelHtml(key, role) {
       const menuHtml = role.menus.map((menu) => `<span class="pill">${escapeHtml(menu)}</span>`).join('');
       const summaryHtml = role.summary.map(([label, body]) => `<article class="summary-card"><small>${escapeHtml(label)}</small><p>${escapeHtml(body)}</p></article>`).join('');
-      const stepHtml = role.steps.map(([title, body, path, note], index) => `
+      const stepHtml = role.steps.map(([title, body, menu, note, route], index) => {
+        const destination = route
+          ? `<a class="path" href="${escapeHtml(appBase + route)}" target="_blank" rel="noopener">${escapeHtml(menu)} ↗</a>`
+          : `<span class="path">${escapeHtml(menu)}</span>`;
+        return `
         <article class="step" data-step="${index}">
           <span class="step-number">${String(index + 1).padStart(2, '0')}</span>
-          <div><h3>${escapeHtml(title)}</h3><p>${escapeHtml(body)}</p><div class="step-meta"><span class="path">${path}</span><span class="tag ok">${escapeHtml(note)}</span></div></div>
+          <div><h3>${escapeHtml(title)}</h3><p>${escapeHtml(body)}</p><div class="step-meta">${destination}<span class="tag ok">${escapeHtml(note)}</span></div></div>
           <button class="step-toggle" type="button" aria-label="Tandai langkah ${index + 1} selesai" aria-pressed="false">✓</button>
-        </article>`).join('');
+        </article>`;
+      }).join('');
       const successHtml = role.success.map((item) => `<li>${escapeHtml(item)}</li>`).join('');
       const issueHtml = role.issues.map(([title, body]) => `<details><summary>${escapeHtml(title)}</summary><p>${escapeHtml(body)}</p></details>`).join('');
       return `

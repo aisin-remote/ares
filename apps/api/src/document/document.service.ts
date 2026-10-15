@@ -1,5 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -16,12 +16,14 @@ import {
   vendors,
   type Database,
 } from '@ares/db';
-import { formatScanCode } from '@ares/domain';
+import { formatScanCode, orderSheetDisplayNo } from '@ares/domain';
 import { InjectDb } from '../db/db.module';
 import { code128Png, qrPng, reactPdf } from './pdf-runtime';
 import { picklistDocument } from './picklist-doc';
 import { kanbanDocument } from './kanban-doc';
+import { orderSheetCsv } from './order-sheet-csv';
 import type { DocKind, KanbanCardData, PicklistDocData, PicklistDocLine } from './document.types';
+import { buildZip } from './zip';
 
 /**
  * Render dan penyimpanan PDF picklist & kanban (F-23, F-24, F-27).
@@ -43,11 +45,19 @@ export class DocumentService {
 
   /** Revisi ikut di nama berkas: unduhan revisi baru tidak boleh menimpa yang lama (F-25). */
   fileName(picklistNo: string, revision: number, kind: DocKind): string {
-    return `${picklistNo}-r${revision}-${kind}.pdf`;
+    const no = orderSheetDisplayNo(picklistNo, revision);
+    if (kind === 'csv') return `${no}-order-sheet.csv`;
+    const label = kind === 'picklist' ? 'order-sheet' : kind;
+    return `${no}-${label}.pdf`;
+  }
+
+  /** Nama penyimpanan lama dipertahankan agar dokumen yang sudah dibuat tetap dapat dibaca. */
+  private storageFileName(picklistNo: string, revision: number, kind: DocKind): string {
+    return `${picklistNo}-r${revision}-${kind}.${kind === 'csv' ? 'csv' : 'pdf'}`;
   }
 
   private path(picklistNo: string, revision: number, kind: DocKind): string {
-    return join(this.dir(), this.fileName(picklistNo, revision, kind));
+    return join(this.dir(), this.storageFileName(picklistNo, revision, kind));
   }
 
   /**
@@ -77,6 +87,13 @@ export class DocumentService {
         revision: data.picklist.revision,
       }),
     );
+    const picklistQr = await qrPng(
+      formatScanCode({
+        kind: 'PICKLIST',
+        no: data.picklist.picklistNo,
+        revision: data.picklist.revision,
+      }),
+    );
     // Semua QR dibuat lebih dulu: bwip-js asinkron, sedangkan komponen
     // react-pdf dirender sinkron dan tidak bisa menunggu di tengah jalan.
     const qr = new Map<string, Buffer>();
@@ -85,14 +102,16 @@ export class DocumentService {
     }
 
     const [isiPicklist, isiKanban] = await Promise.all([
-      pdf.renderToBuffer(picklistDocument(pdf, data.picklist, barcode, sekarang)),
+      pdf.renderToBuffer(picklistDocument(pdf, data.picklist, barcode, picklistQr, sekarang)),
       pdf.renderToBuffer(kanbanDocument(pdf, data.kanban, qr)),
     ]);
+    const isiCsv = orderSheetCsv(data.picklist);
 
     await mkdir(this.dir(), { recursive: true });
     const { picklistNo, revision } = data.picklist;
     await writeFile(this.path(picklistNo, revision, 'picklist'), isiPicklist);
     await writeFile(this.path(picklistNo, revision, 'kanban'), isiKanban);
+    await writeFile(this.path(picklistNo, revision, 'csv'), isiCsv);
 
     await this.db
       .update(picklistHeaders)
@@ -100,7 +119,7 @@ export class DocumentService {
       .where(eq(picklistHeaders.id, picklistId));
 
     this.logger.log(
-      `PDF ${picklistNo} rev ${revision} selesai: ${isiPicklist.length} + ${isiKanban.length} byte, ${data.kanban.cards.length} kartu`,
+      `Dokumen ${picklistNo} rev ${revision} selesai: PDF ${isiPicklist.length} + ${isiKanban.length}, CSV ${isiCsv.length} byte, ${data.kanban.cards.length} kartu`,
     );
     return { picklistNo, kanbanCount: data.kanban.cards.length };
   }
@@ -110,10 +129,50 @@ export class DocumentService {
    * error yang dilempar setelah header terkirim akan memutus unduhan di tengah
    * jalan tanpa pesan apa pun.
    */
+  /**
+   * Ketiga dokumen satu Order Sheet dalam satu ZIP (F-26).
+   *
+   * Supplier hampir selalu memerlukan ketiganya sekaligus — Order Sheet untuk
+   * arsip, kanban untuk ditempel, CSV untuk sistemnya sendiri. Tiga tombol
+   * berjejer memaksa tiga klik dan tiga dialog simpan; satu berkas cukup.
+   *
+   * Dibaca ke memori, bukan di-stream: ketiganya berukuran puluhan sampai
+   * ratusan kilobyte dan ZIP memerlukan direktori pusat di akhir berkas.
+   * Dokumen yang belum selesai dirender dilewati; kalau belum ada satu pun,
+   * jawabannya 404 dengan pesan yang sama seperti unduhan satuan.
+   */
+  async bundle(
+    picklistId: number,
+    scope: number | null,
+    plantId?: number,
+  ): Promise<{ data: Buffer; fileName: string }> {
+    const kinds: DocKind[] = ['picklist', 'kanban', 'csv'];
+    const entries: Array<{ name: string; data: Buffer }> = [];
+    let gagal: NotFoundException | null = null;
+
+    for (const kind of kinds) {
+      try {
+        const { path, fileName } = await this.fileFor(picklistId, kind, scope, plantId);
+        entries.push({ name: fileName, data: await readFile(path) });
+      } catch (error) {
+        if (!(error instanceof NotFoundException)) throw error;
+        // Satu dokumen yang belum selesai dirender tidak menahan dua lainnya;
+        // galatnya disimpan untuk dipakai bila ternyata tidak ada satu pun.
+        gagal = error;
+      }
+    }
+    if (entries.length === 0) throw gagal ?? new NotFoundException('Dokumen tidak ditemukan');
+
+    // Nama arsip mengikuti nomor dokumen: `<nomor>-dokumen.zip`.
+    const no = entries[0]!.name.replace(/-(order-sheet|kanban)\.(pdf|csv)$/, '');
+    return { data: buildZip(entries), fileName: `${no}-dokumen.zip` };
+  }
+
   async fileFor(
     picklistId: number,
     kind: DocKind,
     scope: number | null,
+    plantId?: number,
   ): Promise<{ path: string; fileName: string }> {
     const [row] = await this.db
       .select({
@@ -130,20 +189,22 @@ export class DocumentService {
         and(
           eq(picklistHeaders.id, picklistId),
           scope ? eq(picklistHeaders.vendorId, scope) : undefined,
+          plantId ? eq(picklistHeaders.plantId, plantId) : undefined,
         ),
       )
       .limit(1);
-    if (!row) throw new NotFoundException('Picklist tidak ditemukan');
+    if (!row) throw new NotFoundException('Order Sheet tidak ditemukan');
     if (row.status === 'CANCELLED') {
       throw new NotFoundException(
-        `Picklist ${row.picklistNo} sudah dibatalkan; dokumennya tidak boleh dicetak lagi (F-20).`,
+        `Order Sheet ${row.picklistNo} sudah dibatalkan; dokumennya tidak boleh dicetak lagi (F-20).`,
       );
     }
 
     const path = this.path(row.picklistNo, row.revision, kind);
     if (!existsSync(path)) {
+      const label = kind === 'picklist' ? 'Order Sheet' : kind === 'kanban' ? 'kanban' : 'CSV';
       throw new NotFoundException(
-        `PDF ${kind} untuk ${row.picklistNo} belum selesai dibuat. Coba lagi beberapa saat lagi.`,
+        `${label} untuk ${row.picklistNo} belum selesai dibuat. Coba lagi beberapa saat lagi.`,
       );
     }
     return { path, fileName: this.fileName(row.picklistNo, row.revision, kind) };
@@ -164,12 +225,16 @@ export class DocumentService {
         type: picklistHeaders.type,
         status: picklistHeaders.status,
         cycle: picklistHeaders.cycle,
+        cutoffAt: picklistHeaders.cutoffAt,
         deliveryDate: picklistHeaders.deliveryDate,
         arrivalTime: picklistHeaders.arrivalTime,
         note: picklistHeaders.note,
+        vehicleNo: picklistHeaders.vehicleNo,
         vendorName: vendors.name,
         sapVendorNo: vendors.sapVendorNo,
         vendorAddress: vendors.address,
+        vendorScheduleCode: vendors.scheduleCode,
+        truckStation: vendors.truckStation,
         plantCode: plants.code,
         plantName: plants.name,
       })
@@ -178,13 +243,14 @@ export class DocumentService {
       .innerJoin(plants, eq(picklistHeaders.plantId, plants.id))
       .where(eq(picklistHeaders.id, picklistId))
       .limit(1);
-    if (!header) throw new NotFoundException(`Picklist ${picklistId} tidak ditemukan`);
+    if (!header) throw new NotFoundException(`Order Sheet ${picklistId} tidak ditemukan`);
 
     const lineRows = await this.db
       .select({
         id: picklistLines.id,
         partNo: parts.partNo,
         partName: parts.name,
+        sapMaterialNo: parts.sapMaterialNo,
         uom: parts.uom,
         backNo: vendorParts.backNo,
         rack: vendorParts.rack,
@@ -220,6 +286,7 @@ export class DocumentService {
         no: i + 1,
         partNo: l.partNo,
         partName: l.partName,
+        sapMaterialNo: l.sapMaterialNo,
         uom: l.uom,
         backNo: l.backNo,
         rack: l.rack,
@@ -242,6 +309,7 @@ export class DocumentService {
         serial: k.serial,
         partNo: l.partNo,
         partName: l.partName,
+        supplierPartNo: l.sapMaterialNo,
         uom: l.uom,
         backNo: l.backNo,
         rack: l.rack,
@@ -253,6 +321,7 @@ export class DocumentService {
     const { status, ...isiHeader } = header;
     const picklist: PicklistDocData = {
       ...isiHeader,
+      sapVendorNo: isiHeader.sapVendorNo ?? '',
       lines,
       totalBox: lines.reduce((n, l) => n + l.boxOrdered, 0),
       totalPcs: lines.reduce((n, l) => n + l.pcs, 0),
@@ -266,9 +335,14 @@ export class DocumentService {
         picklistNo: header.picklistNo,
         revision: header.revision,
         cycle: header.cycle,
+        cutoffAt: header.cutoffAt,
         deliveryDate: header.deliveryDate,
         arrivalTime: header.arrivalTime,
         vendorName: header.vendorName,
+        sapVendorNo: header.sapVendorNo ?? '',
+        plantCode: header.plantCode,
+        plantName: header.plantName,
+        truckStation: header.truckStation,
         cards,
       },
     };

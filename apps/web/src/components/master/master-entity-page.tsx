@@ -26,13 +26,19 @@ export async function MasterEntityPage({ rawEntity, searchParams, view = {} }: {
   const search = sp.q?.trim() || undefined;
   const { data, meta } = await listMaster(entity, { page, perPage: 25, q: search });
   const refEntities = [...new Set(def.fields.filter((field) => field.kind === 'reference' && field.refEntity).map((field) => field.refEntity!))];
-  const optionLists = await Promise.all(refEntities.map((ref) => getMasterOptions(ref)));
+  // Satu kali baca per entitas referensi: daftar lengkap dipakai untuk label
+  // baris (baris lama boleh menunjuk master nonaktif), bagian aktifnya dipakai
+  // sebagai pilihan formulir. Dua kueri di sini berarti dua kali tabel penuh.
+  const labelLists = await Promise.all(refEntities.map((ref) => getMasterOptions(ref, true)));
   const options: Record<string, MasterOption[]> = {};
-  refEntities.forEach((ref, index) => { options[ref] = optionLists[index] ?? []; });
+  refEntities.forEach((ref, index) => {
+    options[ref] = (labelLists[index] ?? []).filter((option) => !option.inactive);
+  });
   const refLabels: Record<string, Record<string, string>> = {};
   for (const field of def.fields) {
     if (field.kind !== 'reference' || !field.refEntity) continue;
-    refLabels[field.name] = Object.fromEntries((options[field.refEntity] ?? []).map((option) => [String(option.value), option.short ?? option.label]));
+    const index = refEntities.indexOf(field.refEntity);
+    refLabels[field.name] = Object.fromEntries((labelLists[index] ?? []).map((option) => [String(option.value), option.short ?? option.label]));
   }
   const path = view.path ?? `/master/${entity}`;
   const title = view.title ?? def.label;

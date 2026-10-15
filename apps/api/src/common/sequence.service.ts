@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { and, eq, sql, sequences, type Transaction } from '@ares/db';
-import { dateKey, formatDocNo } from '@ares/domain';
+import { dateKey, formatDocNo, formatOrderSheetNo, orderPlantInitial } from '@ares/domain';
 
 /**
  * Penomoran dokumen (F-21, 6.6.2): unik, berurutan per hari, aman dari dua
@@ -14,9 +14,7 @@ import { dateKey, formatDocNo } from '@ares/domain';
  */
 @Injectable()
 export class SequenceService {
-  /** Nomor berikutnya, mis. `PL-260918-0042`. Harus dipanggil di dalam transaksi. */
-  async next(tx: Transaction, code: 'PL' | 'RCP', now = new Date()): Promise<string> {
-    const key = dateKey(now);
+  private async allocate(tx: Transaction, code: string, key: string): Promise<number> {
     const where = and(eq(sequences.code, code), eq(sequences.dateKey, key));
 
     let [row] = await tx
@@ -25,8 +23,6 @@ export class SequenceService {
       .where(where)
       .for('update');
     if (!row) {
-      // Baris hari ini belum ada. Dua transaksi bisa sampai sini bersamaan;
-      // unique index menolak yang kedua, lalu ia mengunci baris yang menang.
       await tx
         .insert(sequences)
         .values({ code, dateKey: key, lastNo: 0 })
@@ -40,6 +36,20 @@ export class SequenceService {
 
     const nextNo = (row?.lastNo ?? 0) + 1;
     await tx.update(sequences).set({ lastNo: nextNo }).where(where);
+    return nextNo;
+  }
+
+  /** Nomor berikutnya, mis. `PL-260918-0042`. Harus dipanggil di dalam transaksi. */
+  async next(tx: Transaction, code: 'PL' | 'RCP', now = new Date()): Promise<string> {
+    const key = dateKey(now);
+    const nextNo = await this.allocate(tx, code, key);
     return formatDocNo(code, now, nextNo);
+  }
+
+  /** Nomor Order Sheet berurutan per plant dan tanggal delivery. */
+  async nextOrder(tx: Transaction, plantCode: string, deliveryDate: string): Promise<string> {
+    const key = deliveryDate.slice(2).replaceAll('-', '');
+    const sequence = await this.allocate(tx, `OS${orderPlantInitial(plantCode)}`, key);
+    return formatOrderSheetNo(plantCode, deliveryDate, sequence);
   }
 }

@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { ConflictException, UnprocessableEntityException } from '@nestjs/common';
+import { ConflictException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import {
   getDb,
   closeDb,
@@ -83,7 +83,7 @@ beforeAll(async () => {
   vendorId = (
     await db
       .insert(vendors)
-      .values({ sapVendorNo: `R${stamp}`, name: 'Supplier receiving' })
+      .values({ sapVendorNo: `R${stamp}`, plantId: actor.plantId, name: 'Supplier receiving' })
       .$returningId()
   )[0]!.id;
   partA = (
@@ -120,8 +120,8 @@ beforeAll(async () => {
       .$returningId()
   )[0]!.id;
   await db.insert(poLines).values([
-    { poId, item: '00010', partId: partA, openQty: 1000, syncedAt: new Date() },
-    { poId, item: '00020', partId: partB, openQty: 1000, syncedAt: new Date() },
+    { poId, item: '00010', partId: partA, openQty: 1_000_000, syncedAt: new Date() },
+    { poId, item: '00020', partId: partB, openQty: 1_000_000, syncedAt: new Date() },
   ]);
 });
 
@@ -194,6 +194,12 @@ describe('sesi scan: buka → 5 scan (1 dobel, 1 picklist lain) → tutup → ou
     // ── buka ──
     const sesi = await receiving.open(picklistCode(A.picklistNo), actor);
     expect(sesi.receiptNo).toMatch(/^RCP-\d{6}-\d{4}$/);
+    expect(sesi.publicId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    await expect(receiving.resolveId(sesi.publicId, actor.plantId)).resolves.toBe(sesi.id);
+    // URL numerik lama tetap diterima selama masa transisi.
+    await expect(receiving.resolveId(String(sesi.id), actor.plantId)).resolves.toBe(sesi.id);
     expect(sesi).toMatchObject({ status: 'OPEN', resumed: false, picklistNo: A.picklistNo });
     expect(sesi.totals).toEqual({ boxOrdered: 5, boxShipped: 0, boxScanned: 0 });
     // scan ulang barcode picklist → sesi yang sama (F-39), bukan sesi kedua
@@ -218,12 +224,13 @@ describe('sesi scan: buka → 5 scan (1 dobel, 1 picklist lain) → tutup → ou
     const s4 = await receiving.scan(sesi.id, kanbanCode(foreign), actor); // picklist lain
     expect(s4).toMatchObject({
       result: 'REJECTED',
-      message: `Kanban picklist ${B.picklistNo}-0`,
+      message: `Kanban Order Sheet ${B.picklistNo}-0`,
       line: null,
     });
 
     const s5 = await receiving.scan(sesi.id, kanbanCode(b1!), actor);
-    expect(s5).toMatchObject({ result: 'OK', kanbanSerial: 4 });
+    // Format kartu supplier mereset serial ke 00001 untuk setiap part.
+    expect(s5).toMatchObject({ result: 'OK', kanbanSerial: 1 });
 
     const s6 = await receiving.scan(sesi.id, 'BUKAN-KODE-ARES', actor);
     expect(s6).toMatchObject({ result: 'REJECTED', message: 'Kode tidak dikenal' });
@@ -270,7 +277,7 @@ describe('sesi scan: buka → 5 scan (1 dobel, 1 picklist lain) → tutup → ou
       .from(kanbans)
       .innerJoin(picklistLines, eq(kanbans.picklistLineId, picklistLines.id))
       .where(eq(picklistLines.picklistId, A.id))
-      .orderBy(asc(kanbans.serial));
+      .orderBy(asc(picklistLines.id), asc(kanbans.serial));
     expect(ks.map((k) => k.status)).toEqual([
       'RECEIVED',
       'RECEIVED',
@@ -398,6 +405,45 @@ describe('sesi scan: buka → 5 scan (1 dobel, 1 picklist lain) → tutup → ou
     expect(row?.status).toBe('SKIPPED');
   });
 
+  it('menahan GR yang item PO-nya tidak cocok sebelum menyentuh gateway', async () => {
+    const invalid = await issue([{ vendorPartId: vpA, boxes: 1 }]);
+    await db.update(picklistLines).set({ sapPoItem: '00999' })
+      .where(eq(picklistLines.picklistId, invalid.id));
+    const sesi = await receiving.open(picklistCode(invalid.picklistNo), actor);
+    await receiving.scan(sesi.id, kanbanCode(invalid.lines[0]!.kanbanIds[0]!), actor);
+    await receiving.close(sesi.id, undefined, actor);
+    await outbox.collect();
+
+    const [row] = await db.select().from(sapOutbox).where(and(
+      eq(sapOutbox.sourceTable, 'TT_RECEIPT_H'), eq(sapOutbox.sourceId, sesi.id),
+    ));
+    expect(row).toMatchObject({ status: 'HELD', attempts: 0 });
+    expect(row?.lastError).toContain('item PO tidak sesuai dengan part');
+    await writer.flush([row!.id]);
+    const [stillHeld] = await db.select().from(sapOutbox).where(eq(sapOutbox.id, row!.id));
+    expect(stillHeld).toMatchObject({ status: 'HELD', attempts: 0 });
+  });
+
+  it('kegagalan sementara kembali ke antrean dengan waktu retry', async () => {
+    const retryable = await issue([{ vendorPartId: vpB, boxes: 1 }]);
+    const sesi = await receiving.open(picklistCode(retryable.picklistNo), actor);
+    await receiving.scan(sesi.id, kanbanCode(retryable.lines[0]!.kanbanIds[0]!), actor);
+    await receiving.close(sesi.id, undefined, actor);
+    await outbox.collect();
+    const [row] = await db.select().from(sapOutbox).where(and(
+      eq(sapOutbox.sourceTable, 'TT_RECEIPT_H'), eq(sapOutbox.sourceId, sesi.id),
+    ));
+    const failingWriter = new SapWriterService(db, {
+      mode: 'fake',
+      enabled: true,
+      send: async () => { throw new Error('staging sedang offline'); },
+    });
+    await failingWriter.flush([row!.id]);
+    const [scheduled] = await db.select().from(sapOutbox).where(eq(sapOutbox.id, row!.id));
+    expect(scheduled).toMatchObject({ status: 'PENDING', attempts: 1, lastError: 'staging sedang offline' });
+    expect(scheduled?.nextAttemptAt).toBeInstanceOf(Date);
+  });
+
   it('receipt CLOSED bisa dibatalkan sebelum GR terkirim dan seluruh mutasi dipulihkan', async () => {
     const E = await issue([{ vendorPartId: vpA, boxes: 1 }]);
     const sesi = await receiving.open(picklistCode(E.picklistNo), actor);
@@ -438,7 +484,7 @@ describe('sesi scan: buka → 5 scan (1 dobel, 1 picklist lain) → tutup → ou
     expect(stillOne).toHaveLength(1);
   });
 
-  it('FakeSapGateway mengirim nomor palsu, retry tercatat di audit, dan SENT tidak bisa dibatalkan', async () => {
+  it('GR POSTED dibatalkan menjadi reversal 102, stok dibalik, kanban SHIPPED, lalu Fake SAP mempostingnya', async () => {
     const F = await issue([{ vendorPartId: vpB, boxes: 1 }]);
     const sesi = await receiving.open(picklistCode(F.picklistNo), actor);
     await receiving.scan(sesi.id, kanbanCode(F.lines[0]!.kanbanIds[0]!), actor);
@@ -449,34 +495,78 @@ describe('sesi scan: buka → 5 scan (1 dobel, 1 picklist lain) → tutup → ou
       .where(and(eq(sapOutbox.sourceTable, 'TT_RECEIPT_H'), eq(sapOutbox.sourceId, sesi.id)));
     await writer.flush([pending!.id]);
     const [sent] = await db.select().from(sapOutbox).where(eq(sapOutbox.id, pending!.id));
-    expect(sent).toMatchObject({ status: 'SENT', sapDocNumber: `FAKE-${sent!.id}` });
-    await expect(receiving.cancel(sesi.id, 'Sudah terlambat', actor)).rejects.toBeInstanceOf(
-      ConflictException,
+    expect(sent).toMatchObject({ status: 'POSTED', sapDocNumber: `FAKE-${sent!.id}` });
+
+    const cancelled = await receiving.cancel(sesi.id, 'GR salah posting', actor);
+    expect(cancelled).toMatchObject({ id: sesi.id, status: 'CANCELLED', picklistId: F.id });
+    expect(cancelled.reversalOutboxId).toEqual(expect.any(Number));
+    const [reversal] = await db.select().from(sapOutbox).where(
+      eq(sapOutbox.id, cancelled.reversalOutboxId!),
     );
+    expect(reversal).toMatchObject({
+      docType: 'GR_REVERSAL',
+      movementType: '102',
+      idempotencyKey: `${sesi.receiptNo}:REV`,
+      status: 'PENDING',
+    });
+    expect(reversal!.payload).toMatchObject({
+      docType: 'GR_REVERSAL',
+      movementType: '102',
+      reversalOf: `FAKE-${sent!.id}`,
+    });
+    const [restoredKanban] = await db.select({
+      status: kanbans.status, receiptId: kanbans.receiptId,
+    }).from(kanbans).where(eq(kanbans.id, F.lines[0]!.kanbanIds[0]!));
+    const [restoredPicklist] = await db.select({ status: picklistHeaders.status })
+      .from(picklistHeaders).where(eq(picklistHeaders.id, F.id));
+    expect(restoredKanban).toEqual({ status: 'SHIPPED', receiptId: null });
+    expect(restoredPicklist?.status).toBe('SHIPPED');
+    const reversalMutation = await db.select({
+      delta: stockMutations.deltaPcs, type: stockMutations.type,
+    }).from(stockMutations).where(and(
+      eq(stockMutations.partId, partB), eq(stockMutations.refTable, 'TT_RECEIPT_L'),
+    )).orderBy(desc(stockMutations.id)).limit(1);
+    expect(reversalMutation[0]).toEqual({ delta: -50, type: 'ADJUST' });
+
+    await writer.flush([reversal!.id]);
+    const [reversalSent] = await db.select().from(sapOutbox).where(eq(sapOutbox.id, reversal!.id));
+    expect(reversalSent).toMatchObject({
+      status: 'POSTED', sapDocNumber: `FAKE-${reversal!.id}`,
+    });
 
     await db.update(sapOutbox).set({ status: 'FAILED', attempts: 8, lastError: 'uji' })
-      .where(eq(sapOutbox.id, sent!.id));
-    await expect(outbox.hold([sent!.id], actor.userId)).resolves.toEqual({ ditahan: 1 });
-    const [held] = await db.select().from(sapOutbox).where(eq(sapOutbox.id, sent!.id));
+      .where(eq(sapOutbox.id, reversal!.id));
+    await expect(outbox.hold([reversal!.id], actor.userId)).resolves.toEqual({ ditahan: 1 });
+    const [held] = await db.select().from(sapOutbox).where(eq(sapOutbox.id, reversal!.id));
     expect(held).toMatchObject({ status: 'HELD', attempts: 8 });
     await outbox.releaseHeld();
-    const [stillHeld] = await db.select().from(sapOutbox).where(eq(sapOutbox.id, sent!.id));
+    const [stillHeld] = await db.select().from(sapOutbox).where(eq(sapOutbox.id, reversal!.id));
     expect(stillHeld?.status).toBe('HELD');
-    await expect(outbox.retry([sent!.id], actor.userId)).resolves.toEqual({ diulang: 1 });
-    const [retried] = await db.select().from(sapOutbox).where(eq(sapOutbox.id, sent!.id));
+    await expect(outbox.retry([reversal!.id], actor.userId)).resolves.toEqual({ diulang: 1, tetapDitahan: 0 });
+    const [retried] = await db.select().from(sapOutbox).where(eq(sapOutbox.id, reversal!.id));
     expect(retried).toMatchObject({ status: 'PENDING', attempts: 0, lastError: null });
     const outboxAudit = await db.select({ action: auditLogs.action }).from(auditLogs)
-      .where(and(eq(auditLogs.entity, 'TT_SAP_OUTBOX'), eq(auditLogs.entityId, String(sent!.id))))
+      .where(and(eq(auditLogs.entity, 'TT_SAP_OUTBOX'), eq(auditLogs.entityId, String(reversal!.id))))
       .orderBy(asc(auditLogs.id));
     expect(outboxAudit.map((row) => row.action)).toEqual(['HOLD', 'RETRY']);
-    await writer.flush([sent!.id]);
-    const [resent] = await db.select().from(sapOutbox).where(eq(sapOutbox.id, sent!.id));
-    expect(resent).toMatchObject({ status: 'SENT', attempts: 1, sapDocNumber: `FAKE-${sent!.id}` });
+    await writer.flush([reversal!.id]);
+    const [resent] = await db.select().from(sapOutbox).where(eq(sapOutbox.id, reversal!.id));
+    expect(resent).toMatchObject({ status: 'POSTED', attempts: 1, sapDocNumber: `FAKE-${reversal!.id}` });
+  });
+
+  it('sesi receipt tidak dapat dibaca atau dipakai operator pabrik lain', async () => {
+    const pl = await issue([{ vendorPartId: vpA, boxes: 1 }]);
+    const opened = await receiving.open(picklistCode(pl.picklistNo), actor);
+    const plantLain = actor.plantId + 100000;
+    await expect(receiving.get(opened.id, plantLain)).rejects.toBeInstanceOf(NotFoundException);
+    await expect(receiving.scan(opened.id, kanbanCode(String(pl.lines[0]!.kanbanIds[0])), {
+      ...actor, plantId: plantLain,
+    })).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('barcode bukan picklist / picklist tidak ada → ditolak sebelum menyentuh DB', async () => {
     await expect(receiving.open('ARES:K:01J8Z3M5X8Q9W2Y7V6T5R4S3P2', actor)).rejects.toThrow(
-      /Bukan barcode picklist/,
+      /Bukan barcode Order Sheet/,
     );
     await expect(receiving.open('ARES:P:PL-000101-9999-0', actor)).rejects.toThrow(
       /tidak ditemukan/,

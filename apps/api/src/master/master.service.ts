@@ -23,11 +23,15 @@ import {
   poLines,
   roles,
   users,
+  vendorParts,
+  vendors,
   type Database,
 } from '@ares/db';
 import {
   buildCreateSchema,
   buildUpdateSchema,
+  buildVendorPartSelfSchema,
+  VENDOR_PART_SELF_FIELDS,
   getEntityDef,
   isMasterEntity,
   type MasterEntity,
@@ -108,6 +112,17 @@ export class MasterService {
     if (!row) throw new ForbiddenException(`Peran ${actor.role} tidak punya hak ${action}`);
   }
 
+  private async assertReadPermission(entity: MasterEntity, actor: MasterActor) {
+    if (entity !== 'users') return;
+    const [row] = await this.db
+      .select({ id: permissions.id })
+      .from(permissions)
+      .innerJoin(roles, eq(permissions.roleId, roles.id))
+      .where(and(eq(roles.name, actor.role), eq(permissions.action, 'user.write')))
+      .limit(1);
+    if (!row) throw new ForbiddenException(`Peran ${actor.role} tidak punya hak user.write`);
+  }
+
   private sortColumn(entity: MasterEntity, sort?: string) {
     const def = getEntityDef(entity);
     const table = this.table(entity);
@@ -125,7 +140,8 @@ export class MasterService {
     return columns.length ? or(...columns.map((column) => like(column, `%${q}%`))) : undefined;
   }
 
-  async list(entity: MasterEntity, params: ListParams) {
+  async list(entity: MasterEntity, params: ListParams, actor: MasterActor) {
+    await this.assertReadPermission(entity, actor);
     const table = this.table(entity);
     const where = this.searchCondition(entity, params.q);
     const [rows, totals] = await Promise.all([
@@ -150,7 +166,8 @@ export class MasterService {
     };
   }
 
-  async get(entity: MasterEntity, id: number) {
+  async get(entity: MasterEntity, id: number, actor?: MasterActor) {
+    if (actor) await this.assertReadPermission(entity, actor);
     const table = this.table(entity);
     const [row] = await this.db.select().from(table).where(eq(table.id, id)).limit(1);
     if (!row)
@@ -159,7 +176,7 @@ export class MasterService {
   }
 
   /** Pilihan relasi read-only juga mencakup peran, pabrik, dan item PO. */
-  async options(entity: string) {
+  async options(entity: string, actor: MasterActor) {
     if (entity === 'roles' || entity === 'plants') {
       const table = entity === 'roles' ? roles : plants;
       const rows = await this.db.select().from(table).orderBy(asc(table.id));
@@ -185,6 +202,7 @@ export class MasterService {
     }
     if (!isMasterEntity(entity))
       throw new BadRequestException(`Entitas master "${entity}" tidak dikenal`);
+    await this.assertReadPermission(entity, actor);
     const table = this.table(entity);
     const rows = await this.db
       .select()
@@ -204,7 +222,11 @@ export class MasterService {
   ): Promise<Record<string, unknown>> {
     const { password, ...rest } = values;
     const output = { ...rest };
-    if (password !== undefined) output.passwordHash = await bcrypt.hash(String(password), 10);
+    if (password !== undefined)
+      output.passwordHash = await bcrypt.hash(
+        String(password),
+        Number(process.env.BCRYPT_ROUNDS ?? 12),
+      );
     const roleId = Number(output.roleId ?? current?.roleId);
     const [role] = await this.db
       .select({ name: roles.name })
@@ -254,7 +276,7 @@ export class MasterService {
     const provided = Object.fromEntries(
       Object.entries(parsed.data).filter(([, value]) => value !== undefined),
     );
-    if (!Object.keys(provided).length) return this.get(entity, id);
+    if (!Object.keys(provided).length) return this.get(entity, id, actor);
     const table = this.table(entity);
     try {
       return await this.db.transaction(async (tx) => {
@@ -268,6 +290,35 @@ export class MasterService {
           throw new NotFoundException(`${getEntityDef(entity).singular} #${id} tidak ditemukan`);
         const values =
           entity === 'users' ? await this.userValues(provided, before as Row) : provided;
+        const candidate = { ...(before as Row), ...values };
+        if (
+          candidate.isActive === true &&
+          entity === 'vendors' &&
+          !String(candidate.sapVendorNo ?? '').trim()
+        ) {
+          throw new BadRequestException('Isi nomor vendor SAP sebelum supplier diaktifkan');
+        }
+        if (candidate.isActive === true && entity === 'vendorCutoffs') {
+          if (
+            candidate.sourceKey &&
+            candidate.cutoffTime === '00:00:00' &&
+            candidate.arrivalTime === '00:00:00'
+          ) {
+            throw new BadRequestException(
+              'Isi jam cutoff dan jam datang sebelum jadwal diaktifkan',
+            );
+          }
+          const [vendor] = await tx
+            .select({ active: vendors.isActive, sapNo: vendors.sapVendorNo })
+            .from(vendors)
+            .where(eq(vendors.id, Number(candidate.vendorId)))
+            .limit(1);
+          if (!vendor?.active || !vendor.sapNo) {
+            throw new BadRequestException(
+              'Aktifkan supplier dan isi nomor vendor SAP terlebih dahulu',
+            );
+          }
+        }
         await tx.update(table).set(values).where(eq(table.id, id));
         const [after] = await tx.select().from(table).where(eq(table.id, id)).limit(1);
         if (!after) throw new Error('Baris master hilang setelah UPDATE');
@@ -294,6 +345,65 @@ export class MasterService {
     } catch (error) {
       throw dbError(error);
     }
+  }
+
+  /**
+   * Supplier mengubah atribut kemasan vendor part MILIKNYA sendiri.
+   *
+   * Terpisah dari `update()` biasa dan tidak memakai `master.write`: yang
+   * boleh berubah hanya kolom `vendorEditable` (back number, rak, tipe box —
+   * yang tercetak di kanban). Qty per box, part, supplier, PO item, dan status
+   * aktif tetap milik PPIC karena menentukan konversi pcs→box dan penerbitan
+   * order (6.1, 6.6).
+   *
+   * Barisnya disaring dengan vendorId dari sesi di WHERE yang sama dengan id
+   * (aturan repo 9), jadi vendor part supplier lain menjawab 404 — bukan 403
+   * yang justru mengonfirmasi nomornya ada.
+   */
+  async updateVendorPartSelf(id: number, body: unknown, actor: MasterActor & { vendorId: number }) {
+    const parsed = buildVendorPartSelfSchema().safeParse(body);
+    if (!parsed.success) throw validationError(parsed.error);
+    const provided = Object.fromEntries(
+      Object.entries(parsed.data).filter(([, value]) => value !== undefined),
+    );
+    if (!Object.keys(provided).length) {
+      throw new BadRequestException('Tidak ada perubahan yang dikirim');
+    }
+
+    try {
+      return await this.db.transaction(async (tx) => {
+        const [before] = await tx
+          .select()
+          .from(vendorParts)
+          .where(and(eq(vendorParts.id, id), eq(vendorParts.vendorId, actor.vendorId)))
+          .limit(1)
+          .for('update');
+        if (!before) throw new NotFoundException(`Vendor Part #${id} tidak ditemukan`);
+
+        await tx.update(vendorParts).set(provided).where(eq(vendorParts.id, id));
+        const [after] = await tx.select().from(vendorParts).where(eq(vendorParts.id, id)).limit(1);
+        if (!after) throw new Error('Baris vendor part hilang setelah UPDATE');
+
+        // F-54: jejaknya dibedakan dari UPDATE PPIC supaya terlihat siapa yang
+        // mengubah kemasan — PPIC memeriksanya lewat entity yang sama.
+        await tx.insert(auditLogs).values({
+          entity: 'vendorParts',
+          entityId: String(id),
+          action: 'UPDATE_BY_VENDOR',
+          userId: actor.userId,
+          before: before as Row,
+          after: after as Row,
+        });
+        return { row: after as Row, before: before as Row };
+      });
+    } catch (error) {
+      throw dbError(error);
+    }
+  }
+
+  /** Kolom yang boleh diubah supplier; dipakai controller untuk ringkasan perubahan. */
+  static vendorEditableFields(): string[] {
+    return VENDOR_PART_SELF_FIELDS.map((field) => field.name);
   }
 
   async setActive(entity: MasterEntity, id: number, isActive: boolean, actor: MasterActor) {

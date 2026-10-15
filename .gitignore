@@ -15,6 +15,9 @@ npm-debug.log*
 coverage/
 storage/
 uploads/
+tmp/
+output/
+outputs/
 drizzle/meta/_journal.json.bak
 
 # Berkas hasil render worker (PDF picklist & kanban)

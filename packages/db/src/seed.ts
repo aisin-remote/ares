@@ -1,7 +1,7 @@
 import './load-env';
 import bcrypt from 'bcryptjs';
 import { getDb, closeDb } from './client';
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import {
   plants,
   roles,
@@ -13,10 +13,18 @@ import {
   poLines,
   vendorParts,
   vendorCutoffs,
+  devices,
+  deliverySchedules,
 } from './schema/index';
+import { REAL_DELIVERY_SCHEDULES } from './delivery-schedule-data';
+import { REAL_SUPPLIERS } from './supplier-list-data';
+import { ELECTRIC_SUPPLIERS } from './electric-supplier-data';
+
+const ALL_SUPPLIERS = [...REAL_SUPPLIERS, ...ELECTRIC_SUPPLIERS] as const;
 
 /**
- * Seed minimal ARES: satu pabrik, peran sesuai PRD bagian 2, satu admin.
+ * Seed minimal ARES: tiga area pabrik, jadwal receiving riil, peran sesuai
+ * PRD bagian 2, dan satu admin.
  *
  * Idempoten — aman dijalankan berulang. Data contoh hanya dengan SEED_DEMO=on.
  */
@@ -25,13 +33,40 @@ async function main() {
   console.log('[seed] mulai...');
 
   let plantRows = await db.select().from(plants);
-  if (plantRows.length === 0) {
-    // Kode pabrik hanya placeholder; ganti lewat layar master atau langsung di DB.
-    await db.insert(plants).values([{ code: 'PLANT1', name: 'Pabrik utama' }]);
-    plantRows = await db.select().from(plants);
-    console.log(`[seed]   + ${plantRows.length} baris ke plants`);
+  const legacyPlant = plantRows.find((row) => row.code === 'PLANT1');
+  if (legacyPlant && !plantRows.some((row) => row.code === 'UNIT')) {
+    // Pertahankan ID agar user, device, picklist, dan histori lokal tetap terhubung.
+    await db.update(plants).set({ code: 'UNIT', name: 'Unit Plant' }).where(eq(plants.id, legacyPlant.id));
   }
-  const plant = mustFind(plantRows, () => true, 'pabrik');
+  await insertMissing('plants', plants, 'code', [
+    { code: 'UNIT', name: 'Unit Plant' },
+    { code: 'BODY', name: 'Body Plant' },
+    { code: 'ELECTRIC', name: 'Electric Plant' },
+  ]);
+  plantRows = await db.select().from(plants);
+  const plant = mustFind(plantRows, (row) => row.code === 'UNIT', 'pabrik UNIT');
+
+  const plantId = (code: string) => mustFind(plantRows, (row) => row.code === code, `pabrik ${code}`).id;
+  await syncDeliverySchedules(
+    REAL_DELIVERY_SCHEDULES.map((row) => ({
+      plantId: plantId(row.plantCode),
+      supplierLabel: row.supplierLabel,
+      supplierCodes: row.supplierCodes,
+      truckStation: row.truckStation,
+      dayOfWeek: row.dayOfWeek,
+      arrivalTime: row.arrivalTime,
+      durationMinutes: row.durationMinutes,
+      sourceKey: row.sourceKey,
+    })),
+  );
+  const supplierIds = await syncSupplierListVendors(
+    ALL_SUPPLIERS.map((row) => ({
+      ...row,
+      plantId: plantId(row.plantCode),
+    })),
+    plantId('UNIT'),
+  );
+  await syncSupplierCutoffTemplates(ALL_SUPPLIERS, supplierIds);
 
   // ── Peran (PRD bagian 2) ────────────────────────────────────────────────
   await insertMissing('roles', roles, 'name', [
@@ -55,6 +90,8 @@ async function main() {
       { roleId: roleId('admin'), action: 'picklist.cancel' },
       { roleId: roleId('ppic'), action: 'picklist.issue' },
       { roleId: roleId('ppic'), action: 'picklist.cancel' },
+      { roleId: roleId('admin'), action: 'picklist.override' },
+      { roleId: roleId('ppic'), action: 'picklist.override' },
       /*
        * Membaca picklist pun butuh izin, bukan sekadar token yang sah. Tanpa
        * baris-baris ini, token device scanner yang berumur setahun ikut bisa
@@ -69,15 +106,20 @@ async function main() {
       { roleId: roleId('supplier'), action: 'picklist.read' },
       // F-30: konfirmasi kirim hanya oleh akun supplier (6.3.4: setelah SHIPPED lewat PPIC).
       { roleId: roleId('supplier'), action: 'picklist.ship' },
+      // Supplier mengelola atribut kemasan vendor part-nya sendiri (back no, rak, tipe box).
+      { roleId: roleId('supplier'), action: 'vendorPart.self' },
+      { roleId: roleId('admin'), action: 'receipt.read' },
+      { roleId: roleId('ppic'), action: 'receipt.read' },
+      { roleId: roleId('warehouse'), action: 'receipt.read' },
       // Sesi scan kedatangan (F-34–F-37): operator gudang, admin sebagai cadangan.
       { roleId: roleId('warehouse'), action: 'receipt.open' },
       { roleId: roleId('warehouse'), action: 'receipt.scan' },
       { roleId: roleId('warehouse'), action: 'receipt.close' },
-      { roleId: roleId('warehouse'), action: 'receipt.cancel' },
       { roleId: roleId('admin'), action: 'receipt.open' },
       { roleId: roleId('admin'), action: 'receipt.scan' },
       { roleId: roleId('admin'), action: 'receipt.close' },
       { roleId: roleId('admin'), action: 'receipt.cancel' },
+      { roleId: roleId('ppic'), action: 'receipt.cancel' },
       // Pemantauan dan kontrol outbox SAP (F-46–F-48).
       { roleId: roleId('admin'), action: 'outbox.read' },
       { roleId: roleId('admin'), action: 'outbox.collect' },
@@ -98,6 +140,9 @@ async function main() {
       // F-42: penyesuaian stok WH manual oleh PPIC (admin sebagai cadangan).
       { roleId: roleId('admin'), action: 'stock.adjust' },
       { roleId: roleId('ppic'), action: 'stock.adjust' },
+      { roleId: roleId('admin'), action: 'stock.read' },
+      { roleId: roleId('ppic'), action: 'stock.read' },
+      { roleId: roleId('warehouse'), action: 'stock.read' },
       // F-10–F-12: pemantauan MES serta jalur push manual saat integrasi ditest.
       { roleId: roleId('admin'), action: 'mes.read' },
       { roleId: roleId('admin'), action: 'mes.write' },
@@ -107,29 +152,80 @@ async function main() {
       { roleId: roleId('ppic'), action: 'consumption.push' },
       { roleId: roleId('admin'), action: 'queue.write' },
       { roleId: roleId('ppic'), action: 'queue.write' },
+      { roleId: roleId('admin'), action: 'realtime.read' },
+      { roleId: roleId('ppic'), action: 'realtime.read' },
+      { roleId: roleId('warehouse'), action: 'realtime.read' },
     ],
   );
+  // F-40 menetapkan pembatalan receipt untuk PPIC; hapus grant lama yang
+  // sempat diberikan ke warehouse pada seed versi awal.
+  await db.delete(permissions).where(and(
+    eq(permissions.roleId, roleId('warehouse')),
+    eq(permissions.action, 'receipt.cancel'),
+  ));
 
   // ── User admin ──────────────────────────────────────────────────────────
   const existingAdmin = await db.select().from(users).where(eq(users.npk, 'ADMIN')).limit(1);
   if (existingAdmin.length === 0) {
+    const adminPassword = process.env.ADMIN_INITIAL_PASSWORD?.trim()
+      || (process.env.NODE_ENV === 'production' ? '' : 'admin123');
+    if (process.env.NODE_ENV === 'production' && (adminPassword.length < 15 || bcryptByteLength(adminPassword) > 72)) {
+      throw new Error('seed: ADMIN_INITIAL_PASSWORD wajib 15–72 byte di produksi');
+    }
     await db.insert(users).values({
       npk: 'ADMIN',
       name: 'Administrator',
       email: null,
       // Ganti setelah login pertama.
-      passwordHash: await bcrypt.hash('admin123', 10),
+      passwordHash: await bcrypt.hash(adminPassword, Number(process.env.BCRYPT_ROUNDS ?? 12)),
       roleId: adminRole.id,
       plantId: plant.id,
     });
-    console.log('[seed]   + user ADMIN (password: admin123)');
+    console.log(process.env.NODE_ENV === 'production'
+      ? '[seed]   + user ADMIN (password dari ADMIN_INITIAL_PASSWORD)'
+      : `[seed]   + user ADMIN (password: ${adminPassword})`);
+  }
+
+  // Monitor receiving memakai kredensial perangkat, terpisah dari sesi user.
+  // Produksi hanya membuatnya bila token diisi eksplisit; demo mendapat token
+  // sederhana agar alur pairing bisa langsung diuji.
+  const displayToken = process.env.DISPLAY_DEVICE_TOKEN?.trim()
+    || (process.env.NODE_ENV !== 'production' && process.env.SEED_DEMO === 'on'
+      ? 'monitor123'
+      : '');
+  if (displayToken) {
+    if (process.env.NODE_ENV === 'production' && (displayToken.length < 32 || bcryptByteLength(displayToken) > 72))
+      throw new Error('seed: DISPLAY_DEVICE_TOKEN wajib 32–72 byte di produksi');
+    const displayCode = process.env.DISPLAY_DEVICE_CODE?.trim() || 'RECEIVING-TV-01';
+    const existingDisplay = await db.select({ id: devices.id })
+      .from(devices).where(eq(devices.code, displayCode)).limit(1);
+    if (!existingDisplay[0]) {
+      await db.insert(devices).values({
+        code: displayCode,
+        name: 'Monitor Receiving',
+        plantId: plant.id,
+        kind: 'MACHINE_PANEL',
+        tokenHash: await bcrypt.hash(displayToken, Number(process.env.BCRYPT_ROUNDS ?? 12)),
+      });
+      console.log(`[seed]   + device ${displayCode}`);
+    }
   }
 
   // ── Master contoh (F-01, F-02, F-04) ────────────────────────────────────
   // Demo selalu opt-in agar seed produksi tidak menyisipkan master/PO contoh.
   if (process.env.SEED_DEMO === 'on') {
-    await seedMasterContoh();
-    await seedAkunSupplier(plant.id, roleId('supplier'));
+    await seedMasterContoh(plant.id);
+    const internalPassword = process.env.DEMO_INTERNAL_PASSWORD?.trim()
+      || (process.env.NODE_ENV === 'production' ? '' : 'user123');
+    const supplierPassword = process.env.DEMO_SUPPLIER_PASSWORD?.trim()
+      || (process.env.NODE_ENV === 'production' ? '' : 'supplier123');
+    if (process.env.NODE_ENV === 'production' && (internalPassword.length < 15 || bcryptByteLength(internalPassword) > 72))
+      throw new Error('seed: DEMO_INTERNAL_PASSWORD wajib 15–72 byte untuk demo produksi');
+    if (process.env.NODE_ENV === 'production' && (supplierPassword.length < 15 || bcryptByteLength(supplierPassword) > 72))
+      throw new Error('seed: DEMO_SUPPLIER_PASSWORD wajib 15–72 byte untuk demo produksi');
+    const rounds = Number(process.env.BCRYPT_ROUNDS ?? 12);
+    await seedAkunInternal(plant.id, roleId, await bcrypt.hash(internalPassword, rounds));
+    await seedAkunSupplier(roleId('supplier'), await bcrypt.hash(supplierPassword, rounds));
   } else {
     console.log('[seed]   data demo dilewati (aktifkan dengan SEED_DEMO=on)');
   }
@@ -138,34 +234,93 @@ async function main() {
   await closeDb();
 }
 
+/** Satu akun uji untuk setiap role internal selain admin yang sudah dibuat di atas. */
+async function seedAkunInternal(
+  plantId: number,
+  roleId: (name: string) => number,
+  passwordHash: string,
+): Promise<void> {
+  await insertMissing('users', users, 'npk', [
+    { npk: 'PPIC01', name: 'PPIC Demo', passwordHash, roleId: roleId('ppic'), plantId },
+    { npk: 'GUDANG01', name: 'Warehouse Demo', passwordHash, roleId: roleId('warehouse'), plantId },
+    { npk: 'PRODUKSI01', name: 'Produksi Demo', passwordHash, roleId: roleId('produksi'), plantId },
+  ]);
+}
+
 /**
- * Akun portal untuk supplier contoh pertama.
- *
- * Supplier masuk dengan email, bukan NPK; NPK tetap diisi karena kolomnya NOT
- * NULL dan unik — dipakai kode vendor supaya tetap punya arti di jejak audit.
- * Password contoh sama polanya dengan admin: ganti setelah login pertama.
+ * Satu akun portal untuk setiap vendor. Login selalu berupa email yang mudah
+ * ditebak dari kode vendor, sementara email kontak pada TM_VENDOR tidak diubah.
  */
-async function seedAkunSupplier(plantId: number, supplierRoleId: number): Promise<void> {
+async function seedAkunSupplier(supplierRoleId: number, passwordHash: string): Promise<void> {
   const db = getDb();
-  const demoVendors = await db
-    .select({ id: vendors.id, name: vendors.name, email: vendors.email, no: vendors.sapVendorNo })
-    .from(vendors)
-    .where(inArray(vendors.sapVendorNo, ['0000100231', '0000100544']));
-  for (const vendor of demoVendors) {
-    if (!vendor.email) continue;
-    const ada = await db.select().from(users).where(eq(users.email, vendor.email)).limit(1);
-    if (ada.length > 0) continue;
+  const vendorRows = await db.select({
+    id: vendors.id,
+    name: vendors.name,
+    plantId: vendors.plantId,
+    scheduleCode: vendors.scheduleCode,
+    sapVendorNo: vendors.sapVendorNo,
+  }).from(vendors);
+  const userRows = await db.select().from(users);
+  const codes = vendorRows.map((vendor) => vendorLoginCode(vendor));
+  if (new Set(codes).size !== codes.length)
+    throw new Error('seed: kode login vendor bentrok setelah dinormalisasi');
+
+  const seededByVendor = new Map(userRows
+    .filter((user) => user.vendorId != null && user.npk.startsWith('SUP-'))
+    .map((user) => [user.vendorId!, user]));
+  const emailOwners = new Map(userRows.filter((user) => user.email).map((user) => [user.email!.toLowerCase(), user]));
+  let inserted = 0;
+  let updated = 0;
+
+  for (let index = 0; index < vendorRows.length; index += 1) {
+    const vendor = vendorRows[index]!;
+    const email = `${codes[index]}@aiia.co.id`;
+    const emailOwner = emailOwners.get(email);
+    if (emailOwner && emailOwner.vendorId !== vendor.id)
+      throw new Error(`seed: email vendor ${email} sudah dipakai user lain`);
+
+    const seeded = emailOwner ?? seededByVendor.get(vendor.id);
+    if (seeded) {
+      // Pertahankan password yang mungkin sudah diganti, tetapi rapikan akun
+      // hasil seed lama ke identitas vendor dan pola email terbaru.
+      await db.update(users).set({
+        name: vendor.name,
+        email,
+        roleId: supplierRoleId,
+        plantId: vendor.plantId,
+        vendorId: vendor.id,
+      }).where(eq(users.id, seeded.id));
+      updated += 1;
+      continue;
+    }
+
     await db.insert(users).values({
-      npk: `SUP-${vendor.no}`,
+      npk: `SUP-${vendor.id}`,
       name: vendor.name,
-      email: vendor.email,
-      passwordHash: await bcrypt.hash('supplier123', 10),
+      email,
+      passwordHash,
       roleId: supplierRoleId,
-      plantId,
+      plantId: vendor.plantId,
       vendorId: vendor.id,
     });
-    console.log(`[seed]   + akun supplier ${vendor.email} (password: supplier123)`);
+    inserted += 1;
   }
+  console.log(`[seed]   ${vendorRows.length} akun supplier disinkronkan (${inserted} baru, ${updated} diperbarui)`);
+}
+
+function vendorLoginCode(vendor: {
+  id: number;
+  scheduleCode: string | null;
+  sapVendorNo: string | null;
+}): string {
+  const normalized = (vendor.scheduleCode || vendor.sapVendorNo || `vendor_${vendor.id}`)
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 64);
+  return normalized || `vendor_${vendor.id}`;
 }
 
 /**
@@ -177,18 +332,20 @@ async function seedAkunSupplier(plantId: number, supplierRoleId: number): Promis
  * karena line tanpa PO item tidak boleh terbit (6.6.1, F-18) — layar picklist
  * mustahil dicoba sebelum gateway SAP ada. Hapus blok PO begitu sap-sync jalan.
  */
-async function seedMasterContoh(): Promise<void> {
+async function seedMasterContoh(plantId: number): Promise<void> {
   const db = getDb();
 
   await insertMissing('vendors', vendors, 'sapVendorNo', [
     {
       sapVendorNo: '0000100231',
+      plantId,
       name: 'PT Sinar Logam Presisi',
       address: 'Kawasan Industri Jababeka II Blok C-14, Cikarang',
       email: 'ppc@sinarlogam.co.id',
     },
     {
       sapVendorNo: '0000100544',
+      plantId,
       name: 'PT Karya Rubber Nusantara',
       address: 'Jl. Raya Narogong KM 12, Bekasi',
       email: 'sales@karyarubber.co.id',
@@ -348,6 +505,184 @@ function mustFind<T>(rows: T[], pred: (row: T) => boolean, label: string): T {
   const found = rows.find(pred);
   if (!found) throw new Error(`seed: ${label} tidak ditemukan`);
   return found;
+}
+
+/** Snapshot jadwal riil boleh diperbaiki lalu di-seed ulang tanpa menggandakan slot. */
+async function syncDeliverySchedules(values: Array<typeof deliverySchedules.$inferInsert>): Promise<void> {
+  const db = getDb();
+  const existing = await db.select({ id: deliverySchedules.id, sourceKey: deliverySchedules.sourceKey })
+    .from(deliverySchedules);
+  const byKey = new Map(existing.map((row) => [row.sourceKey, row.id]));
+  let inserted = 0;
+  for (const value of values) {
+    const id = byKey.get(value.sourceKey);
+    if (id) {
+      await db.update(deliverySchedules).set({ ...value, isActive: true }).where(eq(deliverySchedules.id, id));
+    } else {
+      await db.insert(deliverySchedules).values(value);
+      inserted += 1;
+    }
+  }
+  console.log(`[seed]   ${values.length} jadwal receiving disinkronkan (${inserted} baru)`);
+}
+
+type SupplierSeedRow = (typeof ALL_SUPPLIERS)[number] & { plantId: number };
+
+/**
+ * Workbook supplier adalah sumber master operasional. SUPPLIER LIST lama tidak
+ * memuat nomor SAP, sedangkan daftar ELECTRIC membawa kode 7D yang langsung
+ * dipakai dan diaktifkan. Sinkron ulang hanya menimpa kolom milik workbook.
+ */
+async function syncSupplierListVendors(
+  values: readonly SupplierSeedRow[],
+  legacyUnitPlantId: number,
+): Promise<Map<string, number>> {
+  const db = getDb();
+  let existing = await db.select().from(vendors);
+  const withoutPlant = existing.filter((row) => row.plantId === null);
+  for (const row of withoutPlant) {
+    await db.update(vendors).set({ plantId: legacyUnitPlantId }).where(eq(vendors.id, row.id));
+  }
+  if (withoutPlant.length > 0) existing = await db.select().from(vendors);
+
+  const bySource = new Map(existing.filter((row) => row.sourceKey).map((row) => [row.sourceKey!, row]));
+  const byPlantName = new Map(existing.map((row) => [`${row.plantId}\u0000${row.name.trim().toUpperCase()}`, row]));
+  const ids = new Map<string, number>();
+  let inserted = 0;
+
+  for (const row of values) {
+    const sourceValues = {
+      plantId: row.plantId,
+      name: row.name,
+      scheduleCode: row.scheduleCode,
+      truckStation: row.truckStation,
+      deliveryCycle: row.deliveryCycle,
+      truckType: row.truckType,
+      deliveryDays: row.deliveryDays,
+      deliveryDayLabel: row.deliveryDayLabel,
+      palletPerDelivery: row.palletPerDelivery,
+      loadingOperator: row.loadingOperator,
+      location: row.location,
+      sourceKey: row.sourceKey,
+    };
+    const authoritativeSapNo = 'sapVendorNo' in row ? row.sapVendorNo : undefined;
+    const matched = bySource.get(row.sourceKey)
+      ?? byPlantName.get(`${row.plantId}\u0000${row.name.trim().toUpperCase()}`);
+    if (matched) {
+      await db.update(vendors).set({
+        ...sourceValues,
+        ...(authoritativeSapNo ? { sapVendorNo: authoritativeSapNo, isActive: true } : {}),
+      }).where(eq(vendors.id, matched.id));
+      ids.set(row.sourceKey, matched.id);
+      continue;
+    }
+    const id = (await db.insert(vendors).values({
+      ...sourceValues,
+      sapVendorNo: authoritativeSapNo ?? null,
+      isActive: Boolean(authoritativeSapNo),
+    }).$returningId())[0]!.id;
+    ids.set(row.sourceKey, id);
+    inserted += 1;
+  }
+  console.log(`[seed]   ${values.length} supplier workbook disinkronkan (${inserted} baru)`);
+  return ids;
+}
+
+/** Mundurkan hari pengiriman sebanyak lead day kerja untuk memperoleh hari cutoff. */
+function cutoffWorkdays(deliveryDays: string, leadDays: number): string {
+  const result = deliveryDays.split(',').map((value) => {
+    let day = Number(value.trim());
+    if (!Number.isInteger(day) || day < 1 || day > 7) {
+      throw new Error(`seed: delivery day tidak valid: ${value}`);
+    }
+    for (let count = 0; count < leadDays; count += 1) {
+      do day = day === 1 ? 7 : day - 1;
+      while (day === 6 || day === 7);
+    }
+    return day;
+  });
+  return [...new Set(result)].sort((a, b) => a - b).join(',');
+}
+
+/**
+ * SUPPLIER LIST: DAY adalah hari pengiriman dan template waktunya masih perlu
+ * dilengkapi Admin. Workbook ELECTRIC: hari/jam shipping adalah cutoff yang
+ * sudah definitif, lead day 0, dan jam delivery menjadi arrival time.
+ */
+async function syncSupplierCutoffTemplates(
+  values: typeof ALL_SUPPLIERS,
+  supplierIds: ReadonlyMap<string, number>,
+): Promise<void> {
+  const db = getDb();
+  const existing = await db.select().from(vendorCutoffs);
+  const byVendor = new Map<number, typeof existing>();
+  for (const row of existing) {
+    const rows = byVendor.get(row.vendorId) ?? [];
+    rows.push(row);
+    byVendor.set(row.vendorId, rows);
+  }
+  let inserted = 0;
+  let scheduled = 0;
+  for (const row of values) {
+    const vendorId = supplierIds.get(row.sourceKey);
+    if (!vendorId) throw new Error(`seed: supplier ${row.sourceKey} tidak ditemukan`);
+    const cutoffs = byVendor.get(vendorId) ?? [];
+
+    // Workbook ELECTRIC menyediakan hari cutoff, jam shipping/cutoff, dan jam
+    // delivery secara eksplisit. `By Schedule` tidak diberi template 00:00
+    // supaya tidak pernah dianggap jadwal otomatis sungguhan.
+    if ('cutoffTime' in row) {
+      if (!row.cutoffTime || !row.arrivalTime || !row.deliveryDays) continue;
+      scheduled += 1;
+      const sourceKey = `${row.sourceKey}:CUTOFF`;
+      const matched = cutoffs.find((cutoff) => cutoff.sourceKey === sourceKey)
+        ?? cutoffs.find((cutoff) => cutoff.cutoffTime === row.cutoffTime);
+      const exactValues = {
+        vendorId,
+        cutoffTime: row.cutoffTime,
+        workdays: row.deliveryDays,
+        leadDays: 0,
+        arrivalTime: row.arrivalTime,
+        sourceKey,
+        isActive: true,
+      } as const;
+      if (matched) {
+        await db.update(vendorCutoffs).set(exactValues).where(eq(vendorCutoffs.id, matched.id));
+      } else {
+        await db.insert(vendorCutoffs).values(exactValues);
+        inserted += 1;
+      }
+      continue;
+    }
+
+    scheduled += 1;
+    if (cutoffs.length > 0) {
+      for (const cutoff of cutoffs) {
+        await db.update(vendorCutoffs)
+          .set({ workdays: cutoffWorkdays(row.deliveryDays, cutoff.leadDays) })
+          .where(eq(vendorCutoffs.id, cutoff.id));
+      }
+      continue;
+    }
+    const leadDays = 1;
+    await db.insert(vendorCutoffs).values({
+      vendorId,
+      cutoffTime: '00:00:00',
+      workdays: cutoffWorkdays(row.deliveryDays, leadDays),
+      leadDays,
+      arrivalTime: '00:00:00',
+      sourceKey: `${row.sourceKey}:CUTOFF`,
+      isActive: false,
+    });
+    inserted += 1;
+  }
+  console.log(
+    `[seed]   ${scheduled} cutoff disinkronkan (${inserted} baru; ${values.length - scheduled} supplier By Schedule)`,
+  );
+}
+
+function bcryptByteLength(value: string): number {
+  return new TextEncoder().encode(value).length;
 }
 
 main().catch(async (err) => {

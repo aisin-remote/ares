@@ -7,6 +7,7 @@ import type { EntityDef, MasterEntity } from '@ares/contracts';
 import { MasterForm, type RefOptions } from './master-form';
 import { setMasterActiveAction } from '@/app/(app)/master/actions';
 import { cn } from '../ui/cn';
+import { useFeedback } from '../ui/feedback-provider';
 
 type Row = Record<string, unknown> & { id: number };
 
@@ -47,8 +48,11 @@ export function MasterTable({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
+  const feedback = useFeedback();
 
-  const listFields = def.fields.filter((f) => listFieldNames ? listFieldNames.includes(f.name) : f.inList);
+  const listFields = def.fields.filter((f) =>
+    listFieldNames ? listFieldNames.includes(f.name) : f.inList,
+  );
   const canToggleActive = def.fields.some((f) => f.name === 'isActive');
 
   function openCreate() {
@@ -70,6 +74,11 @@ export function MasterTable({
       if (res.error) setError(res.error);
       else {
         setConfirmId(null);
+        feedback.success(
+          isActive
+            ? `${def.singular} berhasil dinonaktifkan`
+            : `${def.singular} berhasil diaktifkan`,
+        );
         router.refresh();
       }
     });
@@ -155,7 +164,9 @@ export function MasterTable({
                     <div className="flex items-center justify-end gap-1.5">
                       {confirmId === row.id ? (
                         <>
-                          <span className="mr-1 whitespace-nowrap text-[13px] text-ink-muted">{row.isActive === false ? 'Aktifkan?' : 'Nonaktifkan?'}</span>
+                          <span className="mr-1 whitespace-nowrap text-[13px] text-ink-muted">
+                            {row.isActive === false ? 'Aktifkan?' : 'Nonaktifkan?'}
+                          </span>
                           <button
                             type="button"
                             onClick={() => doToggleActive(row.id, row.isActive !== false)}
@@ -189,17 +200,19 @@ export function MasterTable({
                           >
                             <Pencil className="size-4" strokeWidth={1.8} aria-hidden />
                           </button>
-                          {canToggleActive ? <button
-                            type="button"
-                            onClick={() => {
-                              setError(null);
-                              setConfirmId(row.id);
-                            }}
-                            aria-label={`${row.isActive === false ? 'Aktifkan' : 'Nonaktifkan'} ${String(row.sapVendorNo ?? row.partNo ?? row.npk ?? row.id)}`}
-                            className="grid size-9 place-items-center rounded-full border border-line bg-card text-ink-muted transition-colors hover:border-ng/40 hover:text-ng"
-                          >
-                            <Power className="size-4" strokeWidth={1.8} aria-hidden />
-                          </button> : null}
+                          {canToggleActive ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setError(null);
+                                setConfirmId(row.id);
+                              }}
+                              aria-label={`${row.isActive === false ? 'Aktifkan' : 'Nonaktifkan'} ${String(row.sapVendorNo ?? row.partNo ?? row.npk ?? row.id)}`}
+                              className="grid size-9 place-items-center rounded-full border border-line bg-card text-ink-muted transition-colors hover:border-ng/40 hover:text-ng"
+                            >
+                              <Power className="size-4" strokeWidth={1.8} aria-hidden />
+                            </button>
+                          ) : null}
                         </>
                       )}
                     </div>
@@ -224,23 +237,18 @@ export function MasterTable({
   );
 }
 
-function renderCell(
-  name: string,
-  value: unknown,
-  kind: string,
-  labels?: Record<string, string>,
-) {
+function renderCell(name: string, value: unknown, kind: string, labels?: Record<string, string>) {
   if (kind === 'boolean') {
     const on = Boolean(value);
     return (
       <span
         className={cn(
-          'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold',
+          'inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1 text-[12px] font-semibold',
           on ? 'bg-ok/10 text-ok' : 'bg-line text-ink-muted',
         )}
       >
         <span className={cn('size-1.5 rounded-full', on ? 'bg-ok' : 'bg-ink-muted')} />
-        {on ? 'Aktif' : 'Non-aktif'}
+        {on ? 'Aktif' : 'Nonaktif'}
       </span>
     );
   }
@@ -260,6 +268,17 @@ function renderCell(
         {String(value)}
       </span>
     );
+  }
+
+  if (name === 'workdays' || name === 'deliveryDays') {
+    const dayNames = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
+    const days = String(value)
+      .split(',')
+      .map((day) => dayNames[Number(day.trim()) - 1])
+      .filter(Boolean);
+    return days.length === 5 && days.join(',') === dayNames.slice(0, 5).join(',')
+      ? 'Setiap hari'
+      : days.join(', ');
   }
 
   return String(value);

@@ -7,6 +7,7 @@ import { RealtimeModule } from './realtime/realtime.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { PermissionsGuard } from './auth/permissions.guard';
+import { RateLimitGuard } from './auth/rate-limit.guard';
 import { PicklistModule } from './picklist/picklist.module';
 import { ReceivingModule } from './receiving/receiving.module';
 import { NotifyModule } from './notify/notify.module';
@@ -41,6 +42,8 @@ import { loadEnv } from './config/env';
   ],
   controllers: [HealthController],
   providers: [
+    // Dijalankan paling awal supaya brute force berhenti sebelum bcrypt/JWT/DB.
+    { provide: APP_GUARD, useClass: RateLimitGuard },
     // Semua endpoint butuh token kecuali yang ditandai @Public().
     // Default aman: endpoint baru tidak akan tidak sengaja terbuka.
     { provide: APP_GUARD, useClass: JwtAuthGuard },

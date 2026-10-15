@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { ConflictException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import ExcelJS from 'exceljs';
 import {
   getDb,
   closeDb,
@@ -19,13 +20,14 @@ import {
   poLines,
   picklistHeaders,
   picklistLines,
+  receiptHeaders,
   kanbans,
   kanbanEvents,
   auditLogs,
   orderQueues,
   queueAdjustments,
 } from '@ares/db';
-import { parseScanCode } from '@ares/domain';
+import { formatScanCode, orderPlantInitial, orderSheetDisplayNo, parseScanCode } from '@ares/domain';
 import { PicklistService } from './picklist.service';
 import { SequenceService } from '../common/sequence.service';
 import type { QueueService } from '../queue/queue.service';
@@ -48,6 +50,7 @@ const svc = new PicklistService(db, new SequenceService(), queue);
 const stamp = Date.now().toString().slice(-10);
 
 let actor: { userId: number; plantId: number };
+let plantCode: string;
 let vendorId: number;
 let partA: number;
 let partB: number;
@@ -56,16 +59,17 @@ let vpB: number;
 
 beforeAll(async () => {
   // Pabrik dan user dari seed (pnpm db:seed); CREATED_BY_ID / USER_ID adalah FK ke TM_USER.
-  const [plant] = await db.select({ id: plants.id }).from(plants).limit(1);
+  const [plant] = await db.select({ id: plants.id, code: plants.code }).from(plants).limit(1);
   const [user] = await db.select({ id: users.id }).from(users).limit(1);
   if (!plant || !user)
     throw new Error('Jalankan `pnpm db:seed` dulu: butuh satu pabrik dan satu user');
   actor = { userId: user.id, plantId: plant.id };
+  plantCode = plant.code;
 
   vendorId = (
     await db
       .insert(vendors)
-      .values({ sapVendorNo: `T${stamp}`, name: 'Supplier uji' })
+      .values({ sapVendorNo: `T${stamp}`, plantId: actor.plantId, name: 'Supplier uji' })
       .$returningId()
   )[0]!.id;
   partA = (
@@ -105,7 +109,7 @@ beforeAll(async () => {
   )[0]!.id;
   await db
     .insert(poLines)
-    .values({ poId, item: '00010', partId: partA, openQty: 1000, syncedAt: new Date() });
+    .values({ poId, item: '00010', partId: partA, openQty: 1_000_000, syncedAt: new Date() });
 });
 
 afterAll(async () => {
@@ -157,10 +161,16 @@ describe('PicklistService.issueManual (F-17, F-21, F-22, 6.6.1)', () => {
       actor,
     );
 
-    expect(out.picklistNo).toMatch(/^PL-\d{6}-\d{4}$/);
+    expect(out.picklistNo).toMatch(new RegExp(`^${orderPlantInitial(plantCode)}260925\\d{3}00$`));
+    expect(out.publicId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    await expect(svc.resolveId(out.publicId, null, actor.plantId)).resolves.toBe(out.id);
+    // URL numerik lama tetap diterima selama masa transisi.
+    await expect(svc.resolveId(String(out.id), null, actor.plantId)).resolves.toBe(out.id);
     expect(out).toMatchObject({ revision: 0, lineCount: 1, kanbanCount: 3 });
     // Nomor harus terbaca kembali sebagai barcode picklist (8.3).
-    expect(parseScanCode(`ARES:P:${out.picklistNo}-0`)).toEqual({
+    expect(parseScanCode(formatScanCode({ kind: 'PICKLIST', no: out.picklistNo, revision: 0 }))).toEqual({
       kind: 'PICKLIST',
       no: out.picklistNo,
       revision: 0,
@@ -202,7 +212,35 @@ describe('PicklistService.issueManual (F-17, F-21, F-22, 6.6.1)', () => {
     expect(audit?.action).toBe('ISSUE');
   });
 
-  it('nomor berurutan per hari dan serial kanban urut lintas line', async () => {
+  it('PPIC dapat upload order ke supplier plant lain; nomor dan header tetap memakai plant PPIC', async () => {
+    const book = new ExcelJS.Workbook();
+    const sheet = book.addWorksheet('ORDER_MANUAL');
+    sheet.getCell('B3').value = `T${stamp}`;
+    sheet.getCell('B4').value = '2026-09-25';
+    sheet.getCell('B5').value = '10:00';
+    sheet.getRow(8).values = ['NOMOR_MATERIAL_SAP', 'JUMLAH_BOX'];
+    sheet.getRow(9).values = [`TA-${stamp}`, 2];
+
+    const supplierPlant = (await db.select({ id: plants.id }).from(plants))
+      .find((plant) => plant.id !== actor.plantId);
+    if (!supplierPlant) throw new Error('Test membutuhkan plant kedua');
+    await db.update(vendors).set({ plantId: supplierPlant.id }).where(eq(vendors.id, vendorId));
+    try {
+      const out = await svc.importManualExcel(Buffer.from(await book.xlsx.writeBuffer()), actor);
+      const detail = await svc.get(out.id, null);
+      const [header] = await db.select({ plantId: picklistHeaders.plantId })
+        .from(picklistHeaders).where(eq(picklistHeaders.id, out.id));
+      expect(out.picklistNo).toMatch(new RegExp(`^${orderPlantInitial(plantCode)}260925\\d{3}00$`));
+      expect(out).toMatchObject({ lineCount: 1, kanbanCount: 2 });
+      expect(header?.plantId).toBe(actor.plantId);
+      expect(detail).toMatchObject({ type: 'MANUAL', deliveryDate: '2026-09-25', arrivalTime: '14:00:00' });
+      expect(detail.lines[0]).toMatchObject({ boxOrdered: 2, pcs: 200 });
+    } finally {
+      await db.update(vendors).set({ plantId: actor.plantId }).where(eq(vendors.id, vendorId));
+    }
+  });
+
+  it('nomor berurutan per plant dan tanggal delivery', async () => {
     const a = await svc.issueManual(
       { vendorId, deliveryDate: '2026-09-25', lines: [{ vendorPartId: vpA, boxes: 1 }] },
       actor,
@@ -211,8 +249,9 @@ describe('PicklistService.issueManual (F-17, F-21, F-22, 6.6.1)', () => {
       { vendorId, deliveryDate: '2026-09-25', lines: [{ vendorPartId: vpA, boxes: 2 }] },
       actor,
     );
-    expect(Number(b.picklistNo.slice(-4))).toBe(Number(a.picklistNo.slice(-4)) + 1);
-    expect(b.picklistNo.slice(0, -4)).toBe(a.picklistNo.slice(0, -4));
+    expect(Number(b.picklistNo.slice(7, 10))).toBe(Number(a.picklistNo.slice(7, 10)) + 1);
+    expect(b.picklistNo.slice(0, 7)).toBe(a.picklistNo.slice(0, 7));
+    expect(b.picklistNo.slice(-2)).toBe('00');
   });
 
   it('satu part tanpa PO item aktif → seluruh order ditolak, tidak ada yang tersimpan (F-18)', async () => {
@@ -252,9 +291,43 @@ describe('PicklistService.issueManual (F-17, F-21, F-22, 6.6.1)', () => {
       ),
     ).rejects.toBeInstanceOf(UnprocessableEntityException);
   });
+
+  it('outstanding aktif + pcs baru melebihi OPEN_QTY → seluruh order ditolak (F-19)', async () => {
+    await db.update(poLines).set({ openQty: 1 }).where(eq(poLines.partId, partA));
+    const before = await db.select({ value: count() }).from(picklistHeaders)
+      .where(eq(picklistHeaders.vendorId, vendorId));
+    await expect(svc.issueManual(
+      { vendorId, deliveryDate: '2026-09-25', lines: [{ vendorPartId: vpA, boxes: 1 }] },
+      actor,
+    )).rejects.toSatisfy((error: unknown) =>
+      error instanceof UnprocessableEntityException
+      && String((error as Error).message).includes('PO_OPEN_QTY'));
+    await db.update(poLines).set({ openQty: 1_000_000 }).where(eq(poLines.partId, partA));
+    const after = await db.select({ value: count() }).from(picklistHeaders)
+      .where(eq(picklistHeaders.vendorId, vendorId));
+    expect(Number(after[0]?.value)).toBe(Number(before[0]?.value));
+  });
 });
 
 describe('PicklistService.issueAutomatic (F-16, F-18, 6.1–6.2)', () => {
+  it('DAY dan ETA jadwal receiving menentukan tanggal picklist otomatis', async () => {
+    await db.update(vendors).set({ deliveryDays: '5' }).where(eq(vendors.id, vendorId));
+    const cutoffAt = new Date('2026-06-08T03:00:00Z'); // Senin; lead time minimum Selasa.
+    await db.insert(orderQueues).values({ vendorPartId: vpA, cutoffAt, pcs: 100 });
+
+    const result = await svc.issueAutomatic(vendorId, cutoffAt, actor);
+    expect(result.status).toBe('CREATED');
+    if (result.status !== 'CREATED') throw new Error('Picklist otomatis tidak terbit');
+    const detail = await svc.get(result.id, null);
+    expect(detail).toMatchObject({
+      type: 'AUTO',
+      deliveryDate: '2026-06-12',
+      arrivalTime: '14:00:00',
+    });
+
+    await db.update(vendors).set({ deliveryDays: null }).where(eq(vendors.id, vendorId));
+  });
+
   it('dua antrean satu cutoff → satu picklist; sisa diteruskan; retry idempoten', async () => {
     const [po] = await db
       .select({ id: poHeaders.id })
@@ -265,7 +338,7 @@ describe('PicklistService.issueAutomatic (F-16, F-18, 6.1–6.2)', () => {
       poId: po!.id,
       item: '00020',
       partId: partB,
-      openQty: 1000,
+      openQty: 1_000_000,
       syncedAt: new Date(),
     });
 
@@ -351,6 +424,20 @@ describe('PicklistService.issueAutomatic (F-16, F-18, 6.1–6.2)', () => {
     await db.delete(orderQueues).where(eq(orderQueues.id, queue!.id));
     await db.delete(vendorParts).where(eq(vendorParts.id, noPoVp));
     await db.delete(parts).where(eq(parts.id, noPoPart));
+  });
+
+  it('OPEN_QTY tidak cukup → antrean cutoff tetap OPEN dengan alasan PO_OPEN_QTY (F-19)', async () => {
+    await db.update(poLines).set({ openQty: 1 }).where(eq(poLines.partId, partA));
+    const cutoffAt = new Date('2026-06-04T03:00:00Z');
+    await db.insert(orderQueues).values({ vendorPartId: vpA, cutoffAt, pcs: 100 });
+    const result = await svc.issueAutomatic(vendorId, cutoffAt, actor);
+    expect(result).toMatchObject({ status: 'BLOCKED', queueCount: 1 });
+    const [queueRow] = await db.select().from(orderQueues).where(and(
+      eq(orderQueues.vendorPartId, vpA), eq(orderQueues.cutoffAt, cutoffAt),
+    ));
+    expect(queueRow).toMatchObject({ status: 'OPEN' });
+    expect(queueRow?.blockedReason).toMatch(/^PO_OPEN_QTY/);
+    await db.update(poLines).set({ openQty: 1_000_000 }).where(eq(poLines.partId, partA));
   });
 });
 
@@ -473,6 +560,22 @@ describe('scope vendor (aturan repo 9)', () => {
   });
 });
 
+describe('scope pabrik', () => {
+  it('ID benar tetap tidak bisa dibaca, didaftar, atau dibatalkan dari pabrik lain', async () => {
+    const issued = await svc.issueManual(
+      { vendorId, deliveryDate: '2026-09-25', lines: [{ vendorPartId: vpA, boxes: 1 }] },
+      actor,
+    );
+    const plantLain = actor.plantId + 100000;
+    await expect(svc.get(issued.id, null, plantLain)).rejects.toBeInstanceOf(NotFoundException);
+    const list = await svc.list({ page: 1, perPage: 50, dir: 'asc', vendorId }, null, plantLain);
+    expect(list.data).toHaveLength(0);
+    await expect(svc.cancel(issued.id, 'lintas pabrik', { ...actor, plantId: plantLain }, null))
+      .rejects.toBeInstanceOf(NotFoundException);
+    expect((await svc.get(issued.id, null, actor.plantId)).status).toBe('ISSUED');
+  });
+});
+
 describe('PicklistService.confirmShipment (F-30, 6.3, F-25)', () => {
   const setPolicy = (policy: 'CARRY_OVER' | 'REVISION') =>
     db
@@ -515,7 +618,7 @@ describe('PicklistService.confirmShipment (F-30, 6.3, F-25)', () => {
     expect(out).toMatchObject({
       status: 'SHIPPED',
       short: false,
-      policy: 'CARRY_OVER',
+      policy: 'REVISION',
       revision: null,
     });
     expect(out.lines).toEqual([
@@ -614,9 +717,22 @@ describe('PicklistService.confirmShipment (F-30, 6.3, F-25)', () => {
         }),
       ]),
     );
+
+    // Bila recovery pertama masih kurang, base order tetap dan RR naik menjadi 02.
+    const out2 = await svc.confirmShipment(
+      rev1.id,
+      { lines: [{ picklistLineId: rev1.lines[0]!.id, boxShipped: 1 }] },
+      { vendorId, userId: actor.userId },
+    );
+    expect(out2.revision).toMatchObject({ revision: 2, lineCount: 1 });
+    const rev2 = await svc.get(out2.revision!.id, null);
+    expect(rev2).toMatchObject({ picklistNo: issued.picklistNo, revision: 2, status: 'ISSUED' });
+    expect(orderSheetDisplayNo(rev2.picklistNo, rev2.revision)).toBe(
+      `${issued.picklistNo.slice(0, -2)}02`,
+    );
   });
 
-  it('kurang, kebijakan CARRY_OVER → kanban sisa CANCELLED, line SHORT, tanpa revisi', async () => {
+  it('setting lama CARRY_OVER diabaikan: kekurangan tetap menjadi recovery RR 01', async () => {
     await setPolicy('CARRY_OVER');
     const issued = await svc.issueManual(
       { vendorId, deliveryDate: '2026-09-25', lines: [{ vendorPartId: vpA, boxes: 3 }] },
@@ -629,31 +745,25 @@ describe('PicklistService.confirmShipment (F-30, 6.3, F-25)', () => {
       { lines: [{ picklistLineId: lineId, boxShipped: 2 }] },
       { vendorId, userId: actor.userId },
     );
-    expect(out).toMatchObject({ short: true, policy: 'CARRY_OVER', revision: null });
+    expect(out).toMatchObject({ short: true, policy: 'REVISION' });
+    expect(out.revision).toMatchObject({ revision: 1, lineCount: 1 });
+    expect(out.carryOver).toEqual([]);
 
     const after = await svc.get(issued.id, null);
     expect(after.lines[0]).toMatchObject({ boxShipped: 2, status: 'SHORT' });
-    expect(after.lines[0]!.kanbans.map((k) => k.status)).toEqual([
-      'SHIPPED',
-      'SHIPPED',
-      'CANCELLED',
-    ]);
+    expect(after.lines[0]!.kanbans.map((k) => k.status)).toEqual(['SHIPPED', 'SHIPPED']);
     const [rev1] = await db
-      .select({ id: picklistHeaders.id })
+      .select({ id: picklistHeaders.id, revision: picklistHeaders.revision })
       .from(picklistHeaders)
       .where(
         and(eq(picklistHeaders.picklistNo, issued.picklistNo), eq(picklistHeaders.revision, 1)),
       );
-    expect(rev1).toBeUndefined();
-    expect(out.carryOver).toHaveLength(1);
-    const [queueRow] = await db.select().from(orderQueues)
-      .where(eq(orderQueues.id, out.carryOver[0]!.queueId));
-    expect(queueRow).toMatchObject({ pcs: 0, carryOverPcs: 100, status: 'OPEN' });
-    const adjustments = await db.select().from(queueAdjustments)
-      .where(eq(queueAdjustments.queueId, queueRow!.id));
-    expect(adjustments).toHaveLength(1);
-    expect(adjustments[0]).toMatchObject({ deltaPcs: 100 });
-    expect(adjustments[0]!.reason).toContain(issued.picklistNo);
+    expect(rev1).toMatchObject({ revision: 1 });
+    const recovery = await svc.get(rev1!.id, null);
+    expect(recovery.lines[0]).toMatchObject({ boxOrdered: 1 });
+    expect(orderSheetDisplayNo(recovery.picklistNo, recovery.revision)).toBe(
+      `${issued.picklistNo.slice(0, -2)}01`,
+    );
   });
 
   it('melebihi order → 422; vendor lain → 404; line tidak lengkap → 422', async () => {
@@ -685,5 +795,59 @@ describe('PicklistService.confirmShipment (F-30, 6.3, F-25)', () => {
     ).rejects.toBeInstanceOf(UnprocessableEntityException);
     // masih ISSUED — tidak ada yang berubah
     expect((await svc.get(issued.id, null)).status).toBe('ISSUED');
+  });
+});
+
+describe('PicklistService.overrideShipment (6.3.4)', () => {
+  it('PPIC mengoreksi BOX_SHIPPED dengan alasan, lalu perubahan terkunci setelah sesi scan dibuka', async () => {
+    await db.update(vendorCutoffs).set({ shortShipPolicy: 'CARRY_OVER' })
+      .where(eq(vendorCutoffs.vendorId, vendorId));
+    const issued = await svc.issueManual(
+      { vendorId, deliveryDate: '2026-09-25', lines: [{ vendorPartId: vpA, boxes: 3 }] },
+      actor,
+    );
+    const lineId = (await svc.get(issued.id, null)).lines[0]!.id;
+    await svc.confirmShipment(
+      issued.id,
+      { lines: [{ picklistLineId: lineId, boxShipped: 3 }] },
+      { vendorId, userId: actor.userId },
+    );
+
+    const result = await svc.overrideShipment(issued.id, {
+      reason: 'Satu box rusak sebelum truk berangkat',
+      lines: [{ picklistLineId: lineId, boxShipped: 2 }],
+    }, actor);
+    expect(result).toMatchObject({ id: issued.id, status: 'SHIPPED' });
+    expect(result.revision).toMatchObject({ revision: 1, lineCount: 1 });
+    const after = await svc.get(issued.id, null);
+    expect(after.lines[0]).toMatchObject({ boxShipped: 2, status: 'SHORT' });
+    expect(after.lines[0]!.kanbans.map((row) => row.status)).toEqual(['SHIPPED', 'SHIPPED']);
+    const recovery = await svc.get(result.revision!.id, null);
+    expect(recovery).toMatchObject({ picklistNo: issued.picklistNo, revision: 1 });
+    expect(recovery.lines[0]).toMatchObject({ boxOrdered: 1 });
+    expect(recovery.lines[0]!.kanbans.map((row) => row.status)).toEqual(['PRINTED']);
+    expect(orderSheetDisplayNo(recovery.picklistNo, recovery.revision)).toBe(
+      `${issued.picklistNo.slice(0, -2)}01`,
+    );
+    const audit = await db.select({ action: auditLogs.action, after: auditLogs.after })
+      .from(auditLogs).where(and(
+        eq(auditLogs.entity, 'TT_PICKLIST_H'),
+        eq(auditLogs.entityId, String(issued.id)),
+        eq(auditLogs.action, 'OVERRIDE_SHIPMENT'),
+      ));
+    expect(audit).toHaveLength(1);
+    expect(audit[0]!.after).toMatchObject({ reason: 'Satu box rusak sebelum truk berangkat' });
+
+    const receiptId = (await db.insert(receiptHeaders).values({
+      plantId: actor.plantId,
+      receiptNo: `TEST-OVERRIDE-${stamp}`,
+      picklistId: issued.id,
+      status: 'OPEN',
+    }).$returningId())[0]!.id;
+    await expect(svc.overrideShipment(issued.id, {
+      reason: 'Coba setelah scan dibuka',
+      lines: [{ picklistLineId: lineId, boxShipped: 1 }],
+    }, actor)).rejects.toBeInstanceOf(ConflictException);
+    await db.delete(receiptHeaders).where(eq(receiptHeaders.id, receiptId));
   });
 });

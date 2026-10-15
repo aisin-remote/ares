@@ -1,11 +1,18 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { loginSchema, type LoginResponse } from '@ares/contracts';
+import {
+  loginSchema,
+  loginTotpSchema,
+  type LoginAttemptResponse,
+  type LoginResponse,
+} from '@ares/contracts';
 import { apiFetch, ApiRequestError } from '@/lib/api';
 import { setToken } from '@/lib/session';
 
 export interface LoginState {
+  stage?: 'TOTP';
+  mfaToken?: string;
   error?: string;
 }
 
@@ -17,7 +24,28 @@ export interface LoginState {
  * tetap di API. Server Action yang menjalankan proses lama akan menahan
  * request Next.js persis seperti controller PHP dulu.
  */
-export async function loginAction(_prev: LoginState, formData: FormData): Promise<LoginState> {
+export async function loginAction(prev: LoginState, formData: FormData): Promise<LoginState> {
+  if (prev.stage === 'TOTP') {
+    const parsed = loginTotpSchema.safeParse({
+      mfaToken: prev.mfaToken,
+      totpCode: formData.get('totpCode'),
+    });
+    if (!parsed.success) {
+      return { ...prev, error: parsed.error.issues[0]?.message ?? 'Kode tidak valid' };
+    }
+    try {
+      const response = await apiFetch<LoginResponse>('/auth/login/totp', {
+        method: 'POST',
+        body: JSON.stringify(parsed.data),
+        authenticated: false,
+      });
+      await setToken(response.accessToken);
+    } catch (error) {
+      return { ...prev, error: loginError(error) };
+    }
+    redirect('/dashboard');
+  }
+
   const parsed = loginSchema.safeParse({
     npk: formData.get('npk'),
     password: formData.get('password'),
@@ -28,16 +56,23 @@ export async function loginAction(_prev: LoginState, formData: FormData): Promis
   }
 
   try {
-    const res = await apiFetch<LoginResponse>('/auth/login', {
+    const res = await apiFetch<LoginAttemptResponse>('/auth/login', {
       method: 'POST',
       body: JSON.stringify(parsed.data),
       authenticated: false,
     });
+    if ('mfaRequired' in res) {
+      return { stage: 'TOTP', mfaToken: res.mfaToken };
+    }
     await setToken(res.accessToken);
   } catch (err) {
-    if (err instanceof ApiRequestError) return { error: err.message };
-    return { error: 'Tidak bisa menghubungi server API' };
+    return { error: loginError(err) };
   }
 
   redirect('/dashboard');
+}
+
+function loginError(error: unknown): string {
+  if (error instanceof ApiRequestError) return error.message;
+  return 'Tidak bisa menghubungi server API';
 }

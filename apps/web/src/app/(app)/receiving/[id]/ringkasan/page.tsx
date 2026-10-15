@@ -19,12 +19,16 @@ import { Table, Th, Td, Tr } from '@/components/ui/table';
 import { Reveal } from '@/components/motion/reveal';
 import { STATUS_LABEL, STATUS_TONE, jam, tanggal, waktu } from '@/components/picklist/status';
 import { cn } from '@/components/ui/cn';
+import { requirePermission } from '@/lib/session';
+import { orderSheetDisplayNo } from '@ares/domain';
 
 export const dynamic = 'force-dynamic';
 
 const OUTBOX_LABEL: Record<string, string> = {
   PENDING: 'Menunggu kirim ke SAP',
-  SENT: 'Terkirim ke SAP',
+  PROCESSING: 'Sedang dikirim',
+  STAGED: 'Masuk staging SAP',
+  POSTED: 'Berhasil diposting di SAP',
   FAILED: 'Gagal kirim ke SAP',
   HELD: 'Ditahan',
   SKIPPED: 'Tidak dikirim (tidak ada pcs)',
@@ -32,7 +36,9 @@ const OUTBOX_LABEL: Record<string, string> = {
 
 const OUTBOX_TONE: Record<string, string> = {
   PENDING: 'border-accent/40 bg-accent/10 text-accent',
-  SENT: 'border-ok/40 bg-ok/10 text-ok',
+  PROCESSING: 'border-live/40 bg-live/10 text-live',
+  STAGED: 'border-accent/40 bg-accent/10 text-accent',
+  POSTED: 'border-ok/40 bg-ok/10 text-ok',
   FAILED: 'border-ng/40 bg-ng/10 text-ng',
   HELD: 'border-warn/40 bg-warn/10 text-warn',
   SKIPPED: 'border-line text-ink-muted',
@@ -40,17 +46,17 @@ const OUTBOX_TONE: Record<string, string> = {
 
 /** Ringkasan satu receipt (6.5.3): apa yang diterima, apa yang hilang, dan nasib GR-nya. */
 export default async function ReceiptSummaryPage({ params }: { params: Promise<{ id: string }> }) {
+  const user = await requirePermission('receipt.read');
+  if (user.plantId == null) notFound();
   const { id } = await params;
-  const receiptId = Number(id);
-  if (!Number.isInteger(receiptId) || receiptId <= 0) notFound();
-
-  const r = await getReceiptDetail(receiptId);
+  const r = await getReceiptDetail(id, user.plantId);
   if (!r) notFound();
 
   const totalOrdered = r.lines.reduce((n, l) => n + l.boxOrdered, 0);
   const totalScanned = r.lines.reduce((n, l) => n + l.boxScanned, 0);
   const totalMissing = r.lines.reduce((n, l) => n + l.boxMissing, 0);
   const totalPcs = r.lines.reduce((n, l) => n + l.pcsReceived, 0);
+  const orderNo = orderSheetDisplayNo(r.picklistNo, r.revision);
 
   return (
     <>
@@ -65,7 +71,7 @@ export default async function ReceiptSummaryPage({ params }: { params: Promise<{
         actions={
           r.status === 'OPEN' ? (
             <Link
-              href={`/receiving/${r.id}`}
+              href={`/receiving/${r.publicId}`}
               className="inline-flex h-11 items-center gap-2 rounded-full bg-accent px-5 text-[14px] font-semibold text-white transition-colors hover:bg-accent-soft"
             >
               <ScanLine className="size-[18px]" strokeWidth={2.2} aria-hidden />
@@ -74,11 +80,11 @@ export default async function ReceiptSummaryPage({ params }: { params: Promise<{
           ) : (
             <>
               <Link
-                href={`/picklist/${r.picklistId}`}
+                href={`/picklist/${r.picklistPublicId}`}
                 className="inline-flex h-11 items-center gap-2 rounded-full border border-line bg-card px-5 text-[14px] font-semibold transition-colors hover:border-ink"
               >
                 <ClipboardList className="size-[18px]" strokeWidth={2} aria-hidden />
-                Picklist<span className="hidden sm:inline"> {r.picklistNo}</span>
+                Order Sheet<span className="hidden sm:inline"> {orderNo}</span>
               </Link>
               <Link
                 href="/sap"
@@ -105,7 +111,7 @@ export default async function ReceiptSummaryPage({ params }: { params: Promise<{
                     STATUS_TONE[r.picklistStatus] ?? 'border-line',
                   )}
                 >
-                  Picklist {STATUS_LABEL[r.picklistStatus] ?? r.picklistStatus}
+                  Order Sheet {STATUS_LABEL[r.picklistStatus] ?? r.picklistStatus}
                 </span>
                 {r.status === 'CLOSED' ? (
                   <span
@@ -161,7 +167,7 @@ export default async function ReceiptSummaryPage({ params }: { params: Promise<{
         <Card>
           <CardHeader
             icon={ClipboardList}
-            title="Line picklist"
+            title="Line Order Sheet"
             subtitle={
               totalMissing > 0
                 ? `${totalMissing} box belum datang — ditandai hilang, menunggu revisi atau cutoff berikutnya`

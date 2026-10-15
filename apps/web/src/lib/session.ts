@@ -1,8 +1,14 @@
 import 'server-only';
 import { cookies } from 'next/headers';
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { notFound, redirect } from 'next/navigation';
+import { cache } from 'react';
+import { authSessionResponseSchema } from '@ares/contracts';
 
-const COOKIE = 'ares_token';
+const COOKIE = process.env.NODE_ENV === 'production' ? '__Host-ares_token' : 'ares_token';
+const DISPLAY_COOKIE = process.env.NODE_ENV === 'production'
+  ? '__Host-ares_display_token'
+  : 'ares_display_token';
+const API = process.env.API_URL ?? 'http://127.0.0.1:3001';
 
 export interface SessionUser {
   id: number;
@@ -12,6 +18,7 @@ export interface SessionUser {
   plantId: number | null;
   /** Terisi untuk akun supplier; menentukan scope seluruh data portal. */
   vendorId: number | null;
+  permissions: string[];
 }
 
 /**
@@ -26,75 +33,61 @@ export async function getToken(): Promise<string | undefined> {
   return store.get(COOKIE)?.value;
 }
 
-export async function setToken(token: string, maxAgeSeconds = 8 * 3600): Promise<void> {
+export async function setToken(token: string, maxAgeSeconds?: number): Promise<void> {
   const store = await cookies();
   store.set(COOKIE, token, {
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
     path: '/',
-    maxAge: maxAgeSeconds,
+    maxAge: maxAgeSeconds ?? tokenMaxAge(token, 8 * 3600),
   });
 }
 
 export async function clearToken(): Promise<void> {
   const store = await cookies();
-  store.delete(COOKIE);
+  // Cookie __Host- hanya boleh diubah dengan Secure + Path=/; delete() tidak
+  // menyertakan atribut itu sehingga browser mempertahankan sesi produksi.
+  store.set(COOKIE, '', {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: 0,
+  });
 }
 
-interface TokenPayload {
-  sub: number;
-  npk: string;
+export interface DisplaySession {
+  id: number;
+  code: string;
   name: string;
-  role: string | null;
-  plantId: number | null;
-  vendorId: number | null;
-  exp?: number;
+  plantId: number;
 }
 
-/**
- * Memverifikasi tanda tangan HS256 dengan JWT_SECRET yang sama seperti API.
- *
- * Ini bukan hiasan. Nilai `vendorId` dari token dipakai menyaring query portal
- * (aturan repo 9); tanpa verifikasi, siapa pun yang bisa menyunting cookie di
- * devtools cukup menukar angkanya untuk membaca order supplier lain. httpOnly
- * hanya menghalangi JavaScript halaman, bukan pemiliknya sendiri.
- *
- * Ditulis dengan `node:crypto` — 20 baris, tidak perlu pustaka JWT tambahan
- * (aturan repo 12).
- */
-function bacaTokenTerverifikasi(token: string): TokenPayload | null {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) return null;
-
-  const [kepala, isi, tanda] = token.split('.');
-  if (!kepala || !isi || !tanda) return null;
-
+async function inspectToken(token: string) {
   try {
-    // Tolak alg selain HS256 — termasuk 'none', yang membuat tanda tangan
-    // kosong dianggap sah oleh pustaka yang ceroboh.
-    const alg = (JSON.parse(Buffer.from(kepala, 'base64url').toString()) as { alg?: string }).alg;
-    if (alg !== 'HS256') return null;
+    const response = await fetch(`${API}/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` }, cache: 'no-store',
+    });
+    if (!response.ok) return null;
+    return authSessionResponseSchema.parse(await response.json());
+  } catch { return null; }
+}
 
-    const harap = createHmac('sha256', secret).update(`${kepala}.${isi}`).digest();
-    const ada = Buffer.from(tanda, 'base64url');
-    if (ada.length !== harap.length || !timingSafeEqual(ada, harap)) return null;
-
-    const payload = JSON.parse(Buffer.from(isi, 'base64url').toString()) as TokenPayload;
-    if (payload.exp && payload.exp * 1000 < Date.now()) return null;
-    return payload;
-  } catch {
-    return null;
-  }
+function tokenMaxAge(token: string, fallback: number): number {
+  try {
+    const payload = JSON.parse(Buffer.from(token.split('.')[1] ?? '', 'base64url').toString()) as { exp?: number };
+    return payload.exp ? Math.max(60, payload.exp - Math.floor(Date.now() / 1000)) : fallback;
+  } catch { return fallback; }
 }
 
 /** Sesi pengguna untuk halaman; null bila token tidak ada, palsu, atau kedaluwarsa. */
-export async function getSessionUser(): Promise<SessionUser | null> {
+export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
   const token = await getToken();
   if (!token) return null;
 
-  const payload = bacaTokenTerverifikasi(token);
-  if (!payload) return null;
+  const payload = await inspectToken(token);
+  if (!payload || payload.kind !== 'user') return null;
 
   return {
     id: payload.sub,
@@ -103,5 +96,53 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     role: payload.role,
     plantId: payload.plantId,
     vendorId: payload.vendorId ?? null,
+    permissions: payload.permissions,
   };
+});
+
+/** Otorisasi halaman Server Component; URL langsung tetap diperiksa server. */
+export async function requirePermission(action: string): Promise<SessionUser> {
+  const user = await getSessionUser();
+  if (!user) redirect('/login');
+  if (!user.permissions.includes(action)) notFound();
+  return user;
+}
+
+export async function getDisplayToken(): Promise<string | undefined> {
+  const store = await cookies();
+  return store.get(DISPLAY_COOKIE)?.value;
+}
+
+/** Cookie monitor mengikuti masa hidup JWT dan diperbarui oleh heartbeat layar. */
+export async function setDisplayToken(token: string): Promise<void> {
+  const maxAge = tokenMaxAge(token, 365 * 24 * 3600);
+  const store = await cookies();
+  store.set(DISPLAY_COOKIE, token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge,
+  });
+}
+
+export async function clearDisplayToken(): Promise<void> {
+  const store = await cookies();
+  store.set(DISPLAY_COOKIE, '', {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: 0,
+  });
+}
+
+/** Validasi token dan status perangkat agar revoke berlaku pada refresh berikutnya. */
+export async function getDisplaySession(): Promise<DisplaySession | null> {
+  const token = await getDisplayToken();
+  if (!token) return null;
+  const device = await inspectToken(token);
+  if (!device || device.kind !== 'device' || device.deviceKind !== 'MACHINE_PANEL'
+      || device.plantId == null) return null;
+  return { id: device.sub, code: device.code, name: device.name, plantId: device.plantId };
 }

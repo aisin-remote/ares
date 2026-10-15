@@ -44,6 +44,38 @@ export class ShipmentError extends Error {
   }
 }
 
+/** 6.3.4: validasi koreksi jumlah kirim oleh PPIC sebelum sesi scan dibuka. */
+export function overrideShippedBoxes(
+  lines: ReadonlyArray<{ picklistLineId: number; boxOrdered: number; boxShipped: number }>,
+): Array<{
+  picklistLineId: number;
+  boxShipped: number;
+  boxShort: number;
+  status: 'OPEN' | 'SHORT';
+}> {
+  const result = lines.map((line) => {
+    if (!Number.isInteger(line.boxShipped) || line.boxShipped < 0) {
+      throw new ShipmentError(`Box dikirim line ${line.picklistLineId} harus bilangan bulat ≥ 0`);
+    }
+    if (line.boxShipped > line.boxOrdered) {
+      throw new ShipmentError(
+        `Box dikirim line ${line.picklistLineId} (${line.boxShipped}) melebihi box diorder (${line.boxOrdered})`,
+      );
+    }
+    const boxShort = line.boxOrdered - line.boxShipped;
+    return {
+      picklistLineId: line.picklistLineId,
+      boxShipped: line.boxShipped,
+      boxShort,
+      status: boxShort > 0 ? 'SHORT' as const : 'OPEN' as const,
+    };
+  });
+  if (result.every((line) => line.boxShipped === 0)) {
+    throw new ShipmentError('Koreksi pengiriman tanpa satu pun box yang dikirim');
+  }
+  return result;
+}
+
 export function confirmShipment(
   lines: readonly ShipmentLineInput[],
   policy: ShortShipPolicy,

@@ -1,11 +1,13 @@
 import { MasterEntityPage } from '@/components/master/master-entity-page';
+import { requirePermission } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
-export default function Page({ searchParams }: { searchParams: Promise<{ page?: string; q?: string }> }) {
+export default async function Page({ searchParams }: { searchParams: Promise<{ page?: string; q?: string }> }) {
+  await requirePermission('setting.write');
   return <MasterEntityPage rawEntity="vendorCutoffs" searchParams={searchParams} view={{
-    path: '/settings/policy', section: 'Setting', title: 'Kebijakan Supplier',
-    description: 'Pengiriman kurang dan pembulatan box mengikuti jadwal cutoff supplier',
-    listFields: ['vendorId', 'cutoffTime', 'shortShipPolicy', 'rounding', 'isActive'],
+    path: '/settings/policy', section: 'Setting', title: 'Kebijakan Pembulatan',
+    description: 'Aturan pembulatan box per jadwal cutoff. Kekurangan kirim otomatis menjadi Order Sheet recovery.',
+    listFields: ['vendorId', 'cutoffTime', 'rounding', 'isActive'],
   }} />;
 }

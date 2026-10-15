@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertCircle, SlidersHorizontal } from 'lucide-react';
 import { adjustStockAction } from '@/app/(app)/stock/actions';
+import { useFeedback } from '@/components/ui/feedback-provider';
 
 const INPUT =
   'h-11 rounded-2xl border border-line bg-surface px-4 text-[15px] outline-none transition-colors duration-200 focus:border-line-strong focus:bg-card';
@@ -20,6 +21,7 @@ export function AdjustStockForm({ partId, uom }: { partId: number; uom: string }
   const [sibuk, setSibuk] = useState(false);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
+  const feedback = useFeedback();
 
   async function simpan() {
     setError(null);
@@ -41,6 +43,7 @@ export function AdjustStockForm({ partId, uom }: { partId: number; uom: string }
     }
     setDelta('');
     setReason('');
+    feedback.success('Stok berhasil disesuaikan', `${n > 0 ? '+' : ''}${n} ${uom} sudah dicatat.`);
     startTransition(() => router.refresh());
   }
 

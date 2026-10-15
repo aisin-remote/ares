@@ -16,6 +16,26 @@ export interface NextCutoffResult {
   arrivalAt: Date;
 }
 
+export interface DeliveryCalendarSlot {
+  dayOfWeek: number;
+  arrivalTime: string;
+}
+
+export interface NextScheduledDeliveryInput {
+  /** Tanggal paling awal hasil perhitungan lead time, bentuk YYYY-MM-DD. */
+  notBeforeDate: string;
+  slots: readonly DeliveryCalendarSlot[];
+  workdays: string;
+  holidayShift: 'BEFORE' | 'AFTER';
+  holidays: readonly string[];
+}
+
+export interface ScheduledDeliveryResult {
+  deliveryDate: string;
+  arrivalTime: string;
+  arrivalAt: Date;
+}
+
 const JAKARTA_OFFSET = 7 * 60 * 60 * 1000;
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -82,4 +102,50 @@ export function nextCutoff(input: NextCutoffInput): NextCutoffResult | null {
     deliveryDate: dateText(deliveryDay),
     arrivalAt: new Date(deliveryDay + arrivalMs - JAKARTA_OFFSET),
   };
+}
+
+/**
+ * Pilih slot kedatangan periodik pertama setelah lead time cutoff terpenuhi.
+ * DAY pada master receiving menjadi kalender yang menentukan tanggal dan ETA
+ * picklist otomatis; arrivalTime pada cutoff hanya memilih siklus/slotnya.
+ */
+export function nextScheduledDelivery(input: NextScheduledDeliveryInput): ScheduledDeliveryResult | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.notBeforeDate)) throw new Error('Tanggal minimum tidak valid');
+  const start = Date.parse(`${input.notBeforeDate}T00:00:00Z`);
+  if (!Number.isFinite(start) || dateText(start) !== input.notBeforeDate) throw new Error('Tanggal minimum tidak valid');
+  const workdays = new Set(input.workdays.split(',').map((day) => Number(day.trim())));
+  if (workdays.size === 0 || [...workdays].some((day) => !Number.isInteger(day) || day < 1 || day > 7))
+    throw new Error('Hari kerja harus berupa angka 1–7');
+  if (input.slots.some((slot) => !Number.isInteger(slot.dayOfWeek) || slot.dayOfWeek < 1 || slot.dayOfWeek > 7))
+    throw new Error('Hari jadwal delivery tidak valid');
+
+  const holidays = new Set(input.holidays);
+  const isWorkday = (day: number) => {
+    const weekday = new Date(day).getUTCDay() || 7;
+    return workdays.has(weekday) && !holidays.has(dateText(day));
+  };
+  let selected: ScheduledDeliveryResult | null = null;
+  for (let nominal = start; nominal < start + 366 * DAY; nominal += DAY) {
+    const weekday = new Date(nominal).getUTCDay() || 7;
+    for (const slot of input.slots) {
+      if (slot.dayOfWeek !== weekday) continue;
+      let effective = nominal;
+      if (holidays.has(dateText(nominal))) {
+        const direction = input.holidayShift === 'BEFORE' ? -1 : 1;
+        do effective += direction * DAY;
+        while (!isWorkday(effective));
+      }
+      if (effective < start) continue;
+      const arrivalAt = new Date(effective + timeMs(slot.arrivalTime) - JAKARTA_OFFSET);
+      if (!selected || arrivalAt < selected.arrivalAt) {
+        selected = {
+          deliveryDate: dateText(effective),
+          arrivalTime: slot.arrivalTime,
+          arrivalAt,
+        };
+      }
+    }
+    if (selected) return selected;
+  }
+  return null;
 }

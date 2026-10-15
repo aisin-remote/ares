@@ -1,3 +1,5 @@
+import { orderSheetDisplayNo } from '@ares/domain';
+
 /** Pemformatan untuk dokumen cetak. Hanya tampilan — tidak ada aturan bisnis. */
 
 const BULAN = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
@@ -32,7 +34,18 @@ export function waktuCetak(at: Date): string {
   });
 }
 
+/** Timestamp UTC → `YYYY/MM/DD · HH:mm` di waktu pabrik. */
+export function tanggalJamPabrik(at: Date): string {
+  const p = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(at);
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    p.find((part) => part.type === type)?.value ?? '';
+  return `${value('year')}/${value('month')}/${value('day')} · ${value('hour')}:${value('minute')}`;
+}
+
 /** Nomor dokumen lengkap dengan revisinya. */
 export function nomorRevisi(picklistNo: string, revision: number): string {
-  return revision > 0 ? `${picklistNo} rev ${revision}` : picklistNo;
+  return orderSheetDisplayNo(picklistNo, revision);
 }

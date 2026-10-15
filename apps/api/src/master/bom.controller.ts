@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request } from 'express';
+import { basename, extname } from 'node:path';
 import { RequirePermission } from '../auth/permissions.guard';
 import { BomService } from './bom.service';
 import type { MasterActor } from './master.service';
@@ -21,7 +22,7 @@ interface UploadedExcel {
   size: number;
 }
 
-const MAX_UPLOAD = 5 * 1024 * 1024;
+const MAX_UPLOAD = 2 * 1024 * 1024;
 
 function actorOf(req: Request): MasterActor {
   const principal = req.principal;
@@ -44,7 +45,14 @@ export class BomController {
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_UPLOAD, files: 1 } }))
   import(@UploadedFile() file: UploadedExcel | undefined, @Req() req: Request) {
     if (!file?.buffer?.length) throw new BadRequestException('Pilih berkas Excel (.xlsx) dulu');
-    return this.bom.importExcel(file.buffer, file.originalname, actorOf(req));
+    const safeName = basename(file.originalname).slice(0, 128);
+    if (
+      extname(safeName).toLowerCase() !== '.xlsx' ||
+      file.buffer.subarray(0, 4).toString('hex') !== '504b0304'
+    ) {
+      throw new BadRequestException('Berkas harus berupa Excel .xlsx yang valid');
+    }
+    return this.bom.importExcel(file.buffer, safeName, actorOf(req));
   }
 
   /** Penguraian sampai raw material: ?partId=&qty=&onDate=YYYY-MM-DD. */

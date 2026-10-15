@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Plus_Jakarta_Sans } from 'next/font/google';
 import { PreferencesProvider } from '@/components/shell/preferences-provider';
+import { FeedbackProvider } from '@/components/ui/feedback-provider';
 import { PREFERENCES_KEY } from '@/lib/preferences';
 import './globals.css';
 
@@ -55,8 +56,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <script dangerouslySetInnerHTML={{ __html: NO_FLASH }} />
       </head>
-      <body className="min-h-screen font-[family-name:var(--font-sans)] antialiased">
-        <PreferencesProvider>{children}</PreferencesProvider>
+      <body
+        suppressHydrationWarning
+        className="min-h-screen font-[family-name:var(--font-sans)] antialiased"
+      >
+        <PreferencesProvider>
+          <FeedbackProvider>{children}</FeedbackProvider>
+        </PreferencesProvider>
       </body>
     </html>
   );

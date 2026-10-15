@@ -5,10 +5,12 @@ import { Card, CardBody, CardHeader } from '@/components/ui/card';
 import { MesActions } from '@/components/mes/mes-actions';
 import { StatCard } from '@/components/ui/stat-card';
 import { Reveal, Stagger, StaggerItem } from '@/components/motion/reveal';
+import { requirePermission } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
 export default async function MesPage() {
+  await requirePermission('mes.read');
   const status = await getMesStatus();
   return <>
     <PageHeader crumbs={[{ label: 'Integrasi' }, { label: 'Sinkron MES' }]} title="Sinkron MES" description={`Gateway ${status.gateway} · interval ${status.intervalSec} detik · ${status.enabled ? 'jadwal aktif' : 'jadwal nonaktif'}`} />

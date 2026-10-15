@@ -1,9 +1,8 @@
-import { ArrowRight, CalendarDays, Clock, Truck } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CalendarDays, Clock } from 'lucide-react';
 import { MasterEntityPage } from '@/components/master/master-entity-page';
 import { Card, CardBody, CardHeader } from '@/components/ui/card';
 import { getNextCutoffPreviews } from '@/lib/queries';
-import { getSessionUser } from '@/lib/session';
-import { notFound } from 'next/navigation';
+import { requirePermission } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,74 +18,109 @@ const clock = new Intl.DateTimeFormat('id-ID', {
   hour: '2-digit',
   minute: '2-digit',
 });
+const day = new Intl.DateTimeFormat('id-ID', {
+  timeZone: 'Asia/Jakarta',
+  weekday: 'long',
+});
+const shortDate = new Intl.DateTimeFormat('id-ID', {
+  timeZone: 'Asia/Jakarta',
+  day: 'numeric',
+  month: 'short',
+});
+const dateKey = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Jakarta',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
 
 function deliveryDate(value: string) {
   return date.format(new Date(`${value}T00:00:00+07:00`));
 }
 
 export default async function Page({ searchParams }: { searchParams: Promise<{ page?: string; q?: string }> }) {
-  const user = await getSessionUser();
-  if (user?.role !== 'ppic' && user?.role !== 'admin') notFound();
+  await requirePermission('setting.write');
   const previews = await getNextCutoffPreviews();
+  const terjadwal = previews
+    .filter((item) => item.cutoffAt && item.arrivalAt && item.deliveryDate)
+    .sort((a, b) => a.cutoffAt!.getTime() - b.cutoffAt!.getTime());
+  const belumTerjadwal = previews.filter((item) => !item.cutoffAt || !item.arrivalAt || !item.deliveryDate);
+  const perHari = new Map<string, typeof terjadwal>();
+  for (const item of terjadwal) {
+    const key = dateKey.format(item.cutoffAt!);
+    perHari.set(key, [...(perHari.get(key) ?? []), item]);
+  }
+  const cutoffPerHari = [...perHari]
+    .map(([key, items]) => ({ key, date: items[0]!.cutoffAt!, items }));
   const intro = <Card className="mb-5 overflow-hidden">
     <CardHeader
-      icon={Clock}
-      title="Cutoff berikutnya"
-      subtitle="Perkiraan jadwal order untuk setiap supplier · waktu Asia/Jakarta"
-      actions={<span className="rounded-full border border-line bg-surface px-3 py-1.5 text-[12px] font-semibold text-ink-soft">{previews.length} supplier</span>}
-      className="px-5 py-4 sm:px-6"
+      icon={CalendarDays}
+      title="Kalender cutoff berikutnya"
+      subtitle="Supplier dikelompokkan berdasarkan hari cutoff · waktu Asia/Jakarta"
+      actions={<div className="flex flex-wrap justify-end gap-2">
+        <span className="rounded-full border border-line bg-surface px-3 py-1.5 text-[12px] font-semibold text-ink-soft">
+          {terjadwal.length} terjadwal
+        </span>
+        {belumTerjadwal.length ? <span className="rounded-full border border-warn/30 bg-warn/10 px-3 py-1.5 text-[12px] font-semibold text-warn">
+          {belumTerjadwal.length} perlu diisi
+        </span> : null}
+      </div>}
+      className="flex-wrap px-5 py-4 sm:px-6"
     />
-    <CardBody className="border-t border-line bg-surface/40 p-4 sm:p-5">
-      {previews.length ? <ul className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
-        {previews.map((item) => <li key={item.vendorName} className="rounded-card border border-line bg-card p-5">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-muted">Supplier</p>
-          <h3 className="mt-1 min-h-12 text-[16px] font-bold leading-6 text-ink">{item.vendorName}</h3>
-
-          {item.cutoffAt && item.arrivalAt && item.deliveryDate ? <>
-            <div className="mt-4 rounded-2xl bg-surface p-4">
-              <div className="flex items-center gap-2 text-[12px] font-semibold text-ink-muted">
-                <Clock className="size-4" strokeWidth={1.8} aria-hidden />
-                Cutoff order
+    <CardBody className="border-t border-line p-0">
+      {terjadwal.length ? <div className="scroll-slim overflow-x-auto">
+        <div className="grid min-w-max auto-cols-[280px] grid-flow-col divide-x divide-line">
+          {cutoffPerHari.map((group) => <section key={group.key} className="w-[280px] bg-surface/20">
+            <header className="sticky top-0 z-10 flex items-center justify-between border-b border-line bg-card px-4 py-3">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-muted">{day.format(group.date)}</p>
+                <p className="mt-0.5 text-[15px] font-bold text-ink">{shortDate.format(group.date)}</p>
               </div>
-              <div className="mt-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                <time dateTime={item.cutoffAt.toISOString()} className="text-[15px] font-semibold text-ink-soft">
-                  {date.format(item.cutoffAt)}
-                </time>
-                <span className="font-mono text-[24px] font-bold tracking-tight text-ink">
-                  {clock.format(item.cutoffAt)}
-                </span>
-              </div>
+              <span className="rounded-full border border-line bg-surface px-2.5 py-1 text-[11px] font-semibold text-ink-muted">
+                {group.items.length} supplier
+              </span>
+            </header>
+            <div className="space-y-2.5 p-3">
+              {group.items.map((item) => <article key={item.vendorName} className="rounded-2xl border border-line bg-card p-3.5 transition-colors hover:border-line-strong">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="min-w-0 text-[13px] font-bold leading-snug text-ink">{item.vendorName}</p>
+                  <time dateTime={item.cutoffAt!.toISOString()} className="shrink-0 font-mono text-[18px] font-bold leading-none text-accent">
+                    {clock.format(item.cutoffAt!)}
+                  </time>
+                </div>
+                <div className="mt-3 flex items-center gap-2 border-t border-line pt-3 text-[11px] leading-tight text-ink-muted">
+                  <span className="min-w-0 flex-1">
+                    <span className="block uppercase tracking-wide">Kirim</span>
+                    <span className="mt-1 block truncate font-semibold text-ink-soft">{deliveryDate(item.deliveryDate!)}</span>
+                  </span>
+                  <ArrowRight className="size-3.5 shrink-0" strokeWidth={1.8} aria-hidden />
+                  <span className="min-w-0 flex-1 text-right">
+                    <span className="block uppercase tracking-wide">Tiba</span>
+                    <span className="mt-1 block truncate font-semibold text-ink-soft">{shortDate.format(item.arrivalAt!)} · {clock.format(item.arrivalAt!)}</span>
+                  </span>
+                </div>
+              </article>)}
             </div>
+          </section>)}
+        </div>
+      </div> : <p className="px-5 py-8 text-center text-[14px] text-ink-muted">Belum ada jadwal cutoff aktif. Tambahkan jadwal agar simulasi tersedia.</p>}
 
-            <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
-                  <CalendarDays className="size-3.5" strokeWidth={1.8} aria-hidden />
-                  Kirim
-                </div>
-                <div className="mt-1 text-[13px] font-semibold leading-5 text-ink-soft">
-                  {deliveryDate(item.deliveryDate)}
-                </div>
-              </div>
-              <ArrowRight className="size-4 text-ink-muted" strokeWidth={1.8} aria-hidden />
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
-                  <Truck className="size-3.5" strokeWidth={1.8} aria-hidden />
-                  Tiba
-                </div>
-                <div className="mt-1 text-[13px] font-semibold leading-5 text-ink-soft">
-                  {date.format(item.arrivalAt)} · {clock.format(item.arrivalAt)}
-                </div>
-              </div>
-            </div>
-          </> : <div className="mt-4 rounded-2xl border border-warn/20 bg-warn/5 px-4 py-3 text-[13px] font-semibold text-warn">{item.warning}</div>}
-        </li>)}
-      </ul> : <p className="rounded-2xl border border-dashed border-line px-5 py-8 text-center text-[14px] text-ink-muted">Belum ada jadwal cutoff aktif. Tambahkan jadwal agar simulasi tersedia.</p>}
+      {belumTerjadwal.length ? <div className="border-t border-line bg-warn/[0.035] px-5 py-4">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warn" strokeWidth={1.8} aria-hidden />
+          <div className="min-w-0">
+            <p className="text-[12px] font-semibold text-warn">Jadwal perlu dilengkapi</p>
+            <p className="mt-1 text-[12px] leading-relaxed text-ink-muted">
+              {belumTerjadwal.map((item) => item.vendorName).join(', ')}. Lengkapi pada tabel pengaturan di bawah.
+            </p>
+          </div>
+        </div>
+      </div> : null}
     </CardBody>
   </Card>;
   return <MasterEntityPage rawEntity="vendorCutoffs" searchParams={searchParams} view={{
     path: '/settings/cutoff', section: 'Setting', title: 'Cutoff Supplier',
-    description: 'Jam tutup order, hari kerja, dan waktu kedatangan per supplier',
-    listFields: ['vendorId', 'cutoffTime', 'workdays', 'leadDays', 'arrivalTime', 'holidayShift', 'isActive'], intro,
+    description: 'Jam tutup order, waktu kedatangan, dan batas pengingat per supplier',
+    listFields: ['vendorId', 'cutoffTime', 'workdays', 'leadDays', 'arrivalTime', 'downloadWarningHours', 'confirmWarningHours', 'isActive'], intro,
   }} />;
 }

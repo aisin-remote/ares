@@ -10,11 +10,16 @@ export type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
 
 let pool: mysql.Pool | undefined;
 let dbInstance: Database | undefined;
+let readPool: mysql.Pool | undefined;
+let readDbInstance: Database | undefined;
 
-function connectionUrl(): string {
-  const url = process.env.DATABASE_URL;
+function connectionUrl(variable = 'DATABASE_URL'): string {
+  const url = process.env[variable]
+    ?? (variable === 'WEB_DATABASE_URL' && process.env.NODE_ENV !== 'production'
+      ? process.env.DATABASE_URL
+      : undefined);
   if (!url) {
-    throw new Error('DATABASE_URL belum diset. Salin .env.example menjadi .env di root repo.');
+    throw new Error(`${variable} belum diset. Salin .env.example menjadi .env di root repo.`);
   }
   return url;
 }
@@ -28,24 +33,34 @@ function connectionUrl(): string {
 const globalForDb = globalThis as unknown as {
   __aresPool?: mysql.Pool;
   __aresDb?: Database;
+  __aresReadPool?: mysql.Pool;
+  __aresReadDb?: Database;
 };
+
+function createPool(url: string): mysql.Pool {
+  const created = mysql.createPool({
+    uri: url,
+    connectionLimit: Number(process.env.DB_POOL_SIZE ?? 10),
+    waitForConnections: true,
+    enableKeepAlive: true,
+    timezone: 'Z',
+    supportBigNumbers: true,
+    bigNumberStrings: false,
+    dateStrings: ['DATE'],
+  });
+  created.on('connection', (conn) => {
+    (conn as unknown as Connection).query("SET time_zone = '+00:00'", (err) => {
+      if (err) console.error('[db] gagal menyetel zona waktu sesi ke UTC:', err.message);
+    });
+  });
+  return created;
+}
 
 export function getPool(): mysql.Pool {
   if (globalForDb.__aresPool) return globalForDb.__aresPool;
   if (pool) return pool;
 
-  pool = mysql.createPool({
-    uri: connectionUrl(),
-    connectionLimit: Number(process.env.DB_POOL_SIZE ?? 10),
-    waitForConnections: true,
-    enableKeepAlive: true,
-    timezone: 'Z',
-    // Angka besar (BIGINT) dikembalikan sebagai string kalau melebihi Number.
-    // supportBigNumbers menjaga id tidak terpotong diam-diam.
-    supportBigNumbers: true,
-    bigNumberStrings: false,
-    dateStrings: ['DATE'],
-  });
+  pool = createPool(connectionUrl());
 
   /*
    * Setiap koneksi baru dipaksa UTC.
@@ -56,16 +71,21 @@ export function getPool(): mysql.Pool {
    * jam ke depan, dan Date yang ditulis aplikasi bergeser ke arah sebaliknya.
    * Aturan repo 6: simpan UTC, tampilkan Asia/Jakarta.
    */
-  pool.on('connection', (conn) => {
-    // Tipenya menjanjikan koneksi versi promise, tetapi mysql2 meneruskan
-    // event ini apa adanya dari pool inti — yang datang koneksi gaya callback.
-    (conn as unknown as Connection).query("SET time_zone = '+00:00'", (err) => {
-      if (err) console.error('[db] gagal menyetel zona waktu sesi ke UTC:', err.message);
-    });
-  });
-
   if (process.env.NODE_ENV !== 'production') globalForDb.__aresPool = pool;
   return pool;
+}
+
+/** Koneksi khusus baca untuk Next.js; produksi sebaiknya memakai user MySQL SELECT-only. */
+export function getReadDb(): Database {
+  if (globalForDb.__aresReadDb) return globalForDb.__aresReadDb;
+  if (readDbInstance) return readDbInstance;
+  if (!globalForDb.__aresReadPool && !readPool) {
+    readPool = createPool(connectionUrl('WEB_DATABASE_URL'));
+    if (process.env.NODE_ENV !== 'production') globalForDb.__aresReadPool = readPool;
+  }
+  readDbInstance = drizzle(globalForDb.__aresReadPool ?? readPool!, { schema, mode: 'default' });
+  if (process.env.NODE_ENV !== 'production') globalForDb.__aresReadDb = readDbInstance;
+  return readDbInstance;
 }
 
 export function getDb(): Database {
@@ -80,8 +100,14 @@ export function getDb(): Database {
 export async function closeDb(): Promise<void> {
   const p = globalForDb.__aresPool ?? pool;
   if (p) await p.end();
+  const rp = globalForDb.__aresReadPool ?? readPool;
+  if (rp && rp !== p) await rp.end();
   globalForDb.__aresPool = undefined;
   globalForDb.__aresDb = undefined;
   pool = undefined;
   dbInstance = undefined;
+  globalForDb.__aresReadPool = undefined;
+  globalForDb.__aresReadDb = undefined;
+  readPool = undefined;
+  readDbInstance = undefined;
 }

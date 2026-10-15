@@ -39,7 +39,7 @@ export class FakeMesGateway implements MesGateway {
 }
 
 const pageSchema = z.object({
-  items: z.array(productionResultSchema),
+  items: z.array(productionResultSchema).max(500),
   nextCursor: z.string().nullable(),
 });
 
@@ -63,7 +63,11 @@ export class HttpMesGateway implements MesGateway {
         signal: controller.signal,
       });
       if (!response.ok) throw new Error(`MES menjawab HTTP ${response.status}`);
-      return pageSchema.parse(await response.json());
+      const contentLength = Number(response.headers.get('content-length') ?? 0);
+      if (contentLength > 2 * 1024 * 1024) throw new Error('Respons MES melebihi batas 2 MiB');
+      const raw = await response.text();
+      if (Buffer.byteLength(raw) > 2 * 1024 * 1024) throw new Error('Respons MES melebihi batas 2 MiB');
+      return pageSchema.parse(JSON.parse(raw));
     } finally {
       clearTimeout(timeout);
     }

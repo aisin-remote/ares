@@ -10,6 +10,7 @@ import {
 import type { MasterOption } from '@/lib/queries';
 import { Card, CardHeader, CardDivider } from '../ui/card';
 import { Table, Th, Td, Tr } from '../ui/table';
+import { SelectSearch } from '../ui/select-search';
 
 const INPUT =
   'h-11 rounded-2xl border border-line bg-surface px-4 text-[15px] outline-none transition-colors duration-200 focus:border-line-strong focus:bg-card';
@@ -134,19 +135,13 @@ function ExplodeCard({ parts }: { parts: MasterOption[] }) {
             <label htmlFor="urai-part" className="mb-2 block text-[14px] font-semibold">
               Part jadi
             </label>
-            <select
+            <SelectSearch
               id="urai-part"
               value={partId}
-              onChange={(e) => setPartId(e.target.value ? Number(e.target.value) : '')}
-              className={`${INPUT} w-full`}
-            >
-              <option value="">Pilih part</option>
-              {parts.map((p) => (
-                <option key={p.value} value={p.value}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
+              onValueChange={(value) => setPartId(value ? Number(value) : '')}
+              placeholder="Pilih part"
+              options={parts}
+            />
           </div>
           <div>
             <label htmlFor="urai-qty" className="mb-2 block text-[14px] font-semibold">

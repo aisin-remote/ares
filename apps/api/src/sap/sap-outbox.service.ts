@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { eq, and, sql, desc, count, inArray, notExists, type Database } from '@ares/db';
+import { eq, and, or, isNull, lt, lte, gte, sql, desc, count, inArray, notExists, type Database } from '@ares/db';
 import {
   sapOutbox,
   plants,
@@ -9,9 +9,13 @@ import {
   picklistLines,
   vendorParts,
   parts,
+  vendors,
+  poHeaders,
+  poLines,
 } from '@ares/db';
 import { InjectDb } from '../db/db.module';
 import { writeAudit } from '../common/audit';
+import { orderSheetDisplayNo, validateGrForSap } from '@ares/domain';
 
 /**
  * Mengumpulkan perpindahan barang menjadi dokumen untuk SAP.
@@ -44,22 +48,19 @@ export class SapOutboxService {
    * Payload mengikuti contoh PRD 8.1. Receipt tanpa pcs diterima dicatat
    * SKIPPED supaya tidak dipungut ulang tiap menit.
    */
-  async collect(): Promise<{ dikumpulkan: number; ditahan: number; dilewati: number }> {
+  async collect(plantId?: number): Promise<{ dikumpulkan: number; ditahan: number; dilewati: number }> {
     const receipts = await this.db
       .select({
         id: receiptHeaders.id,
         receiptNo: receiptHeaders.receiptNo,
         plantId: receiptHeaders.plantId,
-        plantCode: plants.code,
         closedAt: receiptHeaders.closedAt,
-        picklistNo: picklistHeaders.picklistNo,
       })
       .from(receiptHeaders)
-      .innerJoin(plants, eq(receiptHeaders.plantId, plants.id))
-      .innerJoin(picklistHeaders, eq(receiptHeaders.picklistId, picklistHeaders.id))
       .where(
         and(
           eq(receiptHeaders.status, 'CLOSED'),
+          plantId ? eq(receiptHeaders.plantId, plantId) : undefined,
           notExists(
             this.db
               .select({ one: sql`1` })
@@ -78,23 +79,13 @@ export class SapOutboxService {
 
     let dikumpulkan = 0;
     let dilewati = 0;
+    let ditahan = 0;
     for (const r of receipts) {
-      const items = await this.db
-        .select({
-          poNo: picklistLines.sapPoNo,
-          poItem: picklistLines.sapPoItem,
-          material: parts.sapMaterialNo,
-          qty: receiptLines.pcsReceived,
-          uom: parts.uom,
-        })
-        .from(receiptLines)
-        .innerJoin(picklistLines, eq(receiptLines.picklistLineId, picklistLines.id))
-        .innerJoin(vendorParts, eq(picklistLines.vendorPartId, vendorParts.id))
-        .innerJoin(parts, eq(vendorParts.partId, parts.id))
-        .where(eq(receiptLines.receiptId, r.id));
+      const gr = await this.buildGr(r.id);
+      if (!gr) continue;
 
       const occurredAt = r.closedAt ?? new Date();
-      const status = items.length > 0 ? 'PENDING' : 'SKIPPED';
+      const status = gr.items.length === 0 ? 'SKIPPED' : gr.errors.length > 0 ? 'HELD' : 'PENDING';
       const baru = await this.simpan({
         plantId: r.plantId,
         sourceTable: 'TT_RECEIPT_H',
@@ -103,24 +94,91 @@ export class SapOutboxService {
         movementType: '101',
         idempotencyKey: r.receiptNo,
         status,
-        lastError: status === 'SKIPPED' ? 'Tidak ada pcs diterima di sesi ini' : null,
-        payload: {
-          docType: 'GR',
-          idempotencyKey: r.receiptNo,
-          plant: r.plantCode,
-          sloc: process.env.SAP_SLOC ?? 'WH00',
-          deliveryNote: r.picklistNo,
-          postingDate: tanggalJakarta(occurredAt),
-          items,
-        },
+        lastError: status === 'SKIPPED'
+          ? 'Tidak ada pcs diterima di sesi ini'
+          : status === 'HELD'
+            ? `Validasi GR: ${gr.errors.join('; ')}`.slice(0, 1000)
+            : null,
+        payload: gr.payload,
         occurredAt,
       });
       if (!baru) continue;
       if (status === 'PENDING') dikumpulkan += 1;
+      else if (status === 'HELD') ditahan += 1;
       else dilewati += 1;
     }
     if (dikumpulkan > 0) this.logger.log(`${dikumpulkan} GR dikumpulkan ke outbox`);
-    return { dikumpulkan, ditahan: 0, dilewati };
+    return { dikumpulkan, ditahan, dilewati };
+  }
+
+  private async buildGr(receiptId: number) {
+    const [header] = await this.db.select({
+      receiptNo: receiptHeaders.receiptNo,
+      plant: plants.code,
+      closedAt: receiptHeaders.closedAt,
+      vendorId: picklistHeaders.vendorId,
+      vendorNo: vendors.sapVendorNo,
+      deliveryDate: picklistHeaders.deliveryDate,
+      picklistNo: picklistHeaders.picklistNo,
+      revision: picklistHeaders.revision,
+    }).from(receiptHeaders)
+      .innerJoin(plants, eq(receiptHeaders.plantId, plants.id))
+      .innerJoin(picklistHeaders, eq(receiptHeaders.picklistId, picklistHeaders.id))
+      .innerJoin(vendors, eq(picklistHeaders.vendorId, vendors.id))
+      .where(eq(receiptHeaders.id, receiptId));
+    if (!header) return null;
+
+    const items = await this.db.select({
+      poNo: picklistLines.sapPoNo,
+      poItem: picklistLines.sapPoItem,
+      material: parts.sapMaterialNo,
+      qty: receiptLines.pcsReceived,
+      uom: parts.uom,
+      poVendorId: poHeaders.vendorId,
+      poPartId: poLines.partId,
+      partId: parts.id,
+      poOpenQty: poLines.openQty,
+    }).from(receiptLines)
+      .innerJoin(picklistLines, eq(receiptLines.picklistLineId, picklistLines.id))
+      .innerJoin(vendorParts, eq(picklistLines.vendorPartId, vendorParts.id))
+      .innerJoin(parts, eq(vendorParts.partId, parts.id))
+      .leftJoin(poHeaders, and(
+        eq(poHeaders.sapPoNo, picklistLines.sapPoNo),
+        eq(poHeaders.vendorId, header.vendorId),
+        or(isNull(poHeaders.validFrom), lte(poHeaders.validFrom, header.deliveryDate)),
+        or(isNull(poHeaders.validTo), gte(poHeaders.validTo, header.deliveryDate)),
+      ))
+      .leftJoin(poLines, and(
+        eq(poLines.poId, poHeaders.id),
+        eq(poLines.item, picklistLines.sapPoItem),
+        eq(poLines.partId, parts.id),
+      ))
+      .where(eq(receiptLines.receiptId, receiptId));
+
+    const errors = validateGrForSap({
+      plant: header.plant,
+      vendorNo: header.vendorNo,
+      items: items.map((item) => ({
+        ...item,
+        poMatchesVendor: item.poVendorId === header.vendorId,
+        poMatchesPart: item.poPartId === item.partId,
+      })),
+    });
+    const occurredAt = header.closedAt ?? new Date();
+    return {
+      items,
+      errors,
+      payload: {
+        docType: 'GR',
+        idempotencyKey: header.receiptNo,
+        plant: header.plant,
+        vendorNo: header.vendorNo,
+        sloc: process.env.SAP_SLOC ?? 'WH00',
+        deliveryNote: orderSheetDisplayNo(header.picklistNo, header.revision),
+        postingDate: tanggalJakarta(occurredAt),
+        items: items.map(({ poVendorId: _poVendorId, poPartId: _poPartId, partId: _partId, poOpenQty: _poOpenQty, ...item }) => item),
+      },
+    };
   }
 
   /**
@@ -171,38 +229,95 @@ export class SapOutboxService {
    * bila tim SAP belum mengunci nomor movement type — begitu diisi di
    * MOVEMENT_TYPE, baris ini dilepas. Tanpa nomor, tetap ditahan.
    */
-  async releaseHeld(): Promise<{ dilepas: number }> {
-    const hasil = await this.db
-      .update(sapOutbox)
-      .set({ status: 'PENDING', lastError: null })
-      .where(and(eq(sapOutbox.status, 'HELD'), sql`${sapOutbox.movementType} IS NOT NULL`,
-        sql`(${sapOutbox.lastError} IS NULL OR ${sapOutbox.lastError} NOT LIKE 'Ditahan manual:%')`));
-    const dilepas = Number((hasil as unknown as [{ affectedRows?: number }])[0]?.affectedRows ?? 0);
+  async releaseHeld(plantId?: number): Promise<{ dilepas: number }> {
+    const rows = await this.db.select().from(sapOutbox).where(and(
+      eq(sapOutbox.status, 'HELD'),
+      sql`(${sapOutbox.lastError} IS NULL OR ${sapOutbox.lastError} NOT LIKE 'Ditahan manual:%')`,
+      plantId ? eq(sapOutbox.plantId, plantId) : undefined,
+    )).limit(100);
+    let dilepas = 0;
+    for (const row of rows) {
+      const checked = await this.revalidate(row);
+      if (checked.errors.length > 0 || !row.movementType) {
+        const errors = !row.movementType
+          ? ['Movement type SAP belum tersedia', ...checked.errors]
+          : checked.errors;
+        await this.db.update(sapOutbox).set({
+          lastError: `Validasi SAP: ${errors.join('; ')}`.slice(0, 1000),
+        }).where(and(eq(sapOutbox.id, row.id), eq(sapOutbox.status, 'HELD')));
+        continue;
+      }
+      await this.db.update(sapOutbox).set({
+        status: 'PENDING', payload: checked.payload, lastError: null, nextAttemptAt: null,
+      }).where(and(eq(sapOutbox.id, row.id), eq(sapOutbox.status, 'HELD')));
+      dilepas += 1;
+    }
     if (dilepas > 0) this.logger.log(`${dilepas} dokumen tertahan dilepas ke antrean kirim`);
     return { dilepas };
   }
 
-  async summary() {
+  private async revalidate(row: typeof sapOutbox.$inferSelect): Promise<{ payload: unknown; errors: string[] }> {
+    if (row.docType === 'GR') {
+      const gr = await this.buildGr(row.sourceId);
+      return gr
+        ? { payload: gr.payload, errors: gr.errors }
+        : { payload: row.payload, errors: ['Receipt sumber tidak ditemukan'] };
+    }
+    if (row.docType === 'GR_REVERSAL') {
+      const [original] = await this.db.select({
+        status: sapOutbox.status,
+        sapDocNumber: sapOutbox.sapDocNumber,
+      }).from(sapOutbox).where(and(
+        eq(sapOutbox.sourceTable, row.sourceTable),
+        eq(sapOutbox.sourceId, row.sourceId),
+        eq(sapOutbox.docType, 'GR'),
+      ));
+      if (original?.status !== 'POSTED' || !original.sapDocNumber)
+        return { payload: row.payload, errors: ['Menunggu nomor dokumen GR asli dari SAP'] };
+      const payload = row.payload && typeof row.payload === 'object'
+        ? { ...row.payload as Record<string, unknown>, reversalOf: original.sapDocNumber }
+        : row.payload;
+      return { payload, errors: [] };
+    }
+    return { payload: row.payload, errors: [] };
+  }
+
+  async summary(plantId?: number) {
     const rows = await this.db
       .select({ status: sapOutbox.status, jumlah: count() })
       .from(sapOutbox)
+      .where(plantId ? eq(sapOutbox.plantId, plantId) : undefined)
       .groupBy(sapOutbox.status);
     const map = Object.fromEntries(rows.map((r) => [r.status, Number(r.jumlah)]));
     return {
       pending: map.PENDING ?? 0,
-      sent: map.SENT ?? 0,
+      processing: map.PROCESSING ?? 0,
+      staged: map.STAGED ?? 0,
+      posted: map.POSTED ?? 0,
       failed: map.FAILED ?? 0,
       held: map.HELD ?? 0,
       skipped: map.SKIPPED ?? 0,
     };
   }
 
-  async list(params: { page: number; perPage: number; status?: string }) {
+  async list(params: {
+    page: number;
+    perPage: number;
+    status?: string;
+    docType?: string;
+    from?: Date;
+    toExclusive?: Date;
+  }, plantId?: number) {
     const offset = (params.page - 1) * params.perPage;
-    const filter =
+    const filter = and(
       params.status && params.status !== 'ALL'
         ? eq(sapOutbox.status, params.status as 'PENDING')
-        : undefined;
+        : undefined,
+      params.docType && params.docType !== 'ALL' ? eq(sapOutbox.docType, params.docType) : undefined,
+      params.from ? gte(sapOutbox.occurredAt, params.from) : undefined,
+      params.toExclusive ? lt(sapOutbox.occurredAt, params.toExclusive) : undefined,
+      plantId ? eq(sapOutbox.plantId, plantId) : undefined,
+    );
 
     const [rows, totalRows] = await Promise.all([
       this.db
@@ -213,11 +328,16 @@ export class SapOutboxService {
           movementType: sapOutbox.movementType,
           sourceTable: sapOutbox.sourceTable,
           sourceId: sapOutbox.sourceId,
+          idempotencyKey: sapOutbox.idempotencyKey,
           status: sapOutbox.status,
           attempts: sapOutbox.attempts,
           lastError: sapOutbox.lastError,
           sapDocNumber: sapOutbox.sapDocNumber,
           occurredAt: sapOutbox.occurredAt,
+          nextAttemptAt: sapOutbox.nextAttemptAt,
+          lastAttemptAt: sapOutbox.lastAttemptAt,
+          stagedAt: sapOutbox.stagedAt,
+          postedAt: sapOutbox.postedAt,
           sentAt: sapOutbox.sentAt,
         })
         .from(sapOutbox)
@@ -242,29 +362,47 @@ export class SapOutboxService {
   }
 
   /** Mencoba ulang dokumen yang gagal kirim. */
-  async retry(ids: number[], userId: number): Promise<{ diulang: number }> {
-    if (ids.length === 0) return { diulang: 0 };
-    return this.db.transaction(async (tx) => {
-      const rows = await tx.select().from(sapOutbox)
-        .where(and(inArray(sapOutbox.id, ids), inArray(sapOutbox.status, ['FAILED', 'HELD'])))
-        .for('update');
-      for (const row of rows) {
-        await tx.update(sapOutbox)
-          .set({ status: 'PENDING', attempts: 0, lastError: null })
-          .where(eq(sapOutbox.id, row.id));
-        await writeAudit(tx, 'TT_SAP_OUTBOX', row.id, 'RETRY', userId, row,
-          { ...row, status: 'PENDING', attempts: 0, lastError: null });
-      }
-      return { diulang: rows.length };
-    });
+  async retry(ids: number[], userId: number, plantId?: number): Promise<{ diulang: number; tetapDitahan: number }> {
+    if (ids.length === 0) return { diulang: 0, tetapDitahan: 0 };
+    const rows = await this.db.select().from(sapOutbox)
+      .where(and(inArray(sapOutbox.id, ids), inArray(sapOutbox.status, ['FAILED', 'HELD']),
+        plantId ? eq(sapOutbox.plantId, plantId) : undefined));
+    let diulang = 0;
+    let tetapDitahan = 0;
+    for (const row of rows) {
+      const checked = await this.revalidate(row);
+      await this.db.transaction(async (tx) => {
+        const [current] = await tx.select().from(sapOutbox)
+          .where(eq(sapOutbox.id, row.id)).for('update');
+        if (!current || !['FAILED', 'HELD'].includes(current.status)) return;
+        const next = checked.errors.length > 0 ? {
+          status: 'HELD' as const,
+          payload: checked.payload,
+          lastError: `Validasi SAP: ${checked.errors.join('; ')}`.slice(0, 1000),
+        } : {
+          status: 'PENDING' as const,
+          payload: checked.payload,
+          lastError: null,
+        };
+        await tx.update(sapOutbox).set({
+          ...next, attempts: 0, nextAttemptAt: null,
+        }).where(eq(sapOutbox.id, row.id));
+        await writeAudit(tx, 'TT_SAP_OUTBOX', row.id, 'RETRY', userId, current,
+          { ...current, ...next, attempts: 0, nextAttemptAt: null });
+        if (next.status === 'PENDING') diulang += 1;
+        else tetapDitahan += 1;
+      });
+    }
+    return { diulang, tetapDitahan };
   }
 
   /** F-46: tahan kegagalan agar worker tidak mencobanya sampai dilepas lewat retry. */
-  async hold(ids: number[], userId: number): Promise<{ ditahan: number }> {
+  async hold(ids: number[], userId: number, plantId?: number): Promise<{ ditahan: number }> {
     if (ids.length === 0) return { ditahan: 0 };
     return this.db.transaction(async (tx) => {
       const rows = await tx.select().from(sapOutbox)
-        .where(and(inArray(sapOutbox.id, ids), eq(sapOutbox.status, 'FAILED')))
+        .where(and(inArray(sapOutbox.id, ids), eq(sapOutbox.status, 'FAILED'),
+          plantId ? eq(sapOutbox.plantId, plantId) : undefined))
         .for('update');
       for (const row of rows) {
         const lastError = `Ditahan manual: ${row.lastError ?? 'tanpa pesan kegagalan'}`.slice(0, 1000);

@@ -1,11 +1,36 @@
 import { describe, it, expect } from 'vitest';
 import {
   pickPoItem,
+  checkPoOpenQty,
   canTransition,
   assertTransition,
   cycleOfCutoff,
   type PoCandidate,
 } from './picklist';
+
+describe('checkPoOpenQty (F-19)', () => {
+  it('mengizinkan jumlah tepat sampai open qty', () => {
+    expect(checkPoOpenQty({ openQty: 1_000, outstandingPcs: 700, newPcs: 300 })).toEqual({
+      allowed: true,
+      reason: null,
+      availablePcs: 300,
+      projectedPcs: 1_000,
+    });
+  });
+
+  it('memblokir jumlah yang membuat outstanding melebihi open qty', () => {
+    expect(checkPoOpenQty({ openQty: 1_000, outstandingPcs: 700, newPcs: 301 })).toEqual({
+      allowed: false,
+      reason: 'PO_OPEN_QTY',
+      availablePcs: 300,
+      projectedPcs: 1_001,
+    });
+  });
+
+  it('qty yang sudah diterima tidak lagi menjadi outstanding', () => {
+    expect(checkPoOpenQty({ openQty: 1_000, outstandingPcs: 300, newPcs: 700 }).allowed).toBe(true);
+  });
+});
 
 describe('pickPoItem (6.6.1, F-18)', () => {
   const po = (over: Partial<PoCandidate>): PoCandidate => ({

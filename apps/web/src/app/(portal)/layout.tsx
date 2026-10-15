@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/session';
 import { getVendorName } from '@/lib/queries';
 import { ShellFrame } from '@/components/shell/shell-frame';
-import { PORTAL_NAV_GROUPS } from '@/components/shell/nav-config';
+import { authorizedGroups, PORTAL_NAV_GROUPS } from '@/components/shell/nav-config';
 
 /**
  * Kerangka portal supplier (PRD §10.2).
@@ -20,6 +20,7 @@ import { PORTAL_NAV_GROUPS } from '@/components/shell/nav-config';
 export default async function PortalLayout({ children }: { children: React.ReactNode }) {
   const user = await getSessionUser();
   if (!user) redirect('/login');
+  if (!user.permissions.includes('picklist.read')) redirect('/login');
   // Akun internal tidak punya VENDOR_ID; portal bukan tempatnya.
   if (user.vendorId == null) redirect('/dashboard');
 
@@ -27,9 +28,10 @@ export default async function PortalLayout({ children }: { children: React.React
 
   return (
     <ShellFrame
+      userId={user.id}
       userName={user.name}
       role={user.role}
-      groups={PORTAL_NAV_GROUPS}
+      groups={authorizedGroups(PORTAL_NAV_GROUPS, user.permissions)}
       subtitle={vendorName ?? 'Portal supplier'}
       homeHref="/portal"
     >

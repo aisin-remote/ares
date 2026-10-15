@@ -5,6 +5,7 @@ import { AlertCircle, AlertTriangle, CheckCircle2, DoorClosed } from 'lucide-rea
 import { closeReceiptAction } from '@/app/(app)/receiving/actions';
 import type { ReceiptDetail } from '@/lib/queries';
 import { cn } from '../ui/cn';
+import { useFeedback } from '../ui/feedback-provider';
 
 type Line = ReceiptDetail['lines'][number];
 
@@ -24,7 +25,7 @@ export function CloseSession({
   onCancel,
   onClosed,
 }: {
-  receiptId: number;
+  receiptId: string;
   lines: Line[];
   rejected: number;
   onCancel: () => void;
@@ -34,6 +35,7 @@ export function CloseSession({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const reasonRef = useRef<HTMLTextAreaElement>(null);
+  const feedback = useFeedback();
 
   const kurang = lines.filter((l) => l.boxScanned < l.boxOrdered);
   const totalKurang = kurang.reduce((n, l) => n + (l.boxOrdered - l.boxScanned), 0);
@@ -64,6 +66,12 @@ export function CloseSession({
       setError(res.error);
       return;
     }
+    feedback.success(
+      'Sesi Receiving berhasil ditutup',
+      res.missingCount > 0
+        ? `${res.missingCount} kanban belum diterima dan sudah ditandai kurang.`
+        : 'Semua kanban pada sesi ini sudah diterima.',
+    );
     onClosed();
   }
 
@@ -143,8 +151,8 @@ export function CloseSession({
 
         {rejected > 0 ? (
           <p className="mt-3 text-[13px] text-ink-muted">
-            {rejected} scan ditolak selama sesi ini (kanban picklist lain atau kode asing) — tidak
-            ikut diterima.
+            {rejected} scan ditolak selama sesi ini (kanban Order Sheet lain atau kode asing) —
+            tidak ikut diterima.
           </p>
         ) : null}
 

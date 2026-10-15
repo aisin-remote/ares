@@ -2,10 +2,11 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertCircle, AlertTriangle, Truck } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Loader2, Truck } from 'lucide-react';
 import { confirmShipmentAction } from '@/app/(portal)/portal/actions';
 import { Table, Th, Td, Tr } from '../ui/table';
 import { cn } from '../ui/cn';
+import { useFeedback } from '../ui/feedback-provider';
 
 const INPUT =
   'h-11 rounded-2xl border border-line bg-surface px-4 text-[15px] outline-none transition-colors duration-200 focus:border-line-strong focus:bg-card';
@@ -34,7 +35,7 @@ export function ConfirmShipmentForm({
   lines,
   defaultEta,
 }: {
-  picklistId: number;
+  picklistId: string;
   lines: Line[];
   /** Tanggal + jam kedatangan picklist sebagai nilai awal ETA (datetime-local). */
   defaultEta: string;
@@ -49,6 +50,7 @@ export function ConfirmShipmentForm({
   const [sibuk, setSibuk] = useState(false);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
+  const feedback = useFeedback();
 
   const angka = (id: number) => Number(shipped[id] ?? 0);
   const totalKurang = lines.reduce((n, l) => n + Math.max(0, l.boxOrdered - angka(l.id)), 0);
@@ -74,6 +76,12 @@ export function ConfirmShipmentForm({
       setError(res.error);
       return;
     }
+    feedback.success(
+      'Konfirmasi pengiriman tersimpan',
+      res.short && res.revision
+        ? `Kekurangan dibuat menjadi Order Sheet recovery revisi ${res.revision.revision}.`
+        : 'Order sekarang menunggu proses Receiving.',
+    );
     startTransition(() => router.refresh());
   }
 
@@ -197,8 +205,12 @@ export function ConfirmShipmentForm({
           disabled={sibuk || pending}
           className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-accent px-5 text-[14px] font-semibold text-white transition-colors hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <Truck className="size-[18px]" strokeWidth={2.2} aria-hidden />
-          {sibuk ? 'Mengirim…' : 'Konfirmasi kirim'}
+          {sibuk ? (
+            <Loader2 className="size-[18px] animate-spin" strokeWidth={2} aria-hidden />
+          ) : (
+            <Truck className="size-[18px]" strokeWidth={2.2} aria-hidden />
+          )}
+          {sibuk ? 'Sedang menyimpan…' : 'Konfirmasi kirim'}
         </button>
       </div>
     </div>

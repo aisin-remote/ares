@@ -19,12 +19,11 @@ export default async function ReceivingStationPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const receiptId = Number(id);
-  if (!Number.isInteger(receiptId) || receiptId <= 0) notFound();
-
-  const [user, session] = await Promise.all([getSessionUser(), getReceiptDetail(receiptId)]);
+  const user = await getSessionUser();
+  if (user?.plantId == null) notFound();
+  const session = await getReceiptDetail(id, user.plantId);
   if (!session) notFound();
-  if (session.status !== 'OPEN') redirect(`/receiving/${receiptId}/ringkasan`);
+  if (session.status !== 'OPEN') redirect(`/receiving/${session.publicId}/ringkasan`);
 
   return <ReceivingStation session={session} userName={user?.name ?? '—'} npk={user?.npk ?? '—'} />;
 }

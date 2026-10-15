@@ -4,6 +4,7 @@ export interface NavItem {
   icon: string;
   /** Fase rilis PRD §12 tempat halaman ini hidup; kosong = fase 1. */
   phase?: 1 | 2 | 3;
+  permission?: string;
 }
 
 /**
@@ -22,6 +23,16 @@ export function visibleGroups(groups: NavGroup[], phase: number = ARES_PHASE): N
   return groups
     .map((g) => ({ ...g, items: g.items.filter((i) => (i.phase ?? 1) <= phase) }))
     .filter((g) => g.items.length > 0);
+}
+
+export function authorizedGroups(groups: NavGroup[], permissions: string[]): NavGroup[] {
+  const allowed = new Set(permissions);
+  return groups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => !item.permission || allowed.has(item.permission)),
+    }))
+    .filter((group) => group.items.length > 0);
 }
 
 export interface NavGroup {
@@ -51,32 +62,64 @@ export const PORTAL_NAV_GROUPS: NavGroup[] = [
       { href: '/portal/riwayat', label: 'Riwayat', icon: 'BarChart3' },
     ],
   },
+  {
+    title: 'Data',
+    items: [
+      // Atribut kemasan yang tercetak di kanban; qty/box tetap diatur PPIC (F-02).
+      {
+        href: '/portal/vendor-part',
+        label: 'Vendor part',
+        icon: 'PackageSearch',
+        permission: 'vendorPart.self',
+      },
+    ],
+  },
 ];
 
 export const NAV_GROUPS: NavGroup[] = [
   {
     title: 'Operasi',
     items: [
-      { href: '/dashboard', label: 'Dashboard', icon: 'LayoutDashboard' },
-      { href: '/queue', label: 'Antrean Order', icon: 'ListOrdered', phase: 2 },
-      { href: '/picklist', label: 'Picklist', icon: 'ClipboardList' },
-      // Sesi yang sedang berjalan; halaman yang sama dengan Penerimaan, tersaring OPEN.
-      { href: '/receiving?status=OPEN', label: 'Sesi Scan', icon: 'ScanLine' },
+      {
+        href: '/dashboard',
+        label: 'Dashboard',
+        icon: 'LayoutDashboard',
+        permission: 'picklist.read',
+      },
+      {
+        href: '/queue',
+        label: 'Antrean Order',
+        icon: 'ListOrdered',
+        phase: 2,
+        permission: 'queue.write',
+      },
+      {
+        href: '/picklist',
+        label: 'Order Sheet',
+        icon: 'ClipboardList',
+        permission: 'picklist.read',
+      },
     ],
   },
   {
     title: 'Logistik',
     items: [
-      { href: '/receiving', label: 'Penerimaan', icon: 'Truck' },
-      { href: '/stock', label: 'Stok WH', icon: 'Boxes', phase: 2 },
-      { href: '/consumption', label: 'Konsumsi', icon: 'Factory', phase: 2 },
+      { href: '/receiving', label: 'Receiving', icon: 'Truck', permission: 'receipt.read' },
+      { href: '/stock', label: 'Stok WH', icon: 'Boxes', phase: 2, permission: 'stock.read' },
+      {
+        href: '/consumption',
+        label: 'Konsumsi',
+        icon: 'Factory',
+        phase: 2,
+        permission: 'mes.read',
+      },
     ],
   },
   {
     title: 'Integrasi',
     items: [
-      { href: '/sap', label: 'SAP Outbox', icon: 'Share2' },
-      { href: '/mes', label: 'Sinkron MES', icon: 'RefreshCw', phase: 2 },
+      { href: '/sap', label: 'SAP Outbox', icon: 'Share2', permission: 'outbox.read' },
+      { href: '/mes', label: 'Sinkron MES', icon: 'RefreshCw', phase: 2, permission: 'mes.read' },
     ],
   },
   {
@@ -94,20 +137,40 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     title: 'Setting',
     items: [
-      { href: '/settings/cutoff', label: 'Cutoff Supplier', icon: 'Clock' },
-      { href: '/settings/policy', label: 'Kebijakan', icon: 'SlidersHorizontal' },
-      { href: '/settings/holiday', label: 'Kalender Libur', icon: 'CalendarDays' },
+      {
+        href: '/settings/cutoff',
+        label: 'Cutoff Supplier',
+        icon: 'Clock',
+        permission: 'setting.write',
+      },
+      {
+        href: '/settings/policy',
+        label: 'Kebijakan',
+        icon: 'SlidersHorizontal',
+        permission: 'setting.write',
+      },
+      {
+        href: '/settings/holiday',
+        label: 'Kalender Libur',
+        icon: 'CalendarDays',
+        permission: 'setting.write',
+      },
     ],
   },
   {
     title: 'Master Data',
     collapsible: true,
     items: [
-      { href: '/master/vendors', label: 'Supplier', icon: 'Building2' },
-      { href: '/master/parts', label: 'Part', icon: 'Package' },
-      { href: '/master/vendorParts', label: 'Vendor Part', icon: 'PackageSearch' },
-      { href: '/master/bom', label: 'BOM', icon: 'GitBranch' },
-      { href: '/master/users', label: 'User & Peran', icon: 'Users' },
+      { href: '/master/vendors', label: 'Supplier', icon: 'Building2', permission: 'master.read' },
+      { href: '/master/parts', label: 'Part', icon: 'Package', permission: 'master.read' },
+      {
+        href: '/master/vendorParts',
+        label: 'Vendor Part',
+        icon: 'PackageSearch',
+        permission: 'master.read',
+      },
+      { href: '/master/bom', label: 'BOM', icon: 'GitBranch', permission: 'master.read' },
+      { href: '/master/users', label: 'User & Peran', icon: 'Users', permission: 'user.write' },
     ],
   },
 ];

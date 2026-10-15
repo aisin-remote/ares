@@ -14,6 +14,7 @@ import {
 import { relations } from 'drizzle-orm';
 import { ROUNDINGS, SHORT_SHIP_POLICIES, HOLIDAY_SHIFTS } from '@ares/contracts';
 import { pk, fk, timestamps } from './_shared';
+import { plants } from './org';
 
 /**
  * Master supplier, part, vendor part, cutoff, libur, PO cache, dan penomoran
@@ -25,15 +26,35 @@ export const vendors = mysqlTable(
   'TM_VENDOR',
   {
     id: pk(),
-    sapVendorNo: varchar('SAP_VENDOR_NO', { length: 16 }).notNull(),
+    /** NULL hanya untuk hasil impor SUPPLIER LIST yang belum dipetakan ke SAP. */
+    sapVendorNo: varchar('SAP_VENDOR_NO', { length: 16 }),
+    plantId: fk('PLANT_ID').references(() => plants.id),
     name: varchar('NAME', { length: 128 }).notNull(),
+    /** Nama/kode supplier pada sumber jadwal receiving. */
+    scheduleCode: varchar('SCHEDULE_CODE', { length: 64 }),
+    truckStation: varchar('TRUCK_STATION', { length: 64 }),
+    deliveryCycle: varchar('DELIVERY_CYCLE', { length: 32 }),
+    truckType: varchar('TRUCK_TYPE', { length: 32 }),
+    /** Hari pengiriman ISO, dipisah koma. Berasal dari kolom DAY. */
+    deliveryDays: varchar('DELIVERY_DAYS', { length: 16 }),
+    deliveryDayLabel: varchar('DELIVERY_DAY_LABEL', { length: 64 }),
+    palletPerDelivery: varchar('PALLET_PER_DELIVERY', { length: 64 }),
+    loadingOperator: varchar('LOADING_OPERATOR', { length: 64 }),
+    location: varchar('LOCATION', { length: 64 }),
+    /** Kunci stabil untuk sinkron ulang snapshot SUPPLIER LIST. */
+    sourceKey: varchar('SOURCE_KEY', { length: 191 }),
     address: varchar('ADDRESS', { length: 255 }),
     /** Kontak supplier. Email picklist (8.4) dikirim ke akun vendor, bukan ke sini. */
     email: varchar('EMAIL', { length: 191 }),
     isActive: boolean('IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
-  (t) => [uniqueIndex('TM_VENDOR_SAP_NO_UNIQUE').on(t.sapVendorNo)],
+  (t) => [
+    uniqueIndex('TM_VENDOR_SAP_NO_UNIQUE').on(t.sapVendorNo),
+    uniqueIndex('TM_VENDOR_SCHEDULE_CODE_UNIQUE').on(t.scheduleCode),
+    uniqueIndex('TM_VENDOR_SOURCE_KEY_UNIQUE').on(t.sourceKey),
+    index('TM_VENDOR_PLANT_IDX').on(t.plantId),
+  ],
 );
 
 export const parts = mysqlTable(
@@ -135,12 +156,22 @@ export const vendorCutoffs = mysqlTable(
     leadDays: int('LEAD_DAYS').notNull().default(1),
     arrivalTime: time('ARRIVAL_TIME').notNull(),
     holidayShift: mysqlEnum('HOLIDAY_SHIFT', HOLIDAY_SHIFTS).notNull().default('BEFORE'),
-    shortShipPolicy: mysqlEnum('SHORT_SHIP_POLICY', SHORT_SHIP_POLICIES).notNull().default('CARRY_OVER'),
+    /** Tetap disimpan untuk kompatibilitas data lama; aturan aktif selalu recovery/revisi. */
+    shortShipPolicy: mysqlEnum('SHORT_SHIP_POLICY', SHORT_SHIP_POLICIES).notNull().default('REVISION'),
     rounding: mysqlEnum('ROUNDING', ROUNDINGS).notNull().default('FLOOR'),
+    /** F-08: peringatan pertama N jam setelah picklist terbit. */
+    downloadWarningHours: int('DOWNLOAD_WARNING_HOURS').notNull().default(2),
+    /** F-08: peringatan H jam sebelum jadwal kedatangan. */
+    confirmWarningHours: int('CONFIRM_WARNING_HOURS').notNull().default(3),
+    /** Kunci template hasil impor SUPPLIER LIST; tidak berubah saat jam diedit. */
+    sourceKey: varchar('SOURCE_KEY', { length: 191 }),
     isActive: boolean('IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
-  (t) => [uniqueIndex('TM_VENDOR_CUTOFF_VENDOR_TIME_UNIQUE').on(t.vendorId, t.cutoffTime)],
+  (t) => [
+    uniqueIndex('TM_VENDOR_CUTOFF_VENDOR_TIME_UNIQUE').on(t.vendorId, t.cutoffTime),
+    uniqueIndex('TM_VENDOR_CUTOFF_SOURCE_KEY_UNIQUE').on(t.sourceKey),
+  ],
 );
 
 /**
@@ -207,7 +238,8 @@ export const sequences = mysqlTable(
   (t) => [uniqueIndex('TM_SEQUENCE_CODE_DATE_UNIQUE').on(t.code, t.dateKey)],
 );
 
-export const vendorsRelations = relations(vendors, ({ many }) => ({
+export const vendorsRelations = relations(vendors, ({ one, many }) => ({
+  plant: one(plants, { fields: [vendors.plantId], references: [plants.id] }),
   vendorParts: many(vendorParts),
   cutoffs: many(vendorCutoffs),
   pos: many(poHeaders),

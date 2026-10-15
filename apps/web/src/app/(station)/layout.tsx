@@ -1,5 +1,4 @@
-import { redirect } from 'next/navigation';
-import { getSessionUser } from '@/lib/session';
+import { requirePermission } from '@/lib/session';
 
 /**
  * Layout untuk layar stasiun di lantai produksi.
@@ -14,8 +13,7 @@ import { getSessionUser } from '@/lib/session';
  * ke halaman lain saat tidak sengaja menyenggol layar sentuh.
  */
 export default async function StationLayout({ children }: { children: React.ReactNode }) {
-  const user = await getSessionUser();
-  if (!user) redirect('/login');
+  await requirePermission('receipt.read');
 
   return <div className="min-h-screen bg-surface">{children}</div>;
 }

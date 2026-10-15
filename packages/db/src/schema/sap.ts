@@ -12,7 +12,15 @@ import { relations } from 'drizzle-orm';
 import { pk, fk, timestamps } from './_shared';
 import { plants } from './org';
 
-export const SAP_OUTBOX_STATUSES = ['PENDING', 'SENT', 'FAILED', 'HELD', 'SKIPPED'] as const;
+export const SAP_OUTBOX_STATUSES = [
+  'PENDING',
+  'PROCESSING',
+  'STAGED',
+  'POSTED',
+  'FAILED',
+  'HELD',
+  'SKIPPED',
+] as const;
 
 /**
  * Antrean dokumen yang harus sampai ke SAP.
@@ -23,10 +31,12 @@ export const SAP_OUTBOX_STATUSES = ['PENDING', 'SENT', 'FAILED', 'HELD', 'SKIPPE
  * Karena itu perpindahan barang dicatat dulu di sini, lalu dikirim terpisah.
  *
  * Statusnya:
- *   PENDING  belum dikirim
- *   SENT     sudah masuk MS SQL
- *   FAILED   pengiriman gagal, akan dicoba lagi
- *   HELD     movement type-nya belum diputuskan tim SAP — sengaja ditahan
+ *   PENDING  belum dikirim atau sedang menunggu jadwal retry
+ *   PROCESSING sedang diklaim worker
+ *   STAGED   sudah masuk MS SQL, belum ada hasil posting SAP
+ *   POSTED   SAP sudah memberikan nomor material document
+ *   FAILED   delapan percobaan gagal; menunggu retry manual
+ *   HELD     data bisnis belum valid atau sengaja ditahan operator
  *   SKIPPED  memang tidak perlu dikirim (mis. hasil stock opname)
  *
  * HELD dan SKIPPED sengaja dibedakan dari FAILED. Dokumen yang tertahan karena
@@ -74,11 +84,17 @@ export const sapOutbox = mysqlTable(
     status: mysqlEnum('STATUS', SAP_OUTBOX_STATUSES).notNull().default('PENDING'),
     attempts: int('ATTEMPTS').notNull().default(0),
     lastError: varchar('LAST_ERROR', { length: 1000 }),
+    /** Percobaan otomatis berikutnya setelah backoff. NULL berarti boleh langsung. */
+    nextAttemptAt: timestamp('NEXT_ATTEMPT_AT'),
+    lastAttemptAt: timestamp('LAST_ATTEMPT_AT'),
     /** Nomor dokumen material yang dikembalikan SAP, bila ada. */
     sapDocNumber: varchar('SAP_DOC_NUMBER', { length: 32 }),
 
     /** Kapan perpindahan barangnya terjadi — bukan kapan barisnya dibuat. */
     occurredAt: timestamp('OCCURRED_AT').notNull(),
+    stagedAt: timestamp('STAGED_AT'),
+    postedAt: timestamp('POSTED_AT'),
+    /** Kolom lama, dipertahankan agar instalasi lama bisa dimigrasikan tanpa kehilangan waktu kirim. */
     sentAt: timestamp('SENT_AT'),
     ...timestamps,
   },

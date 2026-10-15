@@ -5,6 +5,7 @@ export const QUEUES = {
   MES: 'mes',
   DOCUMENT: 'document',
   NOTIFICATION: 'notification',
+  STOCK: 'stock',
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
@@ -23,4 +24,12 @@ export const JOBS = {
   // PDF picklist & kanban dirender di worker.
   RENDER_PDF: 'render-pdf',
   SEND_NOTIFICATION: 'send-notification',
+  // Kabar ke PPIC saat supplier mengubah kemasan vendor part-nya sendiri.
+  NOTIFY_VENDOR_PART: 'notify-vendor-part',
+  // Pemberitahuan akun supplier yang perlu disetujui PPIC/Admin.
+  NOTIFY_SUPPLIER_REGISTRATION: 'notify-supplier-registration',
+  SEND_REMINDER: 'send-reminder',
+  // F-41: membekukan saldo stok harian supaya layar Stok WH tidak perlu
+  // menjumlahkan seluruh riwayat mutasi tiap kali dibuka.
+  SNAPSHOT_STOCK: 'snapshot-stock',
 } as const;

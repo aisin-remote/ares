@@ -317,7 +317,7 @@ function Group({
                     onBlur={onLeave}
                     data-nav-link
                     className={cn(
-                      'group relative flex items-center rounded-full py-2.5',
+                      'group relative flex items-center rounded-lg py-2.5',
                       'text-[14px] font-semibold outline-none',
                       'focus-visible:ring-2 focus-visible:ring-ink/20',
                       ringkas ? 'justify-center px-0' : 'gap-3 px-3.5',
@@ -328,10 +328,10 @@ function Group({
                       <motion.span
                         layoutId="nav-pill"
                         transition={springSnappy}
-                        className="absolute inset-0 rounded-full bg-accent"
+                        className="absolute inset-0 rounded-lg bg-accent"
                       />
                     ) : (
-                      <span className="absolute inset-0 rounded-full bg-transparent transition-colors duration-200 group-hover:bg-surface" />
+                      <span className="absolute inset-0 rounded-lg bg-transparent transition-colors duration-200 group-hover:bg-surface" />
                     )}
                     <Icon
                       className="sidebar-nav-icon relative size-[18px] shrink-0"

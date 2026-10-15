@@ -124,7 +124,7 @@ export function ReceivingStation({
     seq.current += 1;
 
     const res = await scanReceiptAction({
-      receiptId: session.id,
+      receiptId: session.publicId,
       code: value,
       // Kunci per scan untuk mencocokkan balasan; dedupe sesungguhnya ada di
       // API (receiptId:kode, F-38) sehingga kiriman ulang tidak menggandakan.
@@ -364,7 +364,7 @@ export function ReceivingStation({
         {/* ── Line picklist ─────────────────────────────────────────────── */}
         <section className="order-3 flex min-h-0 flex-1 flex-col rounded-card border border-line bg-card xl:order-3">
           <header className="flex shrink-0 items-center justify-between border-b border-line px-4 py-3 xl:px-5 xl:py-4">
-            <h2 className="text-[15px] font-bold">Line picklist</h2>
+            <h2 className="text-[15px] font-bold">Line Order Sheet</h2>
             <span className="text-[13px] text-ink-muted">{lines.length} part</span>
           </header>
           <ul className="scroll-slim min-h-0 flex-1 divide-y divide-line overflow-y-auto">
@@ -423,11 +423,11 @@ export function ReceivingStation({
 
       {closing ? (
         <CloseSession
-          receiptId={session.id}
+          receiptId={session.publicId}
           lines={lines}
           rejected={rejected}
           onCancel={() => setClosing(false)}
-          onClosed={() => router.push(`/receiving/${session.id}/ringkasan`)}
+          onClosed={() => router.push(`/receiving/${session.publicId}/ringkasan`)}
         />
       ) : null}
     </div>

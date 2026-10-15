@@ -1,8 +1,6 @@
 'use client';
 
-import { motion } from 'motion/react';
 import type { LucideIcon } from 'lucide-react';
-import { durations, easeSoft } from '../motion/transitions';
 import { cn } from './cn';
 
 /**
@@ -28,6 +26,8 @@ export function IconButton({
   variant = 'outline',
   className,
   badge,
+  expanded,
+  controls,
 }: {
   icon: LucideIcon;
   /** Wajib: tombol ini tidak punya teks, jadi pembaca layar bergantung padanya. */
@@ -38,6 +38,8 @@ export function IconButton({
   className?: string;
   /** Titik notifikasi kecil di pojok kanan atas. */
   badge?: boolean;
+  expanded?: boolean;
+  controls?: string;
 }) {
   const box = size === 'sm' ? 'size-9' : 'size-11';
   const glyph = size === 'sm' ? 'size-4' : 'size-[18px]';
@@ -49,18 +51,19 @@ export function IconButton({
   }[variant];
 
   return (
-    <motion.button
+    <button
       type="button"
       onClick={onClick}
       aria-label={label}
+      aria-expanded={expanded}
+      aria-controls={controls}
+      aria-haspopup={expanded === undefined ? undefined : 'true'}
       title={label}
-      whileHover={{ scale: 1.04 }}
-      whileTap={{ scale: 0.94 }}
-      transition={{ duration: durations.fast, ease: easeSoft }}
       className={cn(
         'relative inline-flex items-center justify-center rounded-full',
         'outline-none focus-visible:ring-2 focus-visible:ring-ink/20 focus-visible:ring-offset-2',
-        'transition-colors duration-200',
+        'transition duration-200 ease-out-soft',
+        'hover:scale-[1.04] active:scale-[0.94]',
         box,
         variants,
         className,
@@ -70,6 +73,6 @@ export function IconButton({
       {badge ? (
         <span className="absolute right-2.5 top-2.5 size-2 rounded-full bg-ng ring-2 ring-card" />
       ) : null}
-    </motion.button>
+    </button>
   );
 }

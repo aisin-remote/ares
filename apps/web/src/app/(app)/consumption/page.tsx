@@ -5,6 +5,7 @@ import { Card, CardHeader } from '@/components/ui/card';
 import { Table, Td, Th, Tr, EmptyState } from '@/components/ui/table';
 import { Reveal } from '@/components/motion/reveal';
 import { ReverseConsumption } from '@/components/queue/reverse-consumption';
+import { requirePermission } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,6 +16,7 @@ const waktu = (value: Date) => value.toLocaleString('id-ID', {
 export default async function ConsumptionPage({ searchParams }: {
   searchParams: Promise<{ q?: string; line?: string; from?: string; to?: string }>;
 }) {
+  await requirePermission('mes.read');
   const sp = await searchParams;
   const opts = {
     q: sp.q?.trim() || undefined,

@@ -52,3 +52,46 @@ export function waktu(at: Date | string): string {
 export function jam(t: string): string {
   return t.slice(0, 5);
 }
+
+/** Durasi pendek untuk penanda operasional: "45 menit", "3 jam", "2 hari". */
+export function durasiRingkas(milliseconds: number): string {
+  const nilai = Math.abs(milliseconds);
+  if (nilai < 60_000) return 'kurang dari 1 menit';
+  if (nilai < 2 * 60 * 60_000) return `${Math.ceil(nilai / 60_000)} menit`;
+  if (nilai < 2 * 24 * 60 * 60_000) return `${Math.ceil(nilai / 3_600_000)} jam`;
+  return `${Math.ceil(nilai / 86_400_000)} hari`;
+}
+
+export function waktuRelatif(target: Date | string, now = new Date()) {
+  const selisihMs = new Date(target).getTime() - now.getTime();
+  return {
+    selisihMs,
+    lewat: selisihMs < 0,
+    durasi: durasiRingkas(selisihMs),
+  };
+}
+
+/** Penanda yang langsung menjelaskan apakah jadwal kedatangan masih aman. */
+export function penandaKedatangan(
+  deliveryDate: string,
+  arrivalTime: string,
+  status: string,
+  now = new Date(),
+): { label: string; tone: 'danger' | 'warn' } | null {
+  if (status === 'COMPLETE' || status === 'CANCELLED') return null;
+  const target = new Date(`${deliveryDate}T${arrivalTime.slice(0, 8)}+07:00`);
+  const relatif = waktuRelatif(target, now);
+  if (relatif.lewat) {
+    return {
+      label:
+        status === 'ISSUED' || status === 'DOWNLOADED'
+          ? `Terlambat ${relatif.durasi}`
+          : `Lewat jadwal ${relatif.durasi}`,
+      tone: 'danger',
+    };
+  }
+  if (relatif.selisihMs <= 24 * 60 * 60_000) {
+    return { label: `Tiba ${relatif.durasi} lagi`, tone: 'warn' };
+  }
+  return null;
+}
