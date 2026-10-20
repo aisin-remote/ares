@@ -58,7 +58,7 @@ export const PORTAL_NAV_GROUPS: NavGroup[] = [
   {
     title: 'Order',
     items: [
-      { href: '/portal', label: 'Order berjalan', icon: 'ClipboardList' },
+      { href: '/portal', label: 'Order aktif', icon: 'ClipboardList' },
       { href: '/portal/riwayat', label: 'Riwayat', icon: 'BarChart3' },
     ],
   },
@@ -167,6 +167,12 @@ export const NAV_GROUPS: NavGroup[] = [
         href: '/master/vendorParts',
         label: 'Vendor Part',
         icon: 'PackageSearch',
+        permission: 'master.read',
+      },
+      {
+        href: '/master/orderStandards',
+        label: 'Standar Order',
+        icon: 'ListOrdered',
         permission: 'master.read',
       },
       { href: '/master/bom', label: 'BOM', icon: 'GitBranch', permission: 'master.read' },

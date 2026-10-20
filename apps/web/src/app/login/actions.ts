@@ -3,7 +3,7 @@
 import { redirect } from 'next/navigation';
 import {
   loginSchema,
-  loginTotpSchema,
+  loginOtpSchema,
   type LoginAttemptResponse,
   type LoginResponse,
 } from '@ares/contracts';
@@ -11,8 +11,10 @@ import { apiFetch, ApiRequestError } from '@/lib/api';
 import { setToken } from '@/lib/session';
 
 export interface LoginState {
-  stage?: 'TOTP';
+  stage?: 'EMAIL_OTP';
   mfaToken?: string;
+  emailHint?: string;
+  demoOtpCode?: string;
   error?: string;
 }
 
@@ -25,16 +27,16 @@ export interface LoginState {
  * request Next.js persis seperti controller PHP dulu.
  */
 export async function loginAction(prev: LoginState, formData: FormData): Promise<LoginState> {
-  if (prev.stage === 'TOTP') {
-    const parsed = loginTotpSchema.safeParse({
+  if (prev.stage === 'EMAIL_OTP') {
+    const parsed = loginOtpSchema.safeParse({
       mfaToken: prev.mfaToken,
-      totpCode: formData.get('totpCode'),
+      otpCode: formData.get('otpCode'),
     });
     if (!parsed.success) {
       return { ...prev, error: parsed.error.issues[0]?.message ?? 'Kode tidak valid' };
     }
     try {
-      const response = await apiFetch<LoginResponse>('/auth/login/totp', {
+      const response = await apiFetch<LoginResponse>('/auth/login/otp', {
         method: 'POST',
         body: JSON.stringify(parsed.data),
         authenticated: false,
@@ -62,7 +64,12 @@ export async function loginAction(prev: LoginState, formData: FormData): Promise
       authenticated: false,
     });
     if ('mfaRequired' in res) {
-      return { stage: 'TOTP', mfaToken: res.mfaToken };
+      return {
+        stage: 'EMAIL_OTP',
+        mfaToken: res.mfaToken,
+        emailHint: res.emailHint,
+        demoOtpCode: res.demoOtpCode,
+      };
     }
     await setToken(res.accessToken);
   } catch (err) {

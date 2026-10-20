@@ -18,6 +18,38 @@ export function applyQueueAdjustment(currentPcs: number, deltaPcs: number): numb
   return next;
 }
 
+/** F-13: PPIC menetapkan jumlah order dalam kanban; penyimpanan tetap PCS untuk MES. */
+export function setQueueKanbanQuantity(input: {
+  queuePcs: number;
+  carryOverPcs: number;
+  qtyPerKanban: number;
+  kanban: number;
+}) {
+  const { queuePcs, carryOverPcs, qtyPerKanban, kanban } = input;
+  if (![queuePcs, carryOverPcs, qtyPerKanban, kanban].every(Number.isInteger)) {
+    throw new QueueControlError('Jumlah antrean dan kanban harus bilangan bulat');
+  }
+  if (queuePcs < 0 || carryOverPcs < 0) {
+    throw new QueueControlError('PCS antrean saat ini tidak valid');
+  }
+  if (qtyPerKanban <= 0) throw new QueueControlError('Isi per kanban harus lebih dari nol');
+  if (kanban < 0) throw new QueueControlError('Jumlah kanban tidak boleh negatif');
+
+  const currentTotalPcs = queuePcs + carryOverPcs;
+  const totalPcs = kanban * qtyPerKanban;
+  if (!Number.isSafeInteger(totalPcs)) throw new QueueControlError('Jumlah order terlalu besar');
+  if (totalPcs === currentTotalPcs) throw new QueueControlError('Jumlah kanban tidak berubah');
+
+  const nextCarryOverPcs = Math.min(carryOverPcs, totalPcs);
+  return {
+    kanban,
+    totalPcs,
+    pcs: totalPcs - nextCarryOverPcs,
+    carryOverPcs: nextCarryOverPcs,
+    deltaPcs: totalPcs - currentTotalPcs,
+  };
+}
+
 export interface ReversibleConsumption {
   consumptionId: number;
   qty: number;

@@ -24,6 +24,7 @@ import {
   parts,
   poHeaders,
   poLines,
+  orderStandards,
   picklistHeaders,
   picklistLines,
   receiptHeaders,
@@ -365,7 +366,12 @@ export class PicklistService {
    * retry setelah commit tidak menemukan baris OPEN dan tidak menerbitkan
    * picklist kedua (6.2.4).
    */
-  async issueAutomatic(vendorId: number, cutoffAt: Date, actor: Actor): Promise<AutoIssueResult> {
+  async issueAutomatic(
+    vendorId: number,
+    cutoffAt: Date,
+    actor: Actor,
+    anomalyReason?: string,
+  ): Promise<AutoIssueResult> {
     const hasil = await this.db.transaction(async (tx): Promise<AutoIssueResult> => {
       const rows = await tx
         .select({
@@ -386,12 +392,20 @@ export class PicklistService {
            vendorPlantId: vendors.plantId,
            vendorDeliveryDays: vendors.deliveryDays,
            plantCode: plants.code,
+          standardKanban: orderStandards.standardKanban,
         })
         .from(orderQueues)
         .innerJoin(vendorParts, eq(orderQueues.vendorPartId, vendorParts.id))
         .innerJoin(parts, eq(vendorParts.partId, parts.id))
         .innerJoin(vendors, eq(vendorParts.vendorId, vendors.id))
         .innerJoin(plants, eq(vendors.plantId, plants.id))
+        .leftJoin(
+          orderStandards,
+          and(
+            eq(orderStandards.vendorPartId, vendorParts.id),
+            eq(orderStandards.isActive, true),
+          ),
+        )
         .where(
           and(
             eq(orderQueues.status, 'OPEN'),
@@ -492,6 +506,17 @@ export class PicklistService {
         cutoff.rounding,
       );
       const planByVendorPart = new Map(plans.map((plan) => [plan.vendorPartId, plan]));
+      const anomalies = rows.filter((row) => {
+        const plan = planByVendorPart.get(row.vendorPartId);
+        return plan != null && !plan.held && row.standardKanban != null
+          && plan.boxes !== row.standardKanban;
+      });
+      const cleanReason = anomalyReason?.trim();
+      if (anomalies.length > 0 && (!cleanReason || cleanReason.length < 3)) {
+        throw new BadRequestException(
+          'Alasan wajib diisi karena jumlah order berbeda dari standar',
+        );
+      }
       const plannedRows = rows.filter((row) => (planByVendorPart.get(row.vendorPartId)?.boxes ?? 0) > 0);
 
       const needsNextQueue = rows.some((row) => {
@@ -584,7 +609,10 @@ export class PicklistService {
               arrivalTime: delivery.arrivalTime,
               cycle: cycleOfCutoff(cutoffs, cutoff.id) ?? 1,
               status: 'ISSUED',
-              note: 'Terbit otomatis dari antrean konsumsi',
+              note:
+                anomalies.length > 0
+                  ? `Selisih dari standar: ${cleanReason}`.slice(0, 255)
+                  : 'Terbit dari antrean konsumsi setelah dijalankan PPIC',
               createdById: actor.userId,
             })
             .$returningId()
@@ -638,6 +666,7 @@ export class PicklistService {
             pcs: item.plan.pcs,
           })),
           kanbanCount,
+          anomalyReason: anomalies.length > 0 ? cleanReason : null,
         });
         created = {
           status: 'CREATED',

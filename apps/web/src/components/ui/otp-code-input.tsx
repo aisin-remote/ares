@@ -5,8 +5,8 @@ import { useRef, useState } from 'react';
 export function OtpCodeInput({
   value,
   onChange,
-  id = 'totpCode',
-  name = 'totpCode',
+  id = 'otpCode',
+  name = 'otpCode',
   autoFocus = false,
 }: {
   value: string;
@@ -39,7 +39,7 @@ export function OtpCodeInput({
         }}
         onClick={(event) => event.currentTarget.setSelectionRange(value.length, value.length)}
         onBlur={() => setFocused(false)}
-        aria-label="Kode Google Authenticator"
+        aria-label="Kode OTP email"
         autoFocus={autoFocus}
         required
         className="absolute inset-0 z-10 h-full w-full cursor-text opacity-0"

@@ -148,11 +148,11 @@ describe('ConsumptionService.ingest (F-10–F-12)', () => {
       .where(inArray(orderQueues.vendorPartId, vendorPartIds));
     const target = queues.sort((a, b) => a.pcs - b.pcs)[0]!;
 
-    await controls.adjust(target.id, { deltaPcs: 3, reason: 'Koreksi hasil produksi' }, actor);
+    await controls.adjust(target.id, { kanban: 1, reason: 'Koreksi hasil produksi' }, actor);
     await controls.setHold(target.id, { hold: true, reason: 'Tunggu konfirmasi line' }, actor);
     await controls.setHold(target.id, { hold: false, reason: 'Line sudah terkonfirmasi' }, actor);
     const [adjusted] = await db.select().from(orderQueues).where(eq(orderQueues.id, target.id));
-    expect(adjusted).toMatchObject({ pcs: target.pcs + 3, hold: false });
+    expect(adjusted).toMatchObject({ pcs: 10, hold: false });
 
     const [origin] = await db.select().from(consumptions)
       .where(and(eq(consumptions.parentPartId, parentId), eq(consumptions.sourceKey, `MES:${sourceId}`)));
@@ -166,7 +166,7 @@ describe('ConsumptionService.ingest (F-10–F-12)', () => {
 
     const afterQueues = await db.select().from(orderQueues)
       .where(inArray(orderQueues.vendorPartId, vendorPartIds));
-    expect(afterQueues.map((row) => row.pcs).sort((a, b) => a - b)).toEqual([0, 3]);
+    expect(afterQueues.map((row) => row.pcs).sort((a, b) => a - b)).toEqual([0, 5]);
     const mutations = await db.select().from(stockMutations)
       .where(and(inArray(stockMutations.partId, componentIds), eq(stockMutations.refTable, 'TT_CONSUMPTION')));
     expect(mutations).toHaveLength(4);

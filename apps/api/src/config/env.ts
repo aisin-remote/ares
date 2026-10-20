@@ -41,23 +41,12 @@ const envSchema = z.object({
   TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(0),
   API_BODY_LIMIT: z.string().regex(/^\d+(?:kb|mb)$/i).default('256kb'),
   BCRYPT_ROUNDS: z.coerce.number().int().min(10).max(14).default(12),
-  // Kunci AES untuk secret Google Authenticator. Dev boleh fallback ke JWT_SECRET.
-  TOTP_ENCRYPTION_KEY: z.preprocess(
-    (value) => value === '' ? undefined : value,
-    z.string().min(32).optional(),
-  ),
-
   // PRD 8.2: API aplikasi produksi (MES) yang ditarik job mes-sync.
   MES_API_URL: z.string().optional(),
   MES_API_TOKEN: z.string().optional(),
   MES_GATEWAY: z.enum(['fake', 'http']).default('fake'),
   MES_SYNC_ENABLED: envBoolean(false),
   MES_SYNC_INTERVAL_SEC: z.coerce.number().int().positive().default(120),
-
-  // F-16: evaluasi antrean yang sudah mencapai cutoff dan terbitkan picklist.
-  CUTOFF_ENABLED: envBoolean(true),
-  CUTOFF_INTERVAL_SEC: z.coerce.number().int().positive().default(60),
-  CUTOFF_SYSTEM_USER_NPK: z.string().min(1).default('ADMIN'),
 
   WEB_ORIGIN: z.string().default('http://127.0.0.1:3000'),
 
@@ -68,6 +57,8 @@ const envSchema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
   SMTP_FROM: z.string().default('ARES e-Kanban <no-reply@ares.local>'),
+  /** Demo lokal saja: izinkan API mengembalikan OTP untuk autofill halaman login. */
+  DEMO_OTP_AUTOFILL: envBoolean(false),
 
   /** Storage location tujuan GR & stok WH (PRD 8.1, §13); `WH00` hanya placeholder. */
   SAP_SLOC: z.string().default('WH00'),
@@ -85,11 +76,15 @@ const envSchema = z.object({
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['WEB_ORIGIN'], message: 'WEB_ORIGIN harus daftar origin URL tanpa wildcard' });
   }
   if (env.NODE_ENV !== 'production') return;
+  if (env.DEMO_OTP_AUTOFILL) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['DEMO_OTP_AUTOFILL'],
+      message: 'DEMO_OTP_AUTOFILL tidak boleh aktif di produksi',
+    });
+  }
   if (env.JWT_SECRET.length < 48 || env.JWT_SECRET.includes('ganti-dengan-rahasia')) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['JWT_SECRET'], message: 'Produksi membutuhkan secret acak minimal 48 karakter' });
-  }
-  if (!env.TOTP_ENCRYPTION_KEY || env.TOTP_ENCRYPTION_KEY.length < 48) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['TOTP_ENCRYPTION_KEY'], message: 'Produksi membutuhkan TOTP_ENCRYPTION_KEY acak minimal 48 karakter' });
   }
   if (origins.some((origin) => !origin.startsWith('https://'))) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['WEB_ORIGIN'], message: 'Produksi wajib memakai origin HTTPS' });
@@ -113,6 +108,9 @@ const envSchema = z.object({
   }
   if (env.SMTP_USER && !env.SMTP_PASS) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['SMTP_PASS'], message: 'SMTP_PASS wajib bila SMTP_USER diisi' });
+  }
+  if (!env.SMTP_HOST) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['SMTP_HOST'], message: 'SMTP_HOST wajib agar supplier dapat menerima OTP login' });
   }
 });
 

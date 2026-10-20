@@ -1,6 +1,11 @@
 import 'reflect-metadata';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { ConflictException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import ExcelJS from 'exceljs';
 import {
   getDb,
@@ -15,6 +20,7 @@ import {
   vendors,
   parts,
   vendorParts,
+  orderStandards,
   vendorCutoffs,
   poHeaders,
   poLines,
@@ -29,6 +35,7 @@ import {
 } from '@ares/db';
 import { formatScanCode, orderPlantInitial, orderSheetDisplayNo, parseScanCode } from '@ares/domain';
 import { PicklistService } from './picklist.service';
+import { CutoffService } from './cutoff.service';
 import { SequenceService } from '../common/sequence.service';
 import type { QueueService } from '../queue/queue.service';
 
@@ -37,8 +44,8 @@ import type { QueueService } from '../queue/queue.service';
  * Data uji diberi kode unik per run dan dihapus di akhir; tabel lain tidak disentuh.
  */
 const db = getDb();
-// Antrean tiruan: job render PDF (F-27) tidak termasuk yang diuji di sini, dan
-// test tidak boleh menuntut Redis hidup.
+// Antrean tiruan: memastikan render PDF dan email supplier ikut dijadwalkan
+// tanpa menuntut Redis hidup saat test.
 const jobs: Array<{ queue: string; name: string; payload: unknown }> = [];
 const queue = {
   add: async (queueName: string, jobName: string, payload: unknown) => {
@@ -47,6 +54,7 @@ const queue = {
   },
 } as unknown as QueueService;
 const svc = new PicklistService(db, new SequenceService(), queue);
+const cutoffSvc = new CutoffService(db, svc, queue);
 const stamp = Date.now().toString().slice(-10);
 
 let actor: { userId: number; plantId: number };
@@ -156,6 +164,7 @@ afterAll(async () => {
 
 describe('PicklistService.issueManual (F-17, F-21, F-22, 6.6.1)', () => {
   it('order manual terbit: header ISSUED/MANUAL, line ber-PO, satu kanban PRINTED per box', async () => {
+    jobs.length = 0;
     const out = await svc.issueManual(
       { vendorId, deliveryDate: '2026-09-25', lines: [{ vendorPartId: vpA, boxes: 3 }] },
       actor,
@@ -210,6 +219,15 @@ describe('PicklistService.issueManual (F-17, F-21, F-22, 6.6.1)', () => {
     const [audit] = await db.select({ action: auditLogs.action }).from(auditLogs)
       .where(and(eq(auditLogs.entity, 'TT_PICKLIST_H'), eq(auditLogs.entityId, String(out.id))));
     expect(audit?.action).toBe('ISSUE');
+    expect(jobs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'send-notification',
+          payload: { kind: 'PICKLIST_ISSUED', picklistId: out.id },
+        }),
+      ]),
+    );
+    expect(jobs.filter((job) => job.name === 'send-notification')).toHaveLength(1);
   });
 
   it('PPIC dapat upload order ke supplier plant lain; nomor dan header tetap memakai plant PPIC', async () => {
@@ -310,6 +328,44 @@ describe('PicklistService.issueManual (F-17, F-21, F-22, 6.6.1)', () => {
 });
 
 describe('PicklistService.issueAutomatic (F-16, F-18, 6.1–6.2)', () => {
+  it('trigger dari detail hanya memproses supplier dan cutoff yang dipilih', async () => {
+    jobs.length = 0;
+    const selectedAt = new Date('2026-06-22T03:00:00Z');
+    const otherAt = new Date('2026-06-23T03:00:00Z');
+    await db.insert(orderQueues).values([
+      { vendorPartId: vpA, cutoffAt: selectedAt, pcs: 100 },
+      { vendorPartId: vpA, cutoffAt: otherAt, pcs: 100 },
+    ]);
+
+    const result = await cutoffSvc.runDue(
+      new Date('2026-06-24T03:00:00Z'),
+      actor,
+      { vendorId, cutoffAt: selectedAt },
+    );
+    expect(result).toMatchObject({ groups: 1, created: 1 });
+    const created = result.results[0]?.result;
+    if (created?.status !== 'CREATED') throw new Error('Picklist otomatis tidak terbit');
+    expect(jobs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'send-notification',
+          payload: { kind: 'PICKLIST_ISSUED', picklistId: created.id },
+        }),
+      ]),
+    );
+    expect(jobs.filter((job) => job.name === 'send-notification')).toHaveLength(1);
+
+    const queues = await db
+      .select({ cutoffAt: orderQueues.cutoffAt, status: orderQueues.status })
+      .from(orderQueues)
+      .where(and(eq(orderQueues.vendorPartId, vpA), inArray(orderQueues.cutoffAt, [selectedAt, otherAt])))
+      .orderBy(asc(orderQueues.cutoffAt));
+    expect(queues).toEqual([
+      { cutoffAt: selectedAt, status: 'CLOSED' },
+      { cutoffAt: otherAt, status: 'OPEN' },
+    ]);
+  });
+
   it('DAY dan ETA jadwal receiving menentukan tanggal picklist otomatis', async () => {
     await db.update(vendors).set({ deliveryDays: '5' }).where(eq(vendors.id, vendorId));
     const cutoffAt = new Date('2026-06-08T03:00:00Z'); // Senin; lead time minimum Selasa.
@@ -390,6 +446,31 @@ describe('PicklistService.issueAutomatic (F-16, F-18, 6.1–6.2)', () => {
         ),
       );
     expect(Number(autoCount?.value)).toBe(1);
+  });
+
+  it('selisih dari standar wajib beralasan dan alasannya tersimpan pada Order Sheet', async () => {
+    await db
+      .insert(orderStandards)
+      .values({ vendorPartId: vpA, standardKanban: 2 })
+      .onDuplicateKeyUpdate({ set: { standardKanban: 2, isActive: true } });
+    const cutoffAt = new Date('2026-06-05T03:00:00Z');
+    await db.insert(orderQueues).values({ vendorPartId: vpA, cutoffAt, pcs: 100 });
+
+    await expect(svc.issueAutomatic(vendorId, cutoffAt, actor)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    const created = await svc.issueAutomatic(
+      vendorId,
+      cutoffAt,
+      actor,
+      'Kebutuhan produksi berubah',
+    );
+    expect(created.status).toBe('CREATED');
+    if (created.status !== 'CREATED') throw new Error('Picklist otomatis tidak terbit');
+    const detail = await svc.get(created.id, null);
+    expect(detail.note).toBe('Selisih dari standar: Kebutuhan produksi berubah');
+
+    await db.delete(orderStandards).where(eq(orderStandards.vendorPartId, vpA));
   });
 
   it('PO tidak tersedia → antrean tetap OPEN dan ditandai blocked', async () => {

@@ -19,7 +19,7 @@ export function ClickableRow({ href, children }: { href: string; children: React
           router.push(href);
         }
       }}
-      className="cursor-pointer transition-colors duration-150 last:[&>td]:border-b-0 hover:bg-surface focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent"
+      className="group cursor-pointer transition-colors duration-150 last:[&>td]:border-b-0 hover:bg-surface focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent"
     >
       {children}
     </tr>

@@ -50,7 +50,16 @@ export function NotificationMenu({ userId }: { userId: number }) {
     setReadSignature(window.localStorage.getItem(readKeyFor(userId)));
     const controller = new AbortController();
     void load(controller.signal);
-    return () => controller.abort();
+    const interval = window.setInterval(() => void load(), 60_000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void load();
+    };
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      controller.abort();
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
   }, [load, userId]);
 
   const markRead = () => {

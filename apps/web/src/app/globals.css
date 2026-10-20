@@ -385,59 +385,6 @@
   }
 }
 
-/* Efek “vault unlocked”: sapuan cahaya hanya muncul ketika password berubah kuat. */
-@keyframes password-vault-ring {
-  0% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-ok) 0%, transparent);
-  }
-  45% {
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-ok) 15%, transparent);
-  }
-  100% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-ok) 0%, transparent);
-  }
-}
-
-@keyframes password-vault-scan {
-  0% {
-    opacity: 0;
-    transform: translateX(-140%) skewX(-18deg);
-  }
-  22% {
-    opacity: 0.75;
-  }
-  100% {
-    opacity: 0;
-    transform: translateX(340%) skewX(-18deg);
-  }
-}
-
-@keyframes password-shield-arrive {
-  0% {
-    opacity: 0;
-    transform: rotate(-22deg) scale(0.35);
-  }
-  65% {
-    opacity: 1;
-    transform: rotate(5deg) scale(1.18);
-  }
-  100% {
-    opacity: 1;
-    transform: rotate(0) scale(1);
-  }
-}
-
-@keyframes password-message-arrive {
-  from {
-    opacity: 0;
-    transform: translateX(-6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
 @layer utilities {
   .a-rise {
     animation: avi-rise 0.38s var(--ease-out-soft) backwards;
@@ -514,35 +461,6 @@
     animation: avi-rise 0.42s var(--ease-out-soft) 2.18s backwards;
   }
 
-  .password-vault-open {
-    animation: password-vault-ring 0.75s var(--ease-out-soft);
-  }
-
-  .password-vault-scan {
-    position: absolute;
-    inset: 1px auto 1px 0;
-    z-index: 10;
-    width: 34%;
-    border-radius: 1rem;
-    background: linear-gradient(
-      90deg,
-      transparent,
-      color-mix(in srgb, var(--color-ok) 20%, transparent),
-      color-mix(in srgb, white 62%, transparent),
-      transparent
-    );
-    pointer-events: none;
-    animation: password-vault-scan 0.9s var(--ease-out-soft) forwards;
-  }
-
-  .password-strong-message {
-    animation: password-message-arrive 0.42s var(--ease-out-soft) 120ms backwards;
-  }
-
-  .password-strong-shield {
-    animation: password-shield-arrive 0.58s var(--ease-out-soft) 130ms backwards;
-  }
-
   /*
    * Memunculkan anak secara berurutan tanpa perlu JavaScript.
    * Jeda 45ms: cukup terasa mengalir, belum terasa menunggu. Anak ke-13 dan
@@ -596,13 +514,6 @@
   }
 
   .login-card-enter {
-    animation: none;
-  }
-
-  .password-vault-open,
-  .password-vault-scan,
-  .password-strong-message,
-  .password-strong-shield {
     animation: none;
   }
 }

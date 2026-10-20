@@ -4,7 +4,7 @@ Versi 2026-09-18 · sumber: dokumen PRD ARES (Claude Docs). File ini salinan unt
 
 ## 1. Ringkasan
 
-ARES adalah sistem e-kanban supplier: setiap komponen yang dikonsumsi di line produksi otomatis menjadi order ke supplier pada jam cutoff, supplier mencetak Order Sheet dan kanban lewat portal, dan kedatangan barang diverifikasi dengan scan sebelum diposting sebagai Good Receipt ke SAP. ARES menggantikan sistem e-kanban buatan vendor Jepang yang dipakai saat ini.
+ARES adalah sistem e-kanban supplier: setiap komponen yang dikonsumsi di line produksi dikumpulkan sampai jam cutoff, lalu PPIC menerbitkan order ke supplier, supplier mencetak Order Sheet dan kanban lewat portal, dan kedatangan barang diverifikasi dengan scan sebelum diposting sebagai Good Receipt ke SAP. ARES menggantikan sistem e-kanban buatan vendor Jepang yang dipakai saat ini.
 
 **Masalah yang diselesaikan**
 
@@ -53,7 +53,7 @@ Lima peran, hak akses per aksi (bukan per halaman) dan disimpan di database, buk
 | Kirim ulang GR yang gagal | PPIC, Admin |
 | Melihat data vendor lain | Tidak ada peran supplier yang boleh; dibatasi di query, bukan hanya di menu |
 
-Akun internal memakai SSO perusahaan bila tersedia; akun supplier memakai username/password lokal dengan kadaluarsa password dan pembatasan percobaan login.
+Akun internal memakai SSO perusahaan bila tersedia. Akun supplier dibuat oleh Admin/PPIC, login dengan email dan password lokal, lalu memverifikasi OTP sekali pakai yang dikirim ke email terdaftar.
 
 ## 3. Konsep inti
 
@@ -162,7 +162,8 @@ Prioritas: **M** = wajib di v1, **S** = sebaiknya v1, **L** = setelah v1.
 | F-10 | Job tarik hasil produksi dari API aplikasi produksi (MES) per interval, cursor sejak record terakhir, explode BOM → event konsumsi per komponen | M |
 | F-11 | Kunci idempoten per record MES; layar scan produksi ARES hanya sebagai cadangan bila API MES tidak tersedia | M |
 | F-12 | Antrean per vendor part: pcs terakumulasi, ekuivalen box, sisa carry-over, waktu cutoff berikutnya | M |
-| F-13 | PPIC bisa menambah/mengurangi pcs, atau hold satu vendor part dari cutoff berikutnya; wajib alasan; tercatat | M |
+| F-13 | PPIC mengoreksi jumlah order dalam kanban penuh, atau hold satu vendor part dari cutoff berikutnya; sistem mengonversi kanban ke pcs berdasarkan qty/box, alasan wajib dan tercatat | M |
+| F-13A | Master standar order massal per supplier-part dalam kanban: PPIC memilih supplier, mengisi seluruh part, lalu menyimpan sekaligus; antrean menampilkan selisih jumlah order terhadap standar sebagai penanda anomali | M |
 | F-14 | Konsumsi setelah jam cutoff otomatis masuk cutoff berikutnya | M |
 | F-15 | Pembatalan/koreksi scan produksi (salah scan) membalik konsumsi selama antrean belum dicutoff | S |
 
@@ -170,7 +171,7 @@ Prioritas: **M** = wajib di v1, **S** = sebaiknya v1, **L** = setelah v1.
 
 | ID | Kebutuhan | Prio |
 | --- | --- | --- |
-| F-16 | Job cutoff per supplier sesuai F-04: konversi antrean ke box, cek PO item, terbitkan Order Sheet | M |
+| F-16 | PPIC membuka halaman persiapan order per supplier dan cutoff untuk mengedit jumlah kanban serta hold/release seluruh part, lalu menyimpan perubahan atau menerbitkan setelah cutoff tercapai. Alasan wajib bila ada perubahan atau selisih standar; worker mengecek PO dan menerbitkan Order Sheet, lalu halaman detail dokumen terbuka | M |
 | F-17 | Order manual: PPIC boleh memilih supplier aktif mana pun tanpa batas plant supplier; pilih tanggal kirim dan cutoff/cycle, lalu isi jumlah box pada daftar seluruh vendor part (0 = tidak dipesan), atau upload Excel; plant dan nomor Order Sheet mengikuti plant Aisin PPIC | M |
 | F-18 | Vendor part tanpa PO item aktif: tidak diterbitkan, tampil sebagai *blocked* di dashboard PPIC dengan alasan | M |
 | F-19 | Validasi open qty PO: outstanding Order Sheet per PO item ≤ open qty; melebihi → blocked | S |
@@ -233,7 +234,7 @@ Prioritas: **M** = wajib di v1, **S** = sebaiknya v1, **L** = setelah v1.
 
 | ID | Kebutuhan | Prio |
 | --- | --- | --- |
-| F-49 | Dashboard PPIC: Order Sheet hari ini per status, supplier belum unduh/konfirmasi, order blocked, GR gagal | M |
+| F-49 | Dashboard PPIC: Order Sheet hari ini per status, supplier belum unduh/konfirmasi, order blocked, cutoff supplier yang sudah siap dijalankan, dan GR gagal | M |
 | F-50 | Laporan kedatangan: per supplier per periode, tepat/terlambat, box kurang/lebih | M |
 | F-51 | Laporan konsumsi & order: pcs konsumsi vs box diorder per part per periode | S |
 | F-52 | Ekspor Excel di semua laporan | S |
@@ -242,7 +243,7 @@ Prioritas: **M** = wajib di v1, **S** = sebaiknya v1, **L** = setelah v1.
 
 | ID | Kebutuhan | Prio |
 | --- | --- | --- |
-| F-53 | User, peran, permission per aksi; akun supplier terikat vendor | M |
+| F-53 | User, peran, permission per aksi; Admin/PPIC membuat akun supplier yang terikat vendor dan wajib memiliki email untuk OTP login | M |
 | F-54 | Audit log semua perubahan dokumen dan setting: siapa, kapan, sebelum/sesudah | M |
 | F-55 | Log integrasi (payload kirim/terima) tersimpan 90 hari | S |
 
@@ -260,11 +261,12 @@ Aturan ini adalah acuan tunggal untuk fungsi murni di `packages/domain`; setiap 
 
 **6.2 Cutoff dan kalender**
 
-1. Jam cutoff dievaluasi pada zona waktu pabrik (Asia/Jakarta), disimpan UTC.
-2. Tanggal kirim = tanggal cutoff + lead time supplier (hari kerja), jam kedatangan dari setting cutoff itu.
-3. Cutoff atau tanggal kirim yang jatuh di hari libur digeser sesuai pilihan supplier (F-05); antrean tidak hilang, hanya ikut cutoff hasil geser.
-4. Cutoff tidak boleh dijalankan dua kali untuk pasangan supplier × jam × tanggal; kunci di database, bukan di scheduler.
-5. Konsumsi yang tercatat tepat pada detik cutoff masuk cutoff berikutnya.
+1. Jam cutoff dievaluasi pada zona waktu pabrik (Asia/Jakarta), disimpan UTC. Saat waktunya tercapai, tombol pembuatan Order Sheet aktif, notifikasi PPIC muncul, dan proses menunggu konfirmasi PPIC.
+2. Sebelum diterbitkan, PPIC membuka halaman persiapan berisi seluruh part, jumlah kanban yang dapat diedit, akumulasi, standar dan selisihnya, serta pilihan tahan antrean. Perubahan dapat disimpan sebelum cutoff; penerbitan menunggu cutoff. Selisih terhadap standar wajib disertai alasan dan disimpan pada Order Sheet serta audit.
+3. Tanggal kirim = tanggal cutoff + lead time supplier (hari kerja), jam kedatangan dari setting cutoff itu.
+4. Cutoff atau tanggal kirim yang jatuh di hari libur digeser sesuai pilihan supplier (F-05); antrean tidak hilang, hanya ikut cutoff hasil geser.
+5. Cutoff tidak boleh dijalankan dua kali untuk pasangan supplier × jam × tanggal; kunci di database, bukan di scheduler.
+6. Konsumsi yang tercatat tepat pada detik cutoff masuk cutoff berikutnya.
 
 **6.3 Short shipment (konfirmasi supplier)**
 
@@ -330,6 +332,7 @@ flowchart TD
 | TM\_VENDOR | Supplier (salinan SAP) | SAP\_VENDOR\_NO, NAME, ADDRESS, EMAIL, ACTIVE |
 | TM\_PARTS | Part (salinan SAP) | SAP\_MATERIAL\_NO, PART\_NO, NAME, UOM |
 | TM\_VENDOR\_PARTS | Part per supplier | PART\_ID, VENDOR\_ID, QTY\_PER\_BOX, BACK\_NO, RACK, BOX\_TYPE, PO\_ITEM\_DEFAULT, ACTIVE; unik (PART\_ID, VENDOR\_ID) |
+| TM\_ORDER\_STANDARD | Standar order per supplier-part | VENDOR\_PART\_ID unik, STANDARD\_KANBAN, ACTIVE |
 | TM\_BOM | Komponen per part jadi | PARENT\_PART\_ID, COMPONENT\_PART\_ID, QTY\_PER, EFFECTIVE\_FROM/TO |
 | TM\_VENDOR\_CUTOFF | Jadwal cutoff | VENDOR\_ID, CUTOFF\_TIME, LEAD\_DAYS, ARRIVAL\_TIME, HOLIDAY\_SHIFT, SHORT\_SHIP\_POLICY, ROUNDING |
 | TM\_HOLIDAY | Kalender libur | DATE, NAME |

@@ -15,6 +15,16 @@ import {
   vendorCutoffs,
   devices,
   deliverySchedules,
+  orderQueues,
+  consumptions,
+  queueAdjustments,
+  picklistHeaders,
+  picklistLines,
+  kanbans,
+  kanbanEvents,
+  receiptHeaders,
+  receiptLines,
+  scanEvents,
 } from './schema/index';
 import { REAL_DELIVERY_SCHEDULES } from './delivery-schedule-data';
 import { REAL_SUPPLIERS } from './supplier-list-data';
@@ -36,7 +46,10 @@ async function main() {
   const legacyPlant = plantRows.find((row) => row.code === 'PLANT1');
   if (legacyPlant && !plantRows.some((row) => row.code === 'UNIT')) {
     // Pertahankan ID agar user, device, picklist, dan histori lokal tetap terhubung.
-    await db.update(plants).set({ code: 'UNIT', name: 'Unit Plant' }).where(eq(plants.id, legacyPlant.id));
+    await db
+      .update(plants)
+      .set({ code: 'UNIT', name: 'Unit Plant' })
+      .where(eq(plants.id, legacyPlant.id));
   }
   await insertMissing('plants', plants, 'code', [
     { code: 'UNIT', name: 'Unit Plant' },
@@ -46,7 +59,8 @@ async function main() {
   plantRows = await db.select().from(plants);
   const plant = mustFind(plantRows, (row) => row.code === 'UNIT', 'pabrik UNIT');
 
-  const plantId = (code: string) => mustFind(plantRows, (row) => row.code === code, `pabrik ${code}`).id;
+  const plantId = (code: string) =>
+    mustFind(plantRows, (row) => row.code === code, `pabrik ${code}`).id;
   await syncDeliverySchedules(
     REAL_DELIVERY_SCHEDULES.map((row) => ({
       plantId: plantId(row.plantCode),
@@ -129,7 +143,7 @@ async function main() {
       { roleId: roleId('ppic'), action: 'outbox.collect' },
       { roleId: roleId('ppic'), action: 'outbox.retry' },
       { roleId: roleId('ppic'), action: 'outbox.hold' },
-      // F-01–F-09: master hanya untuk PPIC/Admin; pengelolaan user khusus Admin.
+      // F-01–F-09: master untuk PPIC/Admin; PPIC hanya mengelola akun supplier.
       { roleId: roleId('admin'), action: 'master.read' },
       { roleId: roleId('admin'), action: 'master.write' },
       { roleId: roleId('admin'), action: 'setting.write' },
@@ -137,6 +151,7 @@ async function main() {
       { roleId: roleId('ppic'), action: 'master.read' },
       { roleId: roleId('ppic'), action: 'master.write' },
       { roleId: roleId('ppic'), action: 'setting.write' },
+      { roleId: roleId('ppic'), action: 'user.write' },
       // F-42: penyesuaian stok WH manual oleh PPIC (admin sebagai cadangan).
       { roleId: roleId('admin'), action: 'stock.adjust' },
       { roleId: roleId('ppic'), action: 'stock.adjust' },
@@ -159,17 +174,22 @@ async function main() {
   );
   // F-40 menetapkan pembatalan receipt untuk PPIC; hapus grant lama yang
   // sempat diberikan ke warehouse pada seed versi awal.
-  await db.delete(permissions).where(and(
-    eq(permissions.roleId, roleId('warehouse')),
-    eq(permissions.action, 'receipt.cancel'),
-  ));
+  await db
+    .delete(permissions)
+    .where(
+      and(eq(permissions.roleId, roleId('warehouse')), eq(permissions.action, 'receipt.cancel')),
+    );
 
   // ── User admin ──────────────────────────────────────────────────────────
   const existingAdmin = await db.select().from(users).where(eq(users.npk, 'ADMIN')).limit(1);
   if (existingAdmin.length === 0) {
-    const adminPassword = process.env.ADMIN_INITIAL_PASSWORD?.trim()
-      || (process.env.NODE_ENV === 'production' ? '' : 'admin123');
-    if (process.env.NODE_ENV === 'production' && (adminPassword.length < 15 || bcryptByteLength(adminPassword) > 72)) {
+    const adminPassword =
+      process.env.ADMIN_INITIAL_PASSWORD?.trim() ||
+      (process.env.NODE_ENV === 'production' ? '' : 'admin123');
+    if (
+      process.env.NODE_ENV === 'production' &&
+      (adminPassword.length < 15 || bcryptByteLength(adminPassword) > 72)
+    ) {
       throw new Error('seed: ADMIN_INITIAL_PASSWORD wajib 15–72 byte di produksi');
     }
     await db.insert(users).values({
@@ -181,24 +201,31 @@ async function main() {
       roleId: adminRole.id,
       plantId: plant.id,
     });
-    console.log(process.env.NODE_ENV === 'production'
-      ? '[seed]   + user ADMIN (password dari ADMIN_INITIAL_PASSWORD)'
-      : `[seed]   + user ADMIN (password: ${adminPassword})`);
+    console.log(
+      process.env.NODE_ENV === 'production'
+        ? '[seed]   + user ADMIN (password dari ADMIN_INITIAL_PASSWORD)'
+        : `[seed]   + user ADMIN (password: ${adminPassword})`,
+    );
   }
 
   // Monitor receiving memakai kredensial perangkat, terpisah dari sesi user.
   // Produksi hanya membuatnya bila token diisi eksplisit; demo mendapat token
   // sederhana agar alur pairing bisa langsung diuji.
-  const displayToken = process.env.DISPLAY_DEVICE_TOKEN?.trim()
-    || (process.env.NODE_ENV !== 'production' && process.env.SEED_DEMO === 'on'
-      ? 'monitor123'
-      : '');
+  const displayToken =
+    process.env.DISPLAY_DEVICE_TOKEN?.trim() ||
+    (process.env.NODE_ENV !== 'production' && process.env.SEED_DEMO === 'on' ? 'monitor123' : '');
   if (displayToken) {
-    if (process.env.NODE_ENV === 'production' && (displayToken.length < 32 || bcryptByteLength(displayToken) > 72))
+    if (
+      process.env.NODE_ENV === 'production' &&
+      (displayToken.length < 32 || bcryptByteLength(displayToken) > 72)
+    )
       throw new Error('seed: DISPLAY_DEVICE_TOKEN wajib 32–72 byte di produksi');
     const displayCode = process.env.DISPLAY_DEVICE_CODE?.trim() || 'RECEIVING-TV-01';
-    const existingDisplay = await db.select({ id: devices.id })
-      .from(devices).where(eq(devices.code, displayCode)).limit(1);
+    const existingDisplay = await db
+      .select({ id: devices.id })
+      .from(devices)
+      .where(eq(devices.code, displayCode))
+      .limit(1);
     if (!existingDisplay[0]) {
       await db.insert(devices).values({
         code: displayCode,
@@ -215,17 +242,26 @@ async function main() {
   // Demo selalu opt-in agar seed produksi tidak menyisipkan master/PO contoh.
   if (process.env.SEED_DEMO === 'on') {
     await seedMasterContoh(plant.id);
-    const internalPassword = process.env.DEMO_INTERNAL_PASSWORD?.trim()
-      || (process.env.NODE_ENV === 'production' ? '' : 'user123');
-    const supplierPassword = process.env.DEMO_SUPPLIER_PASSWORD?.trim()
-      || (process.env.NODE_ENV === 'production' ? '' : 'supplier123');
-    if (process.env.NODE_ENV === 'production' && (internalPassword.length < 15 || bcryptByteLength(internalPassword) > 72))
+    const internalPassword =
+      process.env.DEMO_INTERNAL_PASSWORD?.trim() ||
+      (process.env.NODE_ENV === 'production' ? '' : 'user123');
+    const supplierPassword =
+      process.env.DEMO_SUPPLIER_PASSWORD?.trim() ||
+      (process.env.NODE_ENV === 'production' ? '' : 'supplier123');
+    if (
+      process.env.NODE_ENV === 'production' &&
+      (internalPassword.length < 15 || bcryptByteLength(internalPassword) > 72)
+    )
       throw new Error('seed: DEMO_INTERNAL_PASSWORD wajib 15–72 byte untuk demo produksi');
-    if (process.env.NODE_ENV === 'production' && (supplierPassword.length < 15 || bcryptByteLength(supplierPassword) > 72))
+    if (
+      process.env.NODE_ENV === 'production' &&
+      (supplierPassword.length < 15 || bcryptByteLength(supplierPassword) > 72)
+    )
       throw new Error('seed: DEMO_SUPPLIER_PASSWORD wajib 15–72 byte untuk demo produksi');
     const rounds = Number(process.env.BCRYPT_ROUNDS ?? 12);
     await seedAkunInternal(plant.id, roleId, await bcrypt.hash(internalPassword, rounds));
     await seedAkunSupplier(roleId('supplier'), await bcrypt.hash(supplierPassword, rounds));
+    await seedFlowContoh(plant.id);
   } else {
     console.log('[seed]   data demo dilewati (aktifkan dengan SEED_DEMO=on)');
   }
@@ -253,22 +289,28 @@ async function seedAkunInternal(
  */
 async function seedAkunSupplier(supplierRoleId: number, passwordHash: string): Promise<void> {
   const db = getDb();
-  const vendorRows = await db.select({
-    id: vendors.id,
-    name: vendors.name,
-    plantId: vendors.plantId,
-    scheduleCode: vendors.scheduleCode,
-    sapVendorNo: vendors.sapVendorNo,
-  }).from(vendors);
+  const vendorRows = await db
+    .select({
+      id: vendors.id,
+      name: vendors.name,
+      plantId: vendors.plantId,
+      scheduleCode: vendors.scheduleCode,
+      sapVendorNo: vendors.sapVendorNo,
+    })
+    .from(vendors);
   const userRows = await db.select().from(users);
   const codes = vendorRows.map((vendor) => vendorLoginCode(vendor));
   if (new Set(codes).size !== codes.length)
     throw new Error('seed: kode login vendor bentrok setelah dinormalisasi');
 
-  const seededByVendor = new Map(userRows
-    .filter((user) => user.vendorId != null && user.npk.startsWith('SUP-'))
-    .map((user) => [user.vendorId!, user]));
-  const emailOwners = new Map(userRows.filter((user) => user.email).map((user) => [user.email!.toLowerCase(), user]));
+  const seededByVendor = new Map(
+    userRows
+      .filter((user) => user.vendorId != null && user.npk.startsWith('SUP-'))
+      .map((user) => [user.vendorId!, user]),
+  );
+  const emailOwners = new Map(
+    userRows.filter((user) => user.email).map((user) => [user.email!.toLowerCase(), user]),
+  );
   let inserted = 0;
   let updated = 0;
 
@@ -283,13 +325,16 @@ async function seedAkunSupplier(supplierRoleId: number, passwordHash: string): P
     if (seeded) {
       // Pertahankan password yang mungkin sudah diganti, tetapi rapikan akun
       // hasil seed lama ke identitas vendor dan pola email terbaru.
-      await db.update(users).set({
-        name: vendor.name,
-        email,
-        roleId: supplierRoleId,
-        plantId: vendor.plantId,
-        vendorId: vendor.id,
-      }).where(eq(users.id, seeded.id));
+      await db
+        .update(users)
+        .set({
+          name: vendor.name,
+          email,
+          roleId: supplierRoleId,
+          plantId: vendor.plantId,
+          vendorId: vendor.id,
+        })
+        .where(eq(users.id, seeded.id));
       updated += 1;
       continue;
     }
@@ -305,7 +350,9 @@ async function seedAkunSupplier(supplierRoleId: number, passwordHash: string): P
     });
     inserted += 1;
   }
-  console.log(`[seed]   ${vendorRows.length} akun supplier disinkronkan (${inserted} baru, ${updated} diperbarui)`);
+  console.log(
+    `[seed]   ${vendorRows.length} akun supplier disinkronkan (${inserted} baru, ${updated} diperbarui)`,
+  );
 }
 
 function vendorLoginCode(vendor: {
@@ -353,6 +400,7 @@ async function seedMasterContoh(plantId: number): Promise<void> {
   ]);
 
   await insertMissing('parts', parts, 'partNo', [
+    { sapMaterialNo: 'FG1000001', partNo: 'FG-DEMO-001', name: 'UNIT ASSY DEMO AVICENNA' },
     { sapMaterialNo: '10004715', partNo: '48609-0K040', name: 'BRACKET, SHOCK ABSORBER FR' },
     { sapMaterialNo: '10004832', partNo: '53801-0K180', name: 'PANEL, FENDER FR RH' },
     { sapMaterialNo: '10005120', partNo: '90312-38013', name: 'SEAL, OIL REAR AXLE' },
@@ -473,6 +521,753 @@ async function seedMasterContoh(plantId: number): Promise<void> {
   );
 }
 
+type DemoPicklistStatus = typeof picklistHeaders.$inferInsert.status;
+type DemoPicklistLineStatus = typeof picklistLines.$inferInsert.status;
+type DemoKanbanStatus = typeof kanbans.$inferInsert.status;
+
+type DemoPicklistSpec = {
+  seed: number;
+  publicId: string;
+  picklistNo: string;
+  revision: number;
+  vendorId: number;
+  deliveryDate: string;
+  arrivalTime: string;
+  status: DemoPicklistStatus;
+  downloadedAt: Date | null;
+  shippedAt: Date | null;
+  eta: Date | null;
+  vehicleNo: string | null;
+  note: string;
+  lines: Array<{
+    vendorPartId: number;
+    boxOrdered: number;
+    boxShipped: number | null;
+    boxReceived: number;
+    qtyPerBox: number;
+    sapPoNo: string;
+    sapPoItem: string;
+    status: DemoPicklistLineStatus;
+    kanbans: DemoKanbanStatus[];
+  }>;
+};
+
+/**
+ * Snapshot demo end-to-end dari scan Avicenna sampai receiving. Semua natural
+ * key memakai prefix DEMO/nomor 900x agar seed ulang tidak menyentuh transaksi.
+ */
+async function seedFlowContoh(plantId: number): Promise<void> {
+  const db = getDb();
+  const now = new Date();
+  const today = jakartaDate(0);
+  const yesterday = jakartaDate(-1);
+  const tomorrow = jakartaDate(1);
+  const ago = (minutes: number) => new Date(now.getTime() - minutes * 60_000);
+  const later = (minutes: number) => new Date(now.getTime() + minutes * 60_000);
+
+  const vendorRows = await db.select().from(vendors);
+  const partRows = await db.select().from(parts);
+  const vendorA = mustFind(
+    vendorRows,
+    (row) => row.sapVendorNo === '0000100231',
+    'vendor demo logam',
+  );
+  const vendorB = mustFind(
+    vendorRows,
+    (row) => row.sapVendorNo === '0000100544',
+    'vendor demo rubber',
+  );
+  const parentPart = mustFind(
+    partRows,
+    (row) => row.partNo === 'FG-DEMO-001',
+    'finished good demo',
+  );
+  const partByNo = (partNo: string) =>
+    mustFind(partRows, (row) => row.partNo === partNo, `part ${partNo}`);
+  const vendorPartRows = await db.select().from(vendorParts);
+  const vp = (vendorId: number, partNo: string) => {
+    const part = partByNo(partNo);
+    return mustFind(
+      vendorPartRows,
+      (row) => row.vendorId === vendorId && row.partId === part.id,
+      `vendor part ${partNo}`,
+    );
+  };
+  const vpA1 = vp(vendorA.id, '48609-0K040');
+  const vpA2 = vp(vendorA.id, '53801-0K180');
+  const vpB1 = vp(vendorB.id, '90312-38013');
+  const vpB2 = vp(vendorB.id, '67867-0K010');
+
+  const ppic = mustFind(
+    await db.select().from(users),
+    (row) => row.npk === 'PPIC01',
+    'user PPIC demo',
+  );
+  const warehouse = mustFind(
+    await db.select().from(users),
+    (row) => row.npk === 'GUDANG01',
+    'user warehouse demo',
+  );
+  const [display] = await db
+    .select({ id: devices.id })
+    .from(devices)
+    .where(eq(devices.code, process.env.DISPLAY_DEVICE_CODE?.trim() || 'RECEIVING-TV-01'))
+    .limit(1);
+
+  const queueRows = [
+    {
+      sourceKey: 'DEMO-AVICENNA-SCAN-001',
+      sourceRecordKey: 'DEMO-AVICENNA-BATCH-001',
+      vendorPart: vpA1,
+      pcs: 180,
+      consumedPcs: 120,
+      cutoffAt: ago(45),
+      line: 'MP-PRD-01',
+    },
+    {
+      sourceKey: 'DEMO-AVICENNA-SCAN-002',
+      sourceRecordKey: 'DEMO-AVICENNA-BATCH-001',
+      vendorPart: vpA2,
+      pcs: 72,
+      consumedPcs: 72,
+      cutoffAt: ago(45),
+      line: 'MP-PRD-01',
+    },
+    {
+      sourceKey: 'DEMO-AVICENNA-SCAN-003',
+      sourceRecordKey: 'DEMO-AVICENNA-BATCH-002',
+      vendorPart: vpB1,
+      pcs: 400,
+      consumedPcs: 400,
+      cutoffAt: later(240),
+      line: 'MP-PRD-02',
+    },
+  ];
+
+  for (const row of queueRows) {
+    const [existingConsumption] = await db
+      .select({ queueId: consumptions.queueId })
+      .from(consumptions)
+      .where(eq(consumptions.sourceKey, row.sourceKey))
+      .limit(1);
+    let queueId = existingConsumption?.queueId;
+    if (queueId) {
+      await db
+        .update(orderQueues)
+        .set({
+          cutoffAt: row.cutoffAt,
+          pcs: row.pcs,
+          carryOverPcs: 0,
+          hold: false,
+          status: 'OPEN',
+          blockedReason: null,
+          blockedAt: null,
+        })
+        .where(eq(orderQueues.id, queueId));
+    } else {
+      queueId = (
+        await db
+          .insert(orderQueues)
+          .values({
+            vendorPartId: row.vendorPart.id,
+            cutoffAt: row.cutoffAt,
+            pcs: row.pcs,
+          })
+          .$returningId()
+      )[0]!.id;
+      await db.insert(consumptions).values({
+        sourceKey: row.sourceKey,
+        sourceRecordKey: row.sourceRecordKey,
+        parentPartId: parentPart.id,
+        componentPartId: row.vendorPart.partId,
+        qty: row.consumedPcs,
+        line: row.line,
+        occurredAt: ago(90),
+        queueId,
+      });
+    }
+    if (row.sourceKey === 'DEMO-AVICENNA-SCAN-001') {
+      const reason = '[DEMO] PPIC tambah safety stock 1 kanban';
+      const [adjustment] = await db
+        .select({ id: queueAdjustments.id })
+        .from(queueAdjustments)
+        .where(and(eq(queueAdjustments.queueId, queueId), eq(queueAdjustments.reason, reason)))
+        .limit(1);
+      if (!adjustment)
+        await db.insert(queueAdjustments).values({
+          queueId,
+          deltaPcs: 60,
+          reason,
+          userId: ppic.id,
+        });
+    }
+  }
+
+  const picklists: DemoPicklistSpec[] = [
+    {
+      seed: 1,
+      publicId: '10000000-0000-4000-8000-000000000001',
+      picklistNo: 'PL-261020-9001',
+      revision: 0,
+      vendorId: vendorA.id,
+      deliveryDate: tomorrow,
+      arrivalTime: '09:00:00',
+      status: 'ISSUED',
+      downloadedAt: null,
+      shippedAt: null,
+      eta: null,
+      vehicleNo: null,
+      note: '[DEMO 1/7] Order baru — siap dilihat dan diunduh supplier',
+      lines: [
+        {
+          vendorPartId: vpA1.id,
+          boxOrdered: 3,
+          boxShipped: null,
+          boxReceived: 0,
+          qtyPerBox: 60,
+          sapPoNo: '4500128877',
+          sapPoItem: '00010',
+          status: 'OPEN',
+          kanbans: ['PRINTED', 'PRINTED', 'PRINTED'],
+        },
+        {
+          vendorPartId: vpA2.id,
+          boxOrdered: 2,
+          boxShipped: null,
+          boxReceived: 0,
+          qtyPerBox: 24,
+          sapPoNo: '4500128877',
+          sapPoItem: '00020',
+          status: 'OPEN',
+          kanbans: ['PRINTED', 'PRINTED'],
+        },
+      ],
+    },
+    {
+      seed: 2,
+      publicId: '10000000-0000-4000-8000-000000000002',
+      picklistNo: 'PL-261020-9002',
+      revision: 0,
+      vendorId: vendorA.id,
+      deliveryDate: tomorrow,
+      arrivalTime: '10:30:00',
+      status: 'DOWNLOADED',
+      downloadedAt: ago(120),
+      shippedAt: null,
+      eta: null,
+      vehicleNo: null,
+      note: '[DEMO 2/7] Dokumen sudah diunduh — menunggu konfirmasi kirim',
+      lines: [
+        {
+          vendorPartId: vpA1.id,
+          boxOrdered: 2,
+          boxShipped: null,
+          boxReceived: 0,
+          qtyPerBox: 60,
+          sapPoNo: '4500128877',
+          sapPoItem: '00010',
+          status: 'OPEN',
+          kanbans: ['PRINTED', 'PRINTED'],
+        },
+      ],
+    },
+    {
+      seed: 3,
+      publicId: '10000000-0000-4000-8000-000000000003',
+      picklistNo: 'PL-261020-9003',
+      revision: 0,
+      vendorId: vendorA.id,
+      deliveryDate: today,
+      arrivalTime: '13:00:00',
+      status: 'SHIPPED',
+      downloadedAt: ago(240),
+      shippedAt: ago(90),
+      eta: later(90),
+      vehicleNo: 'B 9123 DEM',
+      note: '[DEMO 3/7] Barang sedang menuju pabrik',
+      lines: [
+        {
+          vendorPartId: vpA2.id,
+          boxOrdered: 3,
+          boxShipped: 3,
+          boxReceived: 0,
+          qtyPerBox: 24,
+          sapPoNo: '4500128877',
+          sapPoItem: '00020',
+          status: 'OPEN',
+          kanbans: ['SHIPPED', 'SHIPPED', 'SHIPPED'],
+        },
+      ],
+    },
+    {
+      seed: 4,
+      publicId: '10000000-0000-4000-8000-000000000004',
+      picklistNo: 'PL-261020-9004',
+      revision: 0,
+      vendorId: vendorA.id,
+      deliveryDate: today,
+      arrivalTime: '14:00:00',
+      status: 'SHIPPED',
+      downloadedAt: ago(300),
+      shippedAt: ago(150),
+      eta: later(120),
+      vehicleNo: 'B 9456 DEM',
+      note: '[DEMO 4/7] Kirim parsial 2 dari 4 box; sisa menjadi recovery rev 1',
+      lines: [
+        {
+          vendorPartId: vpA1.id,
+          boxOrdered: 4,
+          boxShipped: 2,
+          boxReceived: 0,
+          qtyPerBox: 60,
+          sapPoNo: '4500128877',
+          sapPoItem: '00010',
+          status: 'SHORT',
+          kanbans: ['SHIPPED', 'SHIPPED'],
+        },
+      ],
+    },
+    {
+      seed: 5,
+      publicId: '10000000-0000-4000-8000-000000000005',
+      picklistNo: 'PL-261020-9004',
+      revision: 1,
+      vendorId: vendorA.id,
+      deliveryDate: tomorrow,
+      arrivalTime: '14:00:00',
+      status: 'ISSUED',
+      downloadedAt: null,
+      shippedAt: null,
+      eta: null,
+      vehicleNo: null,
+      note: '[DEMO 4/7] Order Sheet recovery — sisa 2 box dari revisi 0',
+      lines: [
+        {
+          vendorPartId: vpA1.id,
+          boxOrdered: 2,
+          boxShipped: null,
+          boxReceived: 0,
+          qtyPerBox: 60,
+          sapPoNo: '4500128877',
+          sapPoItem: '00010',
+          status: 'OPEN',
+          kanbans: ['PRINTED', 'PRINTED'],
+        },
+      ],
+    },
+    {
+      seed: 6,
+      publicId: '10000000-0000-4000-8000-000000000006',
+      picklistNo: 'PL-261020-9005',
+      revision: 0,
+      vendorId: vendorA.id,
+      deliveryDate: today,
+      arrivalTime: '11:00:00',
+      status: 'SHIPPED',
+      downloadedAt: ago(360),
+      shippedAt: ago(180),
+      eta: ago(15),
+      vehicleNo: 'B 9789 DEM',
+      note: '[DEMO 5/7] Receiving aktif — 1 dari 3 kanban sudah discan',
+      lines: [
+        {
+          vendorPartId: vpA2.id,
+          boxOrdered: 3,
+          boxShipped: 3,
+          boxReceived: 0,
+          qtyPerBox: 24,
+          sapPoNo: '4500128877',
+          sapPoItem: '00020',
+          status: 'OPEN',
+          kanbans: ['RECEIVED', 'SHIPPED', 'SHIPPED'],
+        },
+      ],
+    },
+    {
+      seed: 7,
+      publicId: '10000000-0000-4000-8000-000000000007',
+      picklistNo: 'PL-261020-9006',
+      revision: 0,
+      vendorId: vendorA.id,
+      deliveryDate: yesterday,
+      arrivalTime: '15:00:00',
+      status: 'PARTIAL',
+      downloadedAt: ago(1_500),
+      shippedAt: ago(1_350),
+      eta: ago(1_260),
+      vehicleNo: 'B 9006 DEM',
+      note: '[DEMO 6/7] Receipt parsial — 2 diterima, 1 kanban kurang',
+      lines: [
+        {
+          vendorPartId: vpA1.id,
+          boxOrdered: 3,
+          boxShipped: 3,
+          boxReceived: 2,
+          qtyPerBox: 60,
+          sapPoNo: '4500128877',
+          sapPoItem: '00010',
+          status: 'OPEN',
+          kanbans: ['RECEIVED', 'RECEIVED', 'MISSING'],
+        },
+      ],
+    },
+    {
+      seed: 8,
+      publicId: '10000000-0000-4000-8000-000000000008',
+      picklistNo: 'PL-261020-9007',
+      revision: 0,
+      vendorId: vendorA.id,
+      deliveryDate: yesterday,
+      arrivalTime: '16:00:00',
+      status: 'COMPLETE',
+      downloadedAt: ago(1_600),
+      shippedAt: ago(1_450),
+      eta: ago(1_380),
+      vehicleNo: 'B 9007 DEM',
+      note: '[DEMO 7/7] Semua kanban diterima lengkap',
+      lines: [
+        {
+          vendorPartId: vpA1.id,
+          boxOrdered: 2,
+          boxShipped: 2,
+          boxReceived: 2,
+          qtyPerBox: 60,
+          sapPoNo: '4500128877',
+          sapPoItem: '00010',
+          status: 'RECEIVED',
+          kanbans: ['RECEIVED', 'RECEIVED'],
+        },
+        {
+          vendorPartId: vpA2.id,
+          boxOrdered: 1,
+          boxShipped: 1,
+          boxReceived: 1,
+          qtyPerBox: 24,
+          sapPoNo: '4500128877',
+          sapPoItem: '00020',
+          status: 'RECEIVED',
+          kanbans: ['RECEIVED'],
+        },
+      ],
+    },
+  ];
+
+  const seeded = new Map<number, Awaited<ReturnType<typeof upsertDemoPicklist>>>();
+  for (const spec of picklists)
+    seeded.set(spec.seed, await upsertDemoPicklist(spec, plantId, ppic.id, now));
+
+  await upsertDemoReceipt(
+    {
+      publicId: '20000000-0000-4000-8000-000000000005',
+      receiptNo: 'RCP-261020-9005',
+      status: 'OPEN',
+      closedAt: null,
+      note: null,
+      picklist: seeded.get(6)!,
+    },
+    plantId,
+    warehouse.id,
+    display?.id ?? null,
+    ago(10),
+  );
+  await upsertDemoReceipt(
+    {
+      publicId: '20000000-0000-4000-8000-000000000006',
+      receiptNo: 'RCP-261020-9006',
+      status: 'CLOSED',
+      closedAt: ago(60),
+      note: '1 box belum tiba; tindak lanjut supplier',
+      picklist: seeded.get(7)!,
+    },
+    plantId,
+    warehouse.id,
+    display?.id ?? null,
+    ago(60),
+  );
+  await upsertDemoReceipt(
+    {
+      publicId: '20000000-0000-4000-8000-000000000007',
+      receiptNo: 'RCP-261020-9007',
+      status: 'CLOSED',
+      closedAt: ago(30),
+      note: null,
+      picklist: seeded.get(8)!,
+    },
+    plantId,
+    warehouse.id,
+    display?.id ?? null,
+    ago(30),
+  );
+
+  console.log('[seed]   flow demo lengkap: antrean, 8 Order Sheet/recovery, dan 3 receipt');
+}
+
+async function upsertDemoPicklist(
+  spec: DemoPicklistSpec,
+  plantId: number,
+  createdById: number,
+  now: Date,
+) {
+  const db = getDb();
+  const headerValues = {
+    publicId: spec.publicId,
+    plantId,
+    picklistNo: spec.picklistNo,
+    revision: spec.revision,
+    type: 'AUTO' as const,
+    vendorId: spec.vendorId,
+    cutoffAt: new Date(now.getTime() - 6 * 60 * 60_000),
+    deliveryDate: spec.deliveryDate,
+    arrivalTime: spec.arrivalTime,
+    cycle: 1,
+    status: spec.status,
+    downloadedAt: spec.downloadedAt,
+    shippedAt: spec.shippedAt,
+    eta: spec.eta,
+    vehicleNo: spec.vehicleNo,
+    note: spec.note,
+    createdById,
+  };
+  let [header] = await db
+    .select({ id: picklistHeaders.id })
+    .from(picklistHeaders)
+    .where(
+      and(
+        eq(picklistHeaders.picklistNo, spec.picklistNo),
+        eq(picklistHeaders.revision, spec.revision),
+      ),
+    )
+    .limit(1);
+  if (header)
+    await db.update(picklistHeaders).set(headerValues).where(eq(picklistHeaders.id, header.id));
+  else {
+    const id = (await db.insert(picklistHeaders).values(headerValues).$returningId())[0]!.id;
+    header = { id };
+  }
+
+  const resultLines: Array<{
+    id: number;
+    qtyPerBox: number;
+    kanbans: Array<{ id: string; status: DemoKanbanStatus }>;
+  }> = [];
+  let serial = 0;
+  for (let lineIndex = 0; lineIndex < spec.lines.length; lineIndex += 1) {
+    const line = spec.lines[lineIndex]!;
+    const lineValues = {
+      picklistId: header.id,
+      vendorPartId: line.vendorPartId,
+      boxOrdered: line.boxOrdered,
+      boxShipped: line.boxShipped,
+      boxReceived: line.boxReceived,
+      qtyPerBox: line.qtyPerBox,
+      pcs: line.boxOrdered * line.qtyPerBox,
+      sapPoNo: line.sapPoNo,
+      sapPoItem: line.sapPoItem,
+      status: line.status,
+    };
+    let [lineRow] = await db
+      .select({ id: picklistLines.id })
+      .from(picklistLines)
+      .where(
+        and(
+          eq(picklistLines.picklistId, header.id),
+          eq(picklistLines.vendorPartId, line.vendorPartId),
+        ),
+      )
+      .limit(1);
+    if (lineRow)
+      await db.update(picklistLines).set(lineValues).where(eq(picklistLines.id, lineRow.id));
+    else {
+      const id = (await db.insert(picklistLines).values(lineValues).$returningId())[0]!.id;
+      lineRow = { id };
+    }
+
+    const resultKanbans: Array<{ id: string; status: DemoKanbanStatus }> = [];
+    for (let index = 0; index < line.kanbans.length; index += 1) {
+      serial += 1;
+      const status = line.kanbans[index]!;
+      const id = demoKanbanId(spec.seed * 100 + lineIndex * 10 + index + 1);
+      const [existing] = await db
+        .select({ id: kanbans.id })
+        .from(kanbans)
+        .where(eq(kanbans.id, id))
+        .limit(1);
+      const values = {
+        picklistLineId: lineRow.id,
+        serial,
+        status,
+        receiptId: null,
+        receivedAt: null,
+      };
+      if (existing) await db.update(kanbans).set(values).where(eq(kanbans.id, id));
+      else await db.insert(kanbans).values({ id, ...values });
+      const ref = `${spec.picklistNo}-${spec.revision}`;
+      await ensureKanbanEvent(
+        id,
+        'PRINTED',
+        ref,
+        createdById,
+        new Date(now.getTime() - 7 * 60 * 60_000),
+      );
+      if (status !== 'PRINTED')
+        await ensureKanbanEvent(id, 'SHIPPED', ref, null, spec.shippedAt ?? now);
+      resultKanbans.push({ id, status });
+    }
+    resultLines.push({ id: lineRow.id, qtyPerBox: line.qtyPerBox, kanbans: resultKanbans });
+  }
+  return { id: header.id, lines: resultLines };
+}
+
+async function upsertDemoReceipt(
+  spec: {
+    publicId: string;
+    receiptNo: string;
+    status: typeof receiptHeaders.$inferInsert.status;
+    closedAt: Date | null;
+    note: string | null;
+    picklist: Awaited<ReturnType<typeof upsertDemoPicklist>>;
+  },
+  plantId: number,
+  warehouseUserId: number,
+  deviceId: number | null,
+  occurredAt: Date,
+): Promise<void> {
+  const db = getDb();
+  const values = {
+    publicId: spec.publicId,
+    plantId,
+    receiptNo: spec.receiptNo,
+    picklistId: spec.picklist.id,
+    deviceId,
+    status: spec.status,
+    closedAt: spec.closedAt,
+    userId: spec.status === 'CLOSED' ? warehouseUserId : null,
+    note: spec.note,
+  };
+  let [receipt] = await db
+    .select({ id: receiptHeaders.id })
+    .from(receiptHeaders)
+    .where(eq(receiptHeaders.receiptNo, spec.receiptNo))
+    .limit(1);
+  if (receipt) await db.update(receiptHeaders).set(values).where(eq(receiptHeaders.id, receipt.id));
+  else {
+    const id = (await db.insert(receiptHeaders).values(values).$returningId())[0]!.id;
+    receipt = { id };
+  }
+
+  for (const line of spec.picklist.lines) {
+    const received = line.kanbans.filter((row) => row.status === 'RECEIVED');
+    const missing = line.kanbans.filter((row) => row.status === 'MISSING');
+    for (const kanban of received) {
+      await db
+        .update(kanbans)
+        .set({
+          status: 'RECEIVED',
+          receiptId: receipt.id,
+          receivedAt: occurredAt,
+        })
+        .where(eq(kanbans.id, kanban.id));
+      const code = `ARES:K:${kanban.id}`;
+      await insertMissing('scanEvents', scanEvents, 'dedupeKey', [
+        {
+          dedupeKey: `${receipt.id}:${code}`,
+          sessionId: receipt.id,
+          code,
+          result: 'OK',
+          message: 'Kanban diterima (data demo)',
+          userId: warehouseUserId,
+          deviceId,
+          occurredAt,
+        },
+      ]);
+      await ensureKanbanEvent(
+        kanban.id,
+        'RECEIVED',
+        spec.receiptNo,
+        warehouseUserId,
+        occurredAt,
+        deviceId,
+      );
+    }
+    for (const kanban of missing) {
+      await ensureKanbanEvent(
+        kanban.id,
+        'MISSING',
+        spec.receiptNo,
+        warehouseUserId,
+        occurredAt,
+        deviceId,
+      );
+    }
+    if (spec.status === 'CLOSED' && received.length > 0) {
+      const lineValues = {
+        receiptId: receipt.id,
+        picklistLineId: line.id,
+        boxReceived: received.length,
+        pcsReceived: received.length * line.qtyPerBox,
+      };
+      const [existing] = await db
+        .select({ id: receiptLines.id })
+        .from(receiptLines)
+        .where(
+          and(eq(receiptLines.receiptId, receipt.id), eq(receiptLines.picklistLineId, line.id)),
+        )
+        .limit(1);
+      if (existing)
+        await db.update(receiptLines).set(lineValues).where(eq(receiptLines.id, existing.id));
+      else await db.insert(receiptLines).values(lineValues);
+    }
+  }
+}
+
+async function ensureKanbanEvent(
+  kanbanId: string,
+  type: typeof kanbanEvents.$inferInsert.type,
+  ref: string,
+  userId: number | null,
+  occurredAt: Date,
+  deviceId: number | null = null,
+): Promise<void> {
+  const db = getDb();
+  const [existing] = await db
+    .select({ id: kanbanEvents.id })
+    .from(kanbanEvents)
+    .where(
+      and(
+        eq(kanbanEvents.kanbanId, kanbanId),
+        eq(kanbanEvents.type, type),
+        eq(kanbanEvents.ref, ref),
+      ),
+    )
+    .limit(1);
+  if (!existing)
+    await db.insert(kanbanEvents).values({ kanbanId, type, ref, userId, deviceId, occurredAt });
+}
+
+function demoKanbanId(sequence: number): string {
+  const alphabet = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+  let value = sequence;
+  let encoded = '';
+  do {
+    encoded = alphabet[value % 32]! + encoded;
+    value = Math.floor(value / 32);
+  } while (value > 0);
+  return `${'01JDEMARESFWKANBN'.padEnd(20, '0')}${encoded.padStart(6, '0')}`;
+}
+
+function jakartaDate(offsetDays: number): string {
+  const value = new Date(Date.now() + offsetDays * 86_400_000);
+  const parts = new Intl.DateTimeFormat('en', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(value);
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)!.value;
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
 async function insertMissing<
   TTable extends { [K in TKey]: unknown },
   TKey extends string,
@@ -508,16 +1303,22 @@ function mustFind<T>(rows: T[], pred: (row: T) => boolean, label: string): T {
 }
 
 /** Snapshot jadwal riil boleh diperbaiki lalu di-seed ulang tanpa menggandakan slot. */
-async function syncDeliverySchedules(values: Array<typeof deliverySchedules.$inferInsert>): Promise<void> {
+async function syncDeliverySchedules(
+  values: Array<typeof deliverySchedules.$inferInsert>,
+): Promise<void> {
   const db = getDb();
-  const existing = await db.select({ id: deliverySchedules.id, sourceKey: deliverySchedules.sourceKey })
+  const existing = await db
+    .select({ id: deliverySchedules.id, sourceKey: deliverySchedules.sourceKey })
     .from(deliverySchedules);
   const byKey = new Map(existing.map((row) => [row.sourceKey, row.id]));
   let inserted = 0;
   for (const value of values) {
     const id = byKey.get(value.sourceKey);
     if (id) {
-      await db.update(deliverySchedules).set({ ...value, isActive: true }).where(eq(deliverySchedules.id, id));
+      await db
+        .update(deliverySchedules)
+        .set({ ...value, isActive: true })
+        .where(eq(deliverySchedules.id, id));
     } else {
       await db.insert(deliverySchedules).values(value);
       inserted += 1;
@@ -545,8 +1346,12 @@ async function syncSupplierListVendors(
   }
   if (withoutPlant.length > 0) existing = await db.select().from(vendors);
 
-  const bySource = new Map(existing.filter((row) => row.sourceKey).map((row) => [row.sourceKey!, row]));
-  const byPlantName = new Map(existing.map((row) => [`${row.plantId}\u0000${row.name.trim().toUpperCase()}`, row]));
+  const bySource = new Map(
+    existing.filter((row) => row.sourceKey).map((row) => [row.sourceKey!, row]),
+  );
+  const byPlantName = new Map(
+    existing.map((row) => [`${row.plantId}\u0000${row.name.trim().toUpperCase()}`, row]),
+  );
   const ids = new Map<string, number>();
   let inserted = 0;
 
@@ -566,21 +1371,30 @@ async function syncSupplierListVendors(
       sourceKey: row.sourceKey,
     };
     const authoritativeSapNo = 'sapVendorNo' in row ? row.sapVendorNo : undefined;
-    const matched = bySource.get(row.sourceKey)
-      ?? byPlantName.get(`${row.plantId}\u0000${row.name.trim().toUpperCase()}`);
+    const matched =
+      bySource.get(row.sourceKey) ??
+      byPlantName.get(`${row.plantId}\u0000${row.name.trim().toUpperCase()}`);
     if (matched) {
-      await db.update(vendors).set({
-        ...sourceValues,
-        ...(authoritativeSapNo ? { sapVendorNo: authoritativeSapNo, isActive: true } : {}),
-      }).where(eq(vendors.id, matched.id));
+      await db
+        .update(vendors)
+        .set({
+          ...sourceValues,
+          ...(authoritativeSapNo ? { sapVendorNo: authoritativeSapNo, isActive: true } : {}),
+        })
+        .where(eq(vendors.id, matched.id));
       ids.set(row.sourceKey, matched.id);
       continue;
     }
-    const id = (await db.insert(vendors).values({
-      ...sourceValues,
-      sapVendorNo: authoritativeSapNo ?? null,
-      isActive: Boolean(authoritativeSapNo),
-    }).$returningId())[0]!.id;
+    const id = (
+      await db
+        .insert(vendors)
+        .values({
+          ...sourceValues,
+          sapVendorNo: authoritativeSapNo ?? null,
+          isActive: Boolean(authoritativeSapNo),
+        })
+        .$returningId()
+    )[0]!.id;
     ids.set(row.sourceKey, id);
     inserted += 1;
   }
@@ -635,8 +1449,9 @@ async function syncSupplierCutoffTemplates(
       if (!row.cutoffTime || !row.arrivalTime || !row.deliveryDays) continue;
       scheduled += 1;
       const sourceKey = `${row.sourceKey}:CUTOFF`;
-      const matched = cutoffs.find((cutoff) => cutoff.sourceKey === sourceKey)
-        ?? cutoffs.find((cutoff) => cutoff.cutoffTime === row.cutoffTime);
+      const matched =
+        cutoffs.find((cutoff) => cutoff.sourceKey === sourceKey) ??
+        cutoffs.find((cutoff) => cutoff.cutoffTime === row.cutoffTime);
       const exactValues = {
         vendorId,
         cutoffTime: row.cutoffTime,
@@ -658,7 +1473,8 @@ async function syncSupplierCutoffTemplates(
     scheduled += 1;
     if (cutoffs.length > 0) {
       for (const cutoff of cutoffs) {
-        await db.update(vendorCutoffs)
+        await db
+          .update(vendorCutoffs)
           .set({ workdays: cutoffWorkdays(row.deliveryDays, cutoff.leadDays) })
           .where(eq(vendorCutoffs.id, cutoff.id));
       }

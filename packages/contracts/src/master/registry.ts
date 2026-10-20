@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { HOLIDAY_SHIFTS, ROUNDINGS } from '../status';
 
 /** Satu definisi untuk validasi API dan formulir master (F-01–F-09). */
-export const MASTER_ENTITIES = ['vendors', 'parts', 'vendorParts', 'bom', 'vendorCutoffs', 'holidays', 'users'] as const;
+export const MASTER_ENTITIES = ['vendors', 'parts', 'vendorParts', 'orderStandards', 'bom', 'vendorCutoffs', 'holidays', 'users'] as const;
 export type MasterEntity = (typeof MASTER_ENTITIES)[number];
 export type RefEntity = MasterEntity | 'roles' | 'plants' | 'poLines';
 export type FieldKind = 'text' | 'number' | 'decimal' | 'date' | 'time' | 'boolean' | 'select' | 'reference' | 'password';
@@ -100,6 +100,16 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
       activeField,
     ],
   },
+  orderStandards: {
+    key: 'orderStandards', label: 'Standar Order', singular: 'Standar Order', icon: 'ListOrdered',
+    description: 'Jumlah kanban normal per supplier-part untuk menandai anomali order',
+    searchFields: [], defaultSort: 'id', fields: [
+      { name: 'vendorPartId', label: 'Supplier dan part', kind: 'reference', refEntity: 'vendorParts', required: true, inList: true },
+      { name: 'standardKanban', label: 'Standar order (kanban)', kind: 'number', required: true, min: 0, numeric: true, inList: true,
+        hint: 'Jumlah kanban yang biasanya dipesan pada satu cutoff.' },
+      activeField,
+    ],
+  },
   bom: {
     key: 'bom', label: 'BOM', singular: 'Baris BOM', icon: 'GitBranch',
     description: 'Komposisi part jadi — komponen dan qty per induk, berversi tanggal (F-03)',
@@ -145,14 +155,17 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
   },
   users: {
     key: 'users', label: 'User & Peran', singular: 'User', icon: 'Users',
-    description: 'Akun internal dan supplier', searchFields: ['npk', 'name', 'email'],
+    description: 'Admin/PPIC membuat akun supplier; OTP login dikirim ke email', searchFields: ['npk', 'name', 'email'],
     defaultSort: 'npk', fields: [
+      { name: 'roleId', label: 'Peran', kind: 'reference', refEntity: 'roles', required: true, inList: true },
+      { name: 'vendorId', label: 'Perusahaan supplier', kind: 'reference', refEntity: 'vendors', nullable: true, inList: true,
+        hint: 'Pilih perusahaan yang boleh dilihat oleh akun ini. Hanya muncul untuk peran Supplier.' },
+      { name: 'plantId', label: 'Pabrik', kind: 'reference', refEntity: 'plants', nullable: true,
+        hint: 'Untuk akun supplier, pabrik otomatis mengikuti perusahaan yang dipilih.' },
       { name: 'npk', label: 'NPK / kode akun', kind: 'text', required: true, max: 32, inList: true },
       { name: 'name', label: 'Nama', kind: 'text', required: true, max: 128, inList: true },
-      { name: 'email', label: 'Email', kind: 'text', max: 191, nullable: true, inList: true },
-      { name: 'roleId', label: 'Peran', kind: 'reference', refEntity: 'roles', required: true, inList: true },
-      { name: 'plantId', label: 'Pabrik', kind: 'reference', refEntity: 'plants', nullable: true },
-      { name: 'vendorId', label: 'Supplier untuk akun supplier', kind: 'reference', refEntity: 'vendors', nullable: true, inList: true },
+      { name: 'email', label: 'Email', kind: 'text', max: 191, nullable: true, inList: true,
+        hint: 'Wajib untuk akun supplier karena kode OTP login dikirim ke alamat ini.' },
       { name: 'password', label: 'Password / reset password', kind: 'password', required: true, max: 72,
         hint: 'Saat mengubah akun, kosongkan jika password tidak diganti.' },
       activeField,
@@ -249,5 +262,38 @@ export function buildVendorPartSelfSchema() {
 export function buildUpdateSchema(key: MasterEntity) {
   return z.object(Object.fromEntries(getEntityDef(key).fields.map((field) => [field.name, fieldSchema(field, 'update')])));
 }
+
+/** Simpan massal standar kanban satu supplier dari layar Master Standar Order. */
+export const orderStandardsBulkSchema = z
+  .object({
+    vendorId: z.number().int().positive('Supplier wajib dipilih'),
+    lines: z
+      .array(
+        z
+          .object({
+            vendorPartId: z.number().int().positive(),
+            standardKanban: z.number().int().min(0).nullable(),
+          })
+          .strict(),
+      )
+      .min(1, 'Supplier belum memiliki vendor part aktif')
+      .max(3000, 'Jumlah vendor part melebihi kapasitas formulir'),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const seen = new Set<number>();
+    value.lines.forEach((line, index) => {
+      if (seen.has(line.vendorPartId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['lines', index, 'vendorPartId'],
+          message: 'Vendor part tidak boleh dikirim dua kali',
+        });
+      }
+      seen.add(line.vendorPartId);
+    });
+  });
+
+export type OrderStandardsBulkInput = z.infer<typeof orderStandardsBulkSchema>;
 
 export type MasterRow = Record<string, unknown> & { id: number };

@@ -58,7 +58,6 @@ export default async function PortalDetailPage({ params }: { params: Promise<{ i
       <UnduhDokumen
         picklistId={picklist.publicId}
         siap={picklist.pdfReadyAt !== null}
-        bentuk="ringkas"
       />
     ) : picklist.status === 'DOWNLOADED' ? (
       <a
@@ -80,7 +79,7 @@ export default async function PortalDetailPage({ params }: { params: Promise<{ i
   return (
     <>
       <PageHeader
-        crumbs={[{ label: 'Order berjalan', href: '/portal' }, { label: orderNo }]}
+        crumbs={[{ label: 'Order aktif', href: '/portal' }, { label: orderNo }]}
         title={orderNo}
         description={`Kirim ${tanggal(picklist.deliveryDate)} jam ${jam(picklist.arrivalTime)} · cycle ${picklist.cycle}${penanda ? ` · ${penanda.label}` : ''}`}
         actions={aksiUtama}

@@ -12,6 +12,7 @@ import {
   isNull,
   isNotNull,
   lt,
+  lte,
   or,
   like,
   sql,
@@ -31,6 +32,7 @@ import {
   stockSnapshots,
   vendors,
   vendorParts,
+  orderStandards,
   vendorCutoffs,
   parts,
   holidays,
@@ -46,7 +48,13 @@ import type { GlobalSearchResult, NavNotification } from './shell-types';
 
 const getDb = getReadDb;
 
-export type MasterOption = { value: number; label: string; short?: string; inactive?: true };
+export type MasterOption = {
+  value: number;
+  label: string;
+  short?: string;
+  key?: string;
+  inactive?: true;
+};
 type RefEntity = MasterEntity | 'roles' | 'plants' | 'poLines';
 
 /** Baca master langsung dari DB; hanya kolom registry yang dikirim ke browser. */
@@ -100,6 +108,7 @@ export async function getMasterOptions(
       value: row.id,
       label: row.label ?? row.name,
       short: row.label ?? row.name,
+      key: row.name,
     }));
   }
   if (entity === 'plants') {
@@ -126,6 +135,28 @@ export async function getMasterOptions(
       label: `${row.poNo}/${row.item} — ${row.partNo}`,
       short: `${row.poNo}/${row.item}`,
     }));
+  }
+  if (entity === 'vendorParts') {
+    const rows = await db
+      .select({
+        id: vendorParts.id,
+        vendorName: vendors.name,
+        partNo: parts.partNo,
+        backNo: vendorParts.backNo,
+        isActive: vendorParts.isActive,
+      })
+      .from(vendorParts)
+      .innerJoin(vendors, eq(vendorParts.vendorId, vendors.id))
+      .innerJoin(parts, eq(vendorParts.partId, parts.id))
+      .orderBy(asc(vendors.name), asc(parts.partNo));
+    return rows
+      .filter((row) => includeInactive || row.isActive)
+      .map((row) => ({
+        value: row.id,
+        label: `${row.vendorName} — ${row.partNo} (${row.backNo})`,
+        short: `${row.partNo} · ${row.vendorName}`,
+        ...(row.isActive ? {} : { inactive: true as const }),
+      }));
   }
   // Kapasitas awal 3.000 vendor part (PRD §9); opsi referensi harus mencakup
   // semuanya, jadi hanya kolom yang benar-benar dipakai label yang dibaca —
@@ -720,7 +751,7 @@ export async function getNavNotifications(opts: {
     opts.vendorId == null ? undefined : eq(picklistHeaders.vendorId, opts.vendorId),
   );
   const zero = Promise.resolve([{ value: 0 }]);
-  const [issued, downloaded, failedSap, blockedQueue] = await Promise.all([
+  const [issued, downloaded, failedSap, readyQueue, blockedQueue] = await Promise.all([
     permissions.has('picklist.read')
       ? db
           .select({ value: count() })
@@ -741,9 +772,31 @@ export async function getNavNotifications(opts: {
       : zero,
     opts.vendorId == null && permissions.has('queue.write')
       ? db
+          .select({ value: sql<number>`count(distinct ${vendorParts.vendorId})` })
+          .from(orderQueues)
+          .innerJoin(vendorParts, eq(orderQueues.vendorPartId, vendorParts.id))
+          .innerJoin(vendors, eq(vendorParts.vendorId, vendors.id))
+          .where(
+            and(
+              eq(orderQueues.status, 'OPEN'),
+              lte(orderQueues.cutoffAt, new Date()),
+              eq(vendors.plantId, opts.plantId),
+            ),
+          )
+      : zero,
+    opts.vendorId == null && permissions.has('queue.write')
+      ? db
           .select({ value: count() })
           .from(orderQueues)
-          .where(and(eq(orderQueues.status, 'OPEN'), isNotNull(orderQueues.blockedReason)))
+          .innerJoin(vendorParts, eq(orderQueues.vendorPartId, vendorParts.id))
+          .innerJoin(vendors, eq(vendorParts.vendorId, vendors.id))
+          .where(
+            and(
+              eq(orderQueues.status, 'OPEN'),
+              isNotNull(orderQueues.blockedReason),
+              eq(vendors.plantId, opts.plantId),
+            ),
+          )
       : zero,
   ]);
 
@@ -776,6 +829,14 @@ export async function getNavNotifications(opts: {
       href: '/sap?status=FAILED',
       tone: 'danger',
       count: Number(failedSap[0]?.value ?? 0),
+    },
+    {
+      id: 'queue-ready',
+      title: 'Cutoff siap dijalankan',
+      detail: `${Number(readyQueue[0]?.value ?? 0)} supplier sudah mencapai waktu cutoff.`,
+      href: '/queue',
+      tone: 'warn',
+      count: Number(readyQueue[0]?.value ?? 0),
     },
     {
       id: 'queue-blocked',
@@ -1077,6 +1138,46 @@ export async function getOrderOptions() {
 
 export type OrderOption = Awaited<ReturnType<typeof getOrderOptions>>[number];
 
+/** Supplier dan seluruh part aktifnya untuk pengisian Master Standar Order. */
+export async function getOrderStandardOptions() {
+  const db = getDb();
+  const [vendorRows, partRows] = await Promise.all([
+    db
+      .select({ id: vendors.id, name: vendors.name, sapVendorNo: vendors.sapVendorNo })
+      .from(vendors)
+      .where(eq(vendors.isActive, true))
+      .orderBy(asc(vendors.name)),
+    db
+      .select({
+        id: vendorParts.id,
+        vendorId: vendorParts.vendorId,
+        partNo: parts.partNo,
+        partName: parts.name,
+        backNo: vendorParts.backNo,
+        qtyPerKanban: vendorParts.qtyPerBox,
+        standardKanban: orderStandards.standardKanban,
+        standardActive: orderStandards.isActive,
+      })
+      .from(vendorParts)
+      .innerJoin(parts, eq(vendorParts.partId, parts.id))
+      .leftJoin(orderStandards, eq(orderStandards.vendorPartId, vendorParts.id))
+      .where(and(eq(vendorParts.isActive, true), eq(parts.isActive, true)))
+      .orderBy(asc(parts.partNo)),
+  ]);
+
+  return vendorRows.map((vendor) => ({
+    ...vendor,
+    parts: partRows
+      .filter((part) => part.vendorId === vendor.id)
+      .map((part) => ({
+        ...part,
+        standardKanban: part.standardActive ? part.standardKanban : null,
+      })),
+  }));
+}
+
+export type OrderStandardOption = Awaited<ReturnType<typeof getOrderStandardOptions>>[number];
+
 /** Nama supplier untuk wordmark portal (PRD §10.2: `ARES · <nama vendor>`). */
 export async function getVendorName(vendorId: number): Promise<string | null> {
   const db = getDb();
@@ -1372,26 +1473,92 @@ export async function listConsumptionFailures(opts: {
     .limit(200);
 }
 
-/**
- * Antrean OPEN, satu halaman.
- *
- * Total pcs dihitung lewat agregat terpisah, bukan dari baris yang tampil:
- * ringkasan di kepala halaman harus tetap menyebut seluruh antrean walau layar
- * hanya menampilkan 50 baris. Tanpa limit, satu shift MES yang ramai bisa
- * menaruh ribuan vendor part di satu tabel.
- */
-export async function listOpenOrderQueues(opts: { page: number; perPage: number }) {
+/** Ringkasan antrean OPEN per supplier; detail item dibuka di /queue/[vendorId]. */
+export async function listOpenOrderQueueVendors(opts: {
+  plantId: number;
+  page: number;
+  perPage: number;
+}) {
   const db = getDb();
-  const where = eq(orderQueues.status, 'OPEN');
+  const where = and(eq(orderQueues.status, 'OPEN'), eq(vendors.plantId, opts.plantId));
+  const nextCutoff = sql<Date>`min(${orderQueues.cutoffAt})`.mapWith(orderQueues.cutoffAt);
   const [rows, ringkasan] = await Promise.all([
     db
       .select({
-        id: orderQueues.id,
+        vendorId: vendors.id,
         vendorName: vendors.name,
+        itemCount: count(),
+        cutoffCount: sql<number>`count(distinct ${orderQueues.cutoffAt})`,
+        totalPcs: sql<number>`coalesce(sum(${orderQueues.pcs} + ${orderQueues.carryOverPcs}), 0)`,
+        boxes: sql<number>`coalesce(sum((${orderQueues.pcs} + ${orderQueues.carryOverPcs}) / nullif(${vendorParts.qtyPerBox}, 0)), 0)`,
+        holdCount: sql<number>`sum(case when ${orderQueues.hold} = true then 1 else 0 end)`,
+        blockedCount: sql<number>`sum(case when ${orderQueues.blockedReason} is not null then 1 else 0 end)`,
+        nextCutoffAt: nextCutoff,
+      })
+      .from(orderQueues)
+      .innerJoin(vendorParts, eq(orderQueues.vendorPartId, vendorParts.id))
+      .innerJoin(vendors, eq(vendorParts.vendorId, vendors.id))
+      .where(where)
+      .groupBy(vendors.id, vendors.name)
+      .orderBy(asc(nextCutoff), asc(vendors.name))
+      .limit(opts.perPage)
+      .offset((opts.page - 1) * opts.perPage),
+    db
+      .select({
+        total: sql<number>`count(distinct ${vendors.id})`,
+        items: count(),
+        pcs: sql<number>`coalesce(sum(${orderQueues.pcs} + ${orderQueues.carryOverPcs}), 0)`,
+        boxes: sql<number>`coalesce(sum((${orderQueues.pcs} + ${orderQueues.carryOverPcs}) / nullif(${vendorParts.qtyPerBox}, 0)), 0)`,
+      })
+      .from(orderQueues)
+      .innerJoin(vendorParts, eq(orderQueues.vendorPartId, vendorParts.id))
+      .innerJoin(vendors, eq(vendorParts.vendorId, vendors.id))
+      .where(where),
+  ]);
+
+  const total = Number(ringkasan[0]?.total ?? 0);
+  return {
+    data: rows.map((row) => ({
+      ...row,
+      itemCount: Number(row.itemCount),
+      cutoffCount: Number(row.cutoffCount),
+      totalPcs: Number(row.totalPcs),
+      boxes: Math.round(Number(row.boxes) * 100) / 100,
+      holdCount: Number(row.holdCount),
+      blockedCount: Number(row.blockedCount),
+      nextCutoffAt: new Date(row.nextCutoffAt),
+    })),
+    meta: {
+      page: opts.page,
+      perPage: opts.perPage,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / opts.perPage)),
+      items: Number(ringkasan[0]?.items ?? 0),
+      pcs: Number(ringkasan[0]?.pcs ?? 0),
+      boxes: Math.round(Number(ringkasan[0]?.boxes ?? 0) * 100) / 100,
+    },
+  };
+}
+
+/** Supplier dan seluruh item antrean OPEN-nya, tetap dibatasi pabrik user. */
+export async function getOpenOrderQueueVendorDetail(vendorId: number, plantId: number) {
+  const db = getDb();
+  const [vendor] = await db
+    .select({ id: vendors.id, name: vendors.name, sapVendorNo: vendors.sapVendorNo })
+    .from(vendors)
+    .where(and(eq(vendors.id, vendorId), eq(vendors.plantId, plantId)))
+    .limit(1);
+  if (!vendor) return null;
+
+  const [rows, cutoffs] = await Promise.all([
+    db
+      .select({
+        id: orderQueues.id,
         partNo: parts.partNo,
         partName: parts.name,
         backNo: vendorParts.backNo,
         qtyPerBox: vendorParts.qtyPerBox,
+        standardKanban: orderStandards.standardKanban,
         pcs: orderQueues.pcs,
         carryOverPcs: orderQueues.carryOverPcs,
         hold: orderQueues.hold,
@@ -1403,33 +1570,33 @@ export async function listOpenOrderQueues(opts: { page: number; perPage: number 
       .from(orderQueues)
       .innerJoin(vendorParts, eq(orderQueues.vendorPartId, vendorParts.id))
       .innerJoin(parts, eq(vendorParts.partId, parts.id))
-      .innerJoin(vendors, eq(vendorParts.vendorId, vendors.id))
-      .where(where)
-      .orderBy(asc(orderQueues.cutoffAt), asc(vendors.name), asc(parts.partNo))
-      .limit(opts.perPage)
-      .offset((opts.page - 1) * opts.perPage),
+      .leftJoin(
+        orderStandards,
+        and(
+          eq(orderStandards.vendorPartId, vendorParts.id),
+          eq(orderStandards.isActive, true),
+        ),
+      )
+      .where(
+        and(
+          eq(orderQueues.status, 'OPEN'),
+          eq(vendorParts.vendorId, vendorId),
+        ),
+      )
+      .orderBy(asc(orderQueues.cutoffAt), asc(parts.partNo)),
     db
-      .select({
-        total: count(),
-        pcs: sql<number>`coalesce(sum(${orderQueues.pcs} + ${orderQueues.carryOverPcs}), 0)`,
-      })
-      .from(orderQueues)
-      .where(where),
+      .select({ cutoffTime: vendorCutoffs.cutoffTime, rounding: vendorCutoffs.rounding })
+      .from(vendorCutoffs)
+      .where(and(eq(vendorCutoffs.vendorId, vendorId), eq(vendorCutoffs.isActive, true))),
   ]);
 
-  const total = ringkasan[0]?.total ?? 0;
   return {
-    data: rows.map((row) => ({
+    ...vendor,
+    cutoffs,
+    rows: rows.map((row) => ({
       ...row,
       boxes: Math.round(((row.pcs + row.carryOverPcs) / row.qtyPerBox) * 100) / 100,
     })),
-    meta: {
-      page: opts.page,
-      perPage: opts.perPage,
-      total,
-      totalPages: Math.max(1, Math.ceil(total / opts.perPage)),
-      pcs: Number(ringkasan[0]?.pcs ?? 0),
-    },
   };
 }
 
@@ -1578,6 +1745,56 @@ export async function listStock(opts: {
       asOf,
     },
   };
+}
+
+/**
+ * Arus stok harian (F-41) untuk grafik: pcs masuk dan keluar per hari Jakarta,
+ * lalu saldo akhir hari dihitung mundur dari saldo sekarang (`saldoSekarang`,
+ * dari listStock dengan saringan yang sama). Masuk/keluar dibedakan dari tanda
+ * DELTA_PCS, jadi penyesuaian (ADJUST) ikut di sisi yang sesuai.
+ */
+export async function getStockTrend(opts: {
+  plantId: number;
+  vendorId?: number;
+  q?: string;
+  days: number;
+  saldoSekarang: number;
+}) {
+  const hariIni = hariIniJakarta();
+  const awal = addCalendarDays(hariIni, -(opts.days - 1));
+  const tanggal = sql<string>`date_format(convert_tz(${stockMutations.occurredAt}, '+00:00', '+07:00'), '%Y-%m-%d')`;
+  const rows = await getDb()
+    .select({
+      tanggal: tanggal.as('TANGGAL'),
+      masuk: sql<number>`coalesce(sum(case when ${stockMutations.deltaPcs} > 0 then ${stockMutations.deltaPcs} end), 0)`,
+      keluar: sql<number>`coalesce(sum(case when ${stockMutations.deltaPcs} < 0 then -${stockMutations.deltaPcs} end), 0)`,
+    })
+    .from(stockMutations)
+    .innerJoin(parts, eq(parts.id, stockMutations.partId))
+    .where(
+      and(
+        eq(stockMutations.plantId, opts.plantId),
+        gte(stockMutations.occurredAt, new Date(`${awal}T00:00:00+07:00`)),
+        opts.vendorId
+          ? sql`exists (select 1 from TM_VENDOR_PARTS vp where vp.PART_ID = TM_PARTS.ID and vp.VENDOR_ID = ${opts.vendorId})`
+          : undefined,
+        opts.q ? or(like(parts.partNo, `%${opts.q}%`), like(parts.name, `%${opts.q}%`)) : undefined,
+      ),
+    )
+    .groupBy(sql`TANGGAL`);
+
+  const perHari = new Map(rows.map((r) => [r.tanggal, { masuk: Number(r.masuk), keluar: Number(r.keluar) }]));
+  const hari = Array.from({ length: opts.days }, (_, i) => {
+    const t = addCalendarDays(awal, i);
+    return { tanggal: t, ...(perHari.get(t) ?? { masuk: 0, keluar: 0 }), saldo: 0 };
+  });
+  // Saldo akhir hari: mulai dari sekarang, mundurkan mutasi hari-hari sesudahnya.
+  let saldo = opts.saldoSekarang;
+  for (let i = hari.length - 1; i >= 0; i--) {
+    hari[i]!.saldo = saldo;
+    saldo -= hari[i]!.masuk - hari[i]!.keluar;
+  }
+  return hari;
 }
 
 /** Buku mutasi satu part, terbaru dulu — rujukan dokumen ikut dibawa. */

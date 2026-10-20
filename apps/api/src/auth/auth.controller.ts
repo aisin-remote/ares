@@ -3,16 +3,12 @@ import type { Request } from 'express';
 import {
   deviceLoginSchema,
   loginSchema,
-  loginTotpSchema,
-  supplierRegistrationRequestSchema,
-  supplierRegistrationVerifySchema,
+  loginOtpSchema,
 } from '@ares/contracts';
 import type {
   DeviceLoginInput,
   LoginInput,
-  LoginTotpInput,
-  SupplierRegistrationRequestInput,
-  SupplierRegistrationVerifyInput,
+  LoginOtpInput,
 } from '@ares/contracts';
 import { AuthService } from './auth.service';
 import { Public } from './jwt-auth.guard';
@@ -28,32 +24,16 @@ export class AuthController {
   @Post('login')
   @LimitRequests({ limit: 5, ipLimit: 30, windowSeconds: 60, identityField: 'npk' })
   @UsePipes(new ZodValidationPipe(loginSchema))
-  login(@Body() body: LoginInput) {
-    return this.auth.login(body);
+  login(@Body() body: LoginInput, @Req() req: Request) {
+    return this.auth.login(body, req.ip);
   }
 
   @Public()
-  @Post('login/totp')
+  @Post('login/otp')
   @LimitRequests({ limit: 5, ipLimit: 20, windowSeconds: 60, identityField: 'mfaToken' })
-  @UsePipes(new ZodValidationPipe(loginTotpSchema))
-  loginTotp(@Body() body: LoginTotpInput) {
-    return this.auth.loginTotp(body);
-  }
-
-  @Public()
-  @Post('supplier-registration/request')
-  @LimitRequests({ limit: 3, ipLimit: 15, windowSeconds: 3600, identityField: 'email' })
-  @UsePipes(new ZodValidationPipe(supplierRegistrationRequestSchema))
-  requestSupplierRegistration(@Body() body: SupplierRegistrationRequestInput, @Req() req: Request) {
-    return this.auth.requestSupplierRegistration(body, req.ip);
-  }
-
-  @Public()
-  @Post('supplier-registration/verify')
-  @LimitRequests({ limit: 10, ipLimit: 30, windowSeconds: 60, identityField: 'challengeId' })
-  @UsePipes(new ZodValidationPipe(supplierRegistrationVerifySchema))
-  verifySupplierRegistration(@Body() body: SupplierRegistrationVerifyInput) {
-    return this.auth.verifySupplierRegistration(body);
+  @UsePipes(new ZodValidationPipe(loginOtpSchema))
+  loginOtp(@Body() body: LoginOtpInput) {
+    return this.auth.loginOtp(body);
   }
 
   @Public()

@@ -47,12 +47,21 @@ describe('pagar keamanan', () => {
     })).toThrow('Konfigurasi environment tidak valid');
   });
 
+  it('menolak autofill OTP demo pada produksi', () => {
+    expect(() => loadEnv({
+      NODE_ENV: 'production', DATABASE_URL: 'mysql://db', REDIS_URL: 'redis://cache',
+      JWT_SECRET: 'Q2x1a0dFc2VyYUJ1a2FuU2VjcmV0UHJvZHVrc2k2NFJhbmRvbQ==',
+      WEB_ORIGIN: 'https://ares.example.com', TRUST_PROXY_HOPS: '1',
+      SMTP_HOST: 'smtp.example.com', DEMO_OTP_AUTOFILL: 'true',
+    })).toThrow('DEMO_OTP_AUTOFILL tidak boleh aktif di produksi');
+  });
+
   it('menerima konfigurasi produksi dengan secret acak dan HTTPS', () => {
     const env = loadEnv({
       NODE_ENV: 'production', DATABASE_URL: 'mysql://db', REDIS_URL: 'redis://cache',
       JWT_SECRET: 'Q2x1a0dFc2VyYUJ1a2FuU2VjcmV0UHJvZHVrc2k2NFJhbmRvbQ==',
-      TOTP_ENCRYPTION_KEY: 'VG90cFNlY3JldFVqaVByb2R1a3NpNjREZW5nYW5FbnRyb3BpVGlueQ==',
       WEB_ORIGIN: 'https://ares.example.com', TRUST_PROXY_HOPS: '1',
+      SMTP_HOST: 'smtp.example.com',
     });
     expect(env.NODE_ENV).toBe('production');
     expect(env.WEB_ORIGIN).toBe('https://ares.example.com');

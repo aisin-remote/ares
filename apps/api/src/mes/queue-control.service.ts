@@ -7,10 +7,16 @@ import {
   queueAdjustments,
   sql,
   stockMutations,
+  vendorParts,
   type Database,
 } from '@ares/db';
 import type { QueueAdjustmentInput, QueueHoldInput } from '@ares/contracts';
-import { applyQueueAdjustment, planConsumptionReversal, QueueControlError } from '@ares/domain';
+import {
+  applyQueueAdjustment,
+  planConsumptionReversal,
+  QueueControlError,
+  setQueueKanbanQuantity,
+} from '@ares/domain';
 import { writeAudit } from '../common/audit';
 import { InjectDb } from '../db/db.module';
 
@@ -26,24 +32,48 @@ export class QueueControlService {
         .where(eq(orderQueues.id, id)).for('update');
       if (!queue) throw new NotFoundException('Antrean tidak ditemukan');
       if (queue.status !== 'OPEN') throw new ConflictException('Antrean sudah dicutoff');
-      let pcs: number;
+      const [vendorPart] = await tx
+        .select({ qtyPerBox: vendorParts.qtyPerBox })
+        .from(vendorParts)
+        .where(eq(vendorParts.id, queue.vendorPartId))
+        .limit(1);
+      if (!vendorPart) throw new NotFoundException('Vendor part antrean tidak ditemukan');
+      let plan: ReturnType<typeof setQueueKanbanQuantity>;
       try {
-        pcs = applyQueueAdjustment(queue.pcs, input.deltaPcs);
+        plan = setQueueKanbanQuantity({
+          queuePcs: queue.pcs,
+          carryOverPcs: queue.carryOverPcs,
+          qtyPerKanban: vendorPart.qtyPerBox,
+          kanban: input.kanban,
+        });
       } catch (error) {
         if (error instanceof QueueControlError) throw new UnprocessableEntityException(error.message);
         throw error;
       }
-      await tx.update(orderQueues).set({ pcs }).where(eq(orderQueues.id, id));
+      await tx
+        .update(orderQueues)
+        .set({ pcs: plan.pcs, carryOverPcs: plan.carryOverPcs })
+        .where(eq(orderQueues.id, id));
       const adjustmentId = (await tx.insert(queueAdjustments).values({
         queueId: id,
-        deltaPcs: input.deltaPcs,
+        deltaPcs: plan.deltaPcs,
         reason: input.reason,
         userId: actor.userId,
       }).$returningId())[0]!.id;
       await writeAudit(tx, 'TT_ORDER_QUEUE', id, 'ADJUST', actor.userId,
-        { pcs: queue.pcs, hold: queue.hold, status: queue.status },
-        { pcs, hold: queue.hold, status: queue.status, deltaPcs: input.deltaPcs, reason: input.reason, adjustmentId });
-      return { id, pcs, deltaPcs: input.deltaPcs, adjustmentId };
+        { pcs: queue.pcs, carryOverPcs: queue.carryOverPcs, hold: queue.hold, status: queue.status },
+        {
+          pcs: plan.pcs,
+          carryOverPcs: plan.carryOverPcs,
+          kanban: plan.kanban,
+          qtyPerKanban: vendorPart.qtyPerBox,
+          hold: queue.hold,
+          status: queue.status,
+          deltaPcs: plan.deltaPcs,
+          reason: input.reason,
+          adjustmentId,
+        });
+      return { id, ...plan, adjustmentId };
     });
   }
 

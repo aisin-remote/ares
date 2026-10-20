@@ -6,7 +6,10 @@ import { RedisService } from '../queue/redis.service';
 import { CutoffService } from './cutoff.service';
 import type { Actor } from './picklist.service';
 
-type CutoffJob = { actor?: Actor };
+type CutoffJob = {
+  actor?: Actor;
+  target?: { vendorId: number; cutoffAt: string; reason?: string };
+};
 
 @Injectable()
 export class CutoffWorker implements OnModuleInit, OnModuleDestroy {
@@ -23,7 +26,17 @@ export class CutoffWorker implements OnModuleInit, OnModuleDestroy {
     this.worker = new Worker(
       QUEUES.ORDER,
       async (job: Job<CutoffJob>) => {
-        if (job.name === JOBS.RUN_CUTOFF) return this.cutoff.runDue(new Date(), job.data.actor);
+        if (job.name === JOBS.RUN_CUTOFF) {
+          if (!job.data.actor || !job.data.target) {
+            return { skipped: true, reason: 'Cutoff menunggu tindakan Admin/PPIC' };
+          }
+          const target = {
+            vendorId: job.data.target.vendorId,
+            cutoffAt: new Date(job.data.target.cutoffAt),
+            reason: job.data.target.reason,
+          };
+          return this.cutoff.runDue(new Date(), job.data.actor, target);
+        }
         return undefined;
       },
       { connection: this.redis.client, concurrency: 1 },
@@ -32,17 +45,8 @@ export class CutoffWorker implements OnModuleInit, OnModuleDestroy {
       this.logger.error(`job ${job?.name} gagal: ${error.message}`),
     );
 
-    const enabled = ['true', '1', 'yes', 'y', 'on'].includes(
-      (process.env.CUTOFF_ENABLED ?? 'true').toLowerCase(),
-    );
-    if (enabled) {
-      await this.queue.addRepeatingEvery(
-        QUEUES.ORDER,
-        JOBS.RUN_CUTOFF,
-        {},
-        Number(process.env.CUTOFF_INTERVAL_SEC ?? 60) * 1000,
-      );
-    }
+    // Bersihkan scheduler versi lama: cutoff kini hanya dijalankan dari tombol PPIC.
+    await this.queue.get(QUEUES.ORDER).removeJobScheduler(`repeat:${JOBS.RUN_CUTOFF}`);
   }
 
   async onModuleDestroy(): Promise<void> {

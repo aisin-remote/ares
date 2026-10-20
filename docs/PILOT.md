@@ -32,7 +32,6 @@ DATABASE_URL=mysql://ares_api:<password-acak>@127.0.0.1:3306/ares
 WEB_DATABASE_URL=mysql://ares_web:<password-acak-lain>@127.0.0.1:3306/ares
 REDIS_URL=redis://127.0.0.1:6379
 JWT_SECRET=<hasil-openssl-rand-base64-48>
-TOTP_ENCRYPTION_KEY=<hasil-openssl-rand-base64-48-yang-berbeda>
 ADMIN_INITIAL_PASSWORD=<password-admin-acak-minimal-15-karakter>
 DEMO_INTERNAL_PASSWORD=<password-user-internal-uji-minimal-15-karakter>
 DEMO_SUPPLIER_PASSWORD=<password-supplier-uji-acak-minimal-15-karakter>
@@ -46,6 +45,11 @@ SAP_GATEWAY=fake
 SAP_SLOC=<sloc-uji-yang-disetujui>
 DISPLAY_DEVICE_CODE=RECEIVING-TV-01
 DISPLAY_DEVICE_TOKEN=<token-acak-monitor>
+SMTP_HOST=<host-relay-email>
+SMTP_PORT=587
+SMTP_USER=<user-smtp-bila-diperlukan>
+SMTP_PASS=<password-smtp-bila-diperlukan>
+SMTP_FROM="ARES e-Kanban <no-reply@aiia.co.id>"
 ```
 
 `SEED_DEMO=on` membuat dua master supplier contoh, empat part, PO terbuka,

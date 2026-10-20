@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { applyQueueAdjustment, planConsumptionReversal, QueueControlError } from './queue-control';
+import {
+  applyQueueAdjustment,
+  planConsumptionReversal,
+  QueueControlError,
+  setQueueKanbanQuantity,
+} from './queue-control';
 
 describe('applyQueueAdjustment (F-13)', () => {
   it('menambah dan mengurangi pcs tanpa membuat antrean negatif', () => {
@@ -11,6 +16,38 @@ describe('applyQueueAdjustment (F-13)', () => {
   it('hanya menerima bilangan bulat dan delta bukan nol', () => {
     expect(() => applyQueueAdjustment(10, 0)).toThrow(QueueControlError);
     expect(() => applyQueueAdjustment(10, 1.5)).toThrow(QueueControlError);
+  });
+});
+
+describe('setQueueKanbanQuantity (F-13)', () => {
+  it('mengubah jumlah kanban menjadi PCS sambil mempertahankan carry over yang masih terpakai', () => {
+    expect(setQueueKanbanQuantity({
+      queuePcs: 0,
+      carryOverPcs: 6,
+      qtyPerKanban: 24,
+      kanban: 1,
+    })).toEqual({
+      kanban: 1,
+      totalPcs: 24,
+      pcs: 18,
+      carryOverPcs: 6,
+      deltaPcs: 18,
+    });
+  });
+
+  it('bisa menurunkan order sampai nol dan menolak jumlah yang tidak berubah', () => {
+    expect(setQueueKanbanQuantity({
+      queuePcs: 0,
+      carryOverPcs: 6,
+      qtyPerKanban: 24,
+      kanban: 0,
+    })).toMatchObject({ pcs: 0, carryOverPcs: 0, deltaPcs: -6 });
+    expect(() => setQueueKanbanQuantity({
+      queuePcs: 18,
+      carryOverPcs: 6,
+      qtyPerKanban: 24,
+      kanban: 1,
+    })).toThrow(QueueControlError);
   });
 });
 

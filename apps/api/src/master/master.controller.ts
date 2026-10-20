@@ -7,6 +7,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Put,
   Query,
   Req,
 } from '@nestjs/common';
@@ -62,6 +63,12 @@ export class MasterController {
   @RequirePermission('master.read')
   meta() {
     return ENTITY_DEFS;
+  }
+
+  @Put('orderStandards/bulk')
+  @RequirePermission('master.write')
+  saveOrderStandards(@Body() body: unknown, @Req() req: Request) {
+    return this.master.saveOrderStandards(body, actorOf(req));
   }
 
   /**

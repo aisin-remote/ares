@@ -1,11 +1,12 @@
 import type { MasterEntity } from '@ares/contracts';
-import { bomLines, holidays, parts, users, vendorCutoffs, vendorParts, vendors } from './schema/index';
+import { bomLines, holidays, orderStandards, parts, users, vendorCutoffs, vendorParts, vendors } from './schema/index';
 
 /** Satu pemetaan registry ke tabel untuk API dan pembacaan Server Component. */
 export const MASTER_TABLES = {
   vendors,
   parts,
   vendorParts,
+  orderStandards,
   vendorCutoffs,
   holidays,
   users,

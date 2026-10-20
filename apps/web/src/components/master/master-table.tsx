@@ -56,6 +56,10 @@ export function MasterTable({
   const canToggleActive = def.fields.some((f) => f.name === 'isActive');
 
   function openCreate() {
+    if (entity === 'orderStandards') {
+      router.push('/master/orderStandards/baru');
+      return;
+    }
     setEditing(null);
     setFormKey((k) => k + 1);
     setFormOpen(true);

@@ -490,16 +490,18 @@
         menus: ['Dashboard', 'Antrean Order', 'Order Sheet', 'Stok WH', 'Setting'],
         summary: [
           ['Mulai dari', 'Dashboard untuk melihat order hari ini, supplier tertinggal, antrean blocked, dan GR gagal.'],
-          ['Fokus utama', 'Periksa pengecualian. Order normal akan terbit otomatis saat cutoff.'],
+          ['Fokus utama', 'Periksa kebutuhan order. Setelah cutoff tercapai, buka supplier lalu klik Buat Order Sheet.'],
           ['Selesai ketika', 'Order Sheet terbit, supplier mengonfirmasi, dan penerimaan tidak menyisakan kendala.']
         ],
         steps: [
           ['Buka Dashboard', 'Periksa Order Sheet hari ini per status, supplier yang belum mengunduh atau mengonfirmasi, serta GR yang gagal.', 'Menu Dashboard', 'Setiap awal shift', '/dashboard'],
           ['Tinjau konsumsi dan antrean', 'Pastikan hasil produksi masuk ke Konsumsi dan PCS terkumpul pada vendor part serta cutoff yang benar.', 'Menu Konsumsi', 'Rutin sebelum cutoff', '/consumption'],
-          ['Tangani antrean bermasalah', 'Untuk jumlah yang salah, tambah atau kurangi PCS dengan alasan. Gunakan hold jika vendor part belum boleh diterbitkan.', 'Menu Antrean Order', 'Alasan wajib', '/queue'],
+          ['Buka detail supplier', 'Pilih supplier di Antrean Order untuk melihat seluruh item yang terkumpul dan jadwal cutoff masing-masing.', 'Menu Antrean Order', 'Ringkasan per supplier', '/queue'],
+          ['Isi standar order', 'Buka daftar Standar Order lalu pilih Tambah Standar Order. Pilih supplier, isi jumlah kanban normal pada seluruh part yang muncul, lalu simpan sekaligus. Standar ini menjadi pembanding agar order yang berbeda langsung terlihat.', 'Menu Standar Order', 'Satuan kanban', '/master/orderStandards'],
+          ['Tangani antrean bermasalah', 'Di detail supplier, tekan Ubah lalu isi jumlah kanban baru dan alasannya. Gunakan hold jika vendor part belum boleh diterbitkan.', 'Menu Antrean Order', 'Alasan wajib', '/queue'],
           ['Pastikan master dan PO siap', 'Jika antrean berstatus Blocked, lengkapi vendor part atau PO aktif. Antrean tetap OPEN sampai masalah selesai.', 'Menu Vendor Part', 'Jangan buat ulang antrean', '/master/vendorParts'],
           ['Buat order manual bila diperlukan', 'Pilih supplier aktif mana pun tanpa dibatasi plant supplier. Semua komponen aktif supplier ditampilkan; isi jumlah box dan biarkan 0 untuk komponen yang tidak dipesan. Upload Excel memakai aturan yang sama.', 'Menu Order Sheet — Order Baru', 'Supplier global', '/picklist/baru'],
-          ['Biarkan cutoff berjalan', 'Saat jam cutoff tercapai, ARES mengubah PCS menjadi box dan menerbitkan satu Order Sheet per supplier. Tombol Jalankan cutoff dipakai untuk uji atau kebutuhan operasional.', 'Menu Antrean Order', 'Otomatis', '/queue'],
+          ['Proses cutoff supplier', 'Buka detail supplier lalu pilih Siapkan order untuk membuka halaman persiapan. Setelah cutoff tercapai, tombol ini bernama Buat Order Sheet dan notifikasi muncul. Periksa seluruh part, isi jumlah kanban, dan tandai Tahan bila perlu. Isi alasan untuk perubahan atau selisih standar. Pilih Simpan perubahan atau Terbitkan Order Sheet; setelah berhasil, detail Order Sheet terbuka.', 'Menu Antrean Order', 'Per supplier dan cutoff', '/queue'],
           ['Pantau respons supplier', 'Order baru harus diunduh lalu dikonfirmasi. Hubungi supplier jika status tertahan di ISSUED atau DOWNLOADED.', 'Menu Order Sheet', 'Lihat waktu status', '/picklist'],
           ['Tangani pembatalan dan SAP', 'Order Sheet dapat dibatalkan sebelum SHIPPED. Untuk GR gagal, buka SAP Outbox lalu retry atau hold sesuai keputusan.', 'Menu SAP Outbox', 'Tercatat di audit', '/sap']
         ],
@@ -516,12 +518,13 @@
         description: 'Mengambil order milik supplier sendiri, mencetak satu kanban untuk setiap box, lalu mengonfirmasi jumlah yang benar-benar dikirim.',
         menus: ['Order berjalan', 'Riwayat'],
         summary: [
-          ['Login dengan', 'Masukkan email dan password lebih dulu. Jika benar, ARES menampilkan kartu Google Authenticator untuk kode 6 digit. Akun hanya dapat melihat order vendor yang terhubung ke akun tersebut.'],
+          ['Login dengan', 'Masukkan email dan password yang didaftarkan PPIC atau Admin. Jika benar, ARES mengirim kode OTP 6 digit ke email tersebut. Akun hanya dapat melihat order supplier yang terhubung ke akun.'],
           ['Dokumen utama', 'PDF Order Sheet, PDF kanban untuk ditempel satu per box, dan CSV untuk kebutuhan data supplier.'],
           ['Selesai ketika', 'Jumlah kirim, ETA, dan nomor kendaraan sudah dikonfirmasi sebelum barang berangkat.']
         ],
         steps: [
-          ['Daftar akun bila belum punya', 'Dari halaman Login pilih Daftar di sini. Langkah 1 isi kode supplier, nama, dan email perusahaan. Langkah 2 buat serta ulangi password. Langkah 3 pindai QR dengan Google Authenticator, simpan setup key, lalu masukkan kode 6 digit. Semua akun baru menunggu persetujuan PPIC atau Admin.', 'Halaman Daftar Akun Supplier', 'QR berlaku 10 menit', '/register'],
+          ['Minta akun bila belum punya', 'Hubungi PPIC atau Admin ARES. Mereka akan membuat akun berdasarkan supplier, nama, email perusahaan, dan password awal. Pendaftaran mandiri tidak tersedia.', 'Menu User & Peran', 'Email perusahaan wajib'],
+          ['Verifikasi OTP saat login', 'Setelah email dan password benar, buka email OTP dari ARES lalu masukkan kode 6 digit. Kode hanya berlaku 5 menit dan hanya dapat dipakai satu kali.', 'Halaman Login', 'Maksimal 5 percobaan', '/login'],
           ['Buka Order berjalan', 'Pilih order baru dengan status Terbit. Periksa tanggal kirim, jam datang, cycle, part, dan jumlah box.', 'Menu Order berjalan', 'Data supplier sendiri', '/portal'],
           ['Unduh dokumen', 'Unduh PDF Order Sheet, PDF kanban, dan CSV. Unduhan pertama mengubah status order menjadi Diunduh.', 'Menu Order berjalan', 'Simpan file asli', '/portal'],
           ['Cetak dan pasang kanban', 'Cetak sesuai ukuran asli. Tempel tepat satu kartu kanban pada setiap box dan pastikan QR tidak terlipat atau tertutup.', 'PDF kanban', '1 box = 1 kanban'],
@@ -574,7 +577,7 @@
           ['Selesai ketika', 'Worker aktif, error tertangani, dan seluruh tindakan penting memiliki audit.']
         ],
         steps: [
-          ['Tinjau pendaftaran supplier', 'Supplier mendaftar sendiri memakai kode supplier dan memasang Google Authenticator. Periksa identitas, email, dan vendor yang terhubung sebelum mengaktifkan akun dari daftar user.', 'Menu User & Peran', 'Semua akun baru perlu persetujuan', '/master/users'],
+          ['Buat akun supplier', 'Buka User & Peran, isi kode akun, nama, email perusahaan, pilih peran Supplier, hubungkan supplier yang benar, buat password awal, lalu aktifkan akun. PPIC hanya dapat membuat dan mengubah akun supplier.', 'Menu User & Peran', 'Email dipakai untuk OTP', '/master/users'],
           ['Jaga master utama', 'Pastikan nomor SAP supplier dan part terisi, vendor part aktif, qty per box benar, serta BOM berlaku.', 'Menu Master Data', 'Nomor SAP wajib', '/master/vendors'],
           ['Atur kalender operasi', 'Pelihara cutoff supplier, jam datang, lead day, aturan pembulatan, dan hari libur.', 'Menu Cutoff Supplier', 'Periksa simulasi cutoff', '/settings/cutoff'],
           ['Pantau sinkron MES', 'Periksa status job dan cursor. Pada mode fake, data uji dapat dimasukkan dari layar lalu ditarik manual.', 'Menu Sinkron MES', 'Mode sesuai environment', '/mes'],

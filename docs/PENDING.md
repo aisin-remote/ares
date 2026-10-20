@@ -6,7 +6,7 @@ fitur ada di `docs/PRD.md` bagian 12.
 
 Aturan main: satu baris selesai → hapus dari sini, jangan dibiarkan jadi arsip.
 
-Terakhir diperbarui: 2026-10-14 (pendaftaran supplier dengan Google Authenticator).
+Terakhir diperbarui: 2026-10-18 (akun supplier internal dengan OTP email).
 
 ## 1. Verifikasi yang belum jalan
 
@@ -48,13 +48,9 @@ Terakhir diperbarui: 2026-10-14 (pendaftaran supplier dengan Google Authenticato
       hanya diuji tanpa `SMTP_HOST` (isi email ke log; job `send-notification`
       selesai `{recipients:1, sent:false}` untuk terbit, revisi, dan pengingat).
       Isi `SMTP_*` di `.env` server uji, kirim satu order manual, pastikan email
-      vendor, cc PPIC untuk reminder, dan tautan portalnya benar. Pemberitahuan
-      pendaftaran baru ke PPIC/Admin juga memakai SMTP ini.
-
-- [ ] **Google Authenticator belum dicoba dengan ponsel sungguhan.** Scan QR di
-      halaman Daftar Supplier, pastikan kode 6 digit diterima, akun muncul
-      nonaktif di Master User, aktifkan, lalu login ulang dengan kode yang berubah.
-      Simpan setup key uji di password manager yang disetujui perusahaan.
+      vendor, cc PPIC untuk reminder, dan tautan portalnya benar. Buat akun
+      supplier dari menu User & Peran, lalu pastikan OTP login masuk ke email
+      tersebut dan hanya dapat dipakai satu kali selama 5 menit.
 
 - [ ] **Enter dari scanner keyboard-wedge sungguhan belum dicoba di layar stasiun.**
       Di browser uji, form scan hanya bisa disubmit lewat `form.requestSubmit()`
@@ -133,11 +129,6 @@ outbox PENDING (GR 101, key RCP-260921-0010) dalam 15 detik.)
       bersihkan tabel transaksi Order Sheet saat mulai serius, atau biarkan.
 
 ## 4. Utang kecil yang sengaja ditunda
-
-- [ ] **Pemulihan Google Authenticator belum punya layar khusus.** Bila ponsel
-      supplier hilang, Admin harus menonaktifkan akun sampai proses verifikasi
-      identitas dan pemasangan ulang tersedia. Jangan mengosongkan secret TOTP
-      langsung di database karena itu akan menurunkan keamanan akun.
 
 - [ ] **Ekuivalen box memakai qty/box terkecil** bila satu part dipasok beberapa
       supplier dengan kemasan berbeda (`listStock`, `getStockLedger`). Kalau PPIC

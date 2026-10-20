@@ -26,7 +26,7 @@ Prasyarat: Node 20+, pnpm 9, Docker (untuk MySQL 8.4 + Valkey lokal).
 
 ```bash
 pnpm infra:up                      # MySQL 8.4 + Valkey
-cp .env.example .env               # isi database, Redis, JWT dan kunci TOTP
+cp .env.example .env               # isi database, Redis, JWT dan SMTP
 pnpm install
 pnpm db:migrate && pnpm db:seed    # dev: ADMIN/admin123; produksi isi ADMIN_INITIAL_PASSWORD
 pnpm dev                           # web http://127.0.0.1:3000, api :3001

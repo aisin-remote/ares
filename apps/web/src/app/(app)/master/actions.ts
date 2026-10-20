@@ -80,6 +80,31 @@ export async function setMasterActiveAction(
   }
 }
 
+export interface SaveOrderStandardsResult {
+  saved: number;
+  inactive: number;
+  unchanged: number;
+}
+
+export async function saveOrderStandardsAction(input: {
+  vendorId: number;
+  lines: Array<{ vendorPartId: number; standardKanban: number | null }>;
+}): Promise<SaveOrderStandardsResult | { error: string }> {
+  try {
+    const result = await apiFetch<SaveOrderStandardsResult>('/master/orderStandards/bulk', {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    });
+    refreshMaster('orderStandards');
+    revalidatePath('/queue');
+    return result;
+  } catch (error) {
+    unstable_rethrow(error);
+    const state = errorState(error);
+    return { error: state.error ?? 'Standar order gagal disimpan.' };
+  }
+}
+
 // ─── BOM (F-03): upload Excel & penguraian ───────────────────────────────────
 
 export interface BomImportResult {

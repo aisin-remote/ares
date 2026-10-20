@@ -14,50 +14,14 @@ export const loginSchema = z.object({
 });
 export type LoginInput = z.infer<typeof loginSchema>;
 
-export const loginTotpSchema = z.object({
+export const loginOtpSchema = z.object({
   mfaToken: z.string().min(1, 'Sesi verifikasi tidak ditemukan').max(2048),
-  totpCode: z
+  otpCode: z
     .string()
     .trim()
-    .regex(/^\d{6}$/, 'Kode Authenticator harus 6 angka'),
+    .regex(/^\d{6}$/, 'Kode OTP harus 6 angka'),
 });
-export type LoginTotpInput = z.infer<typeof loginTotpSchema>;
-
-const passwordSchema = z
-  .string()
-  .min(15, 'Password minimal 15 karakter')
-  .max(72)
-  .refine((value) => new TextEncoder().encode(value).length <= 72, 'Password maksimal 72 byte');
-
-/** Tahap pertama pendaftaran mandiri supplier: buat enrollment Google Authenticator. */
-export const supplierRegistrationRequestSchema = z.object({
-  vendorCode: z.string().trim().min(1, 'Kode supplier wajib diisi').max(32),
-  name: z.string().trim().min(2, 'Nama minimal 2 karakter').max(128),
-  email: z.string().trim().toLowerCase().email('Email tidak valid').max(191),
-});
-export type SupplierRegistrationRequestInput = z.infer<typeof supplierRegistrationRequestSchema>;
-
-export const supplierRegistrationVerifySchema = z.object({
-  challengeId: z.string().uuid('Sesi Authenticator tidak valid'),
-  code: z
-    .string()
-    .trim()
-    .regex(/^\d{6}$/, 'Kode Authenticator harus 6 angka'),
-  password: passwordSchema,
-});
-export type SupplierRegistrationVerifyInput = z.infer<typeof supplierRegistrationVerifySchema>;
-
-export interface SupplierRegistrationRequestResponse {
-  challengeId: string;
-  qrDataUrl: string;
-  setupKey: string;
-  message: string;
-}
-
-export interface SupplierRegistrationVerifyResponse {
-  status: 'PENDING_APPROVAL';
-  message: string;
-}
+export type LoginOtpInput = z.infer<typeof loginOtpSchema>;
 
 export const loginResponseSchema = z.object({
   accessToken: z.string(),
@@ -77,8 +41,12 @@ export type LoginAttemptResponse =
   | LoginResponse
   | {
       mfaRequired: true;
-      /** Token singkat yang hanya bisa dipakai bersama kode TOTP, bukan token sesi. */
+      /** Token singkat yang hanya bisa dipakai bersama OTP email, bukan token sesi. */
       mfaToken: string;
+      /** Alamat disamarkan agar layar dapat menjelaskan tujuan pengiriman OTP. */
+      emailHint: string;
+      /** Hanya dikirim API lokal/demo agar form OTP bisa terisi otomatis. */
+      demoOtpCode?: string;
     };
 
 /** Login terminal/scanner — pakai token device, bukan akun manusia. */

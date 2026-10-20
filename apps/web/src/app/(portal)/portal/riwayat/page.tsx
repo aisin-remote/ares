@@ -100,7 +100,6 @@ export default async function RiwayatPage({
                         picklistId={p.publicId}
                         siap={p.pdfReadyAt !== null}
                         ukuran="sm"
-                        bentuk="ringkas"
                       />
                     ) : null}
                   </div>
@@ -119,7 +118,7 @@ export default async function RiwayatPage({
                   <Th align="right">Line</Th>
                   <Th align="right">Box</Th>
                   <Th>Status</Th>
-                  {/* Paling kanan, sama dengan daftar order berjalan. */}
+                  {/* Paling kanan, sama dengan daftar order aktif. */}
                   <Th align="center" sticky="right">
                     Download
                   </Th>
@@ -163,7 +162,6 @@ export default async function RiwayatPage({
                             picklistId={p.publicId}
                             siap={p.pdfReadyAt !== null}
                             ukuran="sm"
-                            bentuk="ringkas"
                           />
                         ) : (
                           <span className="text-ink-muted">—</span>

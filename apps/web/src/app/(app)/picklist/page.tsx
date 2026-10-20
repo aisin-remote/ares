@@ -142,7 +142,7 @@ export default async function PicklistPage({
                   <Link href="/picklist/baru" className="font-semibold text-ink underline">
                     order manual
                   </Link>
-                  ; order otomatis dari cutoff menyusul di fase berikutnya.
+                  ; order dari antrean dibuat PPIC setelah waktu cutoff tercapai.
                 </EmptyState>
               ) : (
                 data.map((p) => (

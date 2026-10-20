@@ -34,19 +34,16 @@ Contoh reverse proxy ada di [`deploy/nginx/ares.conf`](../deploy/nginx/ares.conf
 
 1. Buat `.env` di server dengan permission `0600`; jangan commit atau kirim
    lewat chat/tiket.
-2. Buat `JWT_SECRET` dan `TOTP_ENCRYPTION_KEY` yang berbeda, masing-masing
-   dengan `openssl rand -base64 48`. Buat password admin awal acak minimal 15
-   karakter. `NODE_ENV=production` menolak secret contoh atau kunci TOTP yang
-   tidak diisi.
+2. Buat `JWT_SECRET` dengan `openssl rand -base64 48` dan password admin awal
+   acak minimal 15 karakter. `NODE_ENV=production` menolak secret contoh dan
+   konfigurasi tanpa SMTP karena supplier membutuhkan OTP email untuk login.
 3. Isi `ADMIN_INITIAL_PASSWORD` hanya saat seed pertama. Setelah admin bisa
    login, hapus variabel itu dari `.env` dan ganti password dari layar user.
 4. Token display dibuat acak minimal 32 karakter, dipakai sekali untuk pairing,
    lalu dihapus dari `.env`. Nonaktifkan device di database bila perangkat hilang.
 5. Putar `JWT_SECRET`, token MES, SMTP, SAP, dan password database setelah
-   dugaan kebocoran. Mengganti `JWT_SECRET` langsung mencabut seluruh sesi.
-   Simpan cadangan `TOTP_ENCRYPTION_KEY` di penyimpanan secret yang aman.
-   Jangan menggantinya tanpa proses daftar ulang Google Authenticator karena
-   secret akun supplier yang lama tidak akan bisa dibaca.
+   dugaan kebocoran. Mengganti `JWT_SECRET` langsung mencabut seluruh sesi dan
+   OTP login yang masih aktif.
 
 Jangan memakai `SEED_DEMO=on`, `SAP_GATEWAY=fake`, atau `MES_GATEWAY=fake` pada
 produksi nyata.
@@ -134,7 +131,7 @@ SAP hanya kepada petugas yang memang membutuhkannya.
 - [ ] Hanya 22 terbatas dan 443 yang terlihat dari internet.
 - [ ] Port aplikasi, MySQL, dan Valkey tidak dapat dijangkau dari internet.
 - [ ] Secret/password produksi unik; nilai seed dan demo sudah dibuang.
-- [ ] `TOTP_ENCRYPTION_KEY` tersimpan aman dan berbeda dari `JWT_SECRET`.
+- [ ] SMTP produksi aktif; OTP login masuk ke email supplier dan tidak tertulis di log.
 - [ ] `ares_web` terbukti tidak bisa INSERT/UPDATE/DELETE atau membaca PASSWORD_HASH.
 - [ ] Role supplier hanya melihat vendor dan pabriknya sendiri.
 - [ ] Backup terenkripsi dan uji restore berhasil.

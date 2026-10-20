@@ -2,10 +2,7 @@ import { char, index, int, mysqlTable, timestamp, varchar } from 'drizzle-orm/my
 import { fk, timestamps } from './_shared';
 import { vendors } from './master';
 
-/**
- * Tantangan OTP pendaftaran supplier. Kode mentah hanya hidup singkat di job
- * email; database menyimpan HMAC agar kebocoran tabel tidak membocorkan OTP.
- */
+/** Tantangan OTP login supplier; kode mentah hanya hidup singkat di job email. */
 export const authChallenges = mysqlTable(
   'TT_AUTH_CHALLENGE',
   {
@@ -16,7 +13,9 @@ export const authChallenges = mysqlTable(
     purpose: varchar('PURPOSE', { length: 32 }).notNull(),
     name: varchar('NAME', { length: 128 }).notNull(),
     email: varchar('EMAIL', { length: 191 }).notNull(),
-    totpSecretEncrypted: varchar('TOTP_SECRET_ENCRYPTED', { length: 512 }).notNull(),
+    // Nama kolom fisik dipertahankan agar perubahan flow tidak memerlukan migrasi
+    // destruktif. Isinya sekarang HMAC OTP, bukan secret Authenticator.
+    codeHash: varchar('TOTP_SECRET_ENCRYPTED', { length: 512 }).notNull(),
     attempts: int('ATTEMPTS', { unsigned: true }).notNull().default(0),
     expiresAt: timestamp('EXPIRES_AT').notNull(),
     consumedAt: timestamp('CONSUMED_AT'),

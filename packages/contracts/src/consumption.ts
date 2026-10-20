@@ -13,7 +13,7 @@ export const fakeProductionResultSchema = productionResultSchema;
 export type FakeProductionResultInput = ProductionResultInput;
 
 export const queueAdjustmentSchema = z.object({
-  deltaPcs: z.coerce.number().int().refine((value) => value !== 0, 'Selisih PCS tidak boleh nol'),
+  kanban: z.coerce.number().int().min(0, 'Jumlah kanban tidak boleh negatif'),
   reason: z.string().trim().min(3, 'Alasan minimal 3 karakter').max(255),
 });
 export type QueueAdjustmentInput = z.infer<typeof queueAdjustmentSchema>;
@@ -23,6 +23,13 @@ export const queueHoldSchema = z.object({
   reason: z.string().trim().min(3, 'Alasan minimal 3 karakter').max(255),
 });
 export type QueueHoldInput = z.infer<typeof queueHoldSchema>;
+
+export const runCutoffSchema = z.object({
+  vendorId: z.coerce.number().int().positive('Supplier tidak valid'),
+  cutoffAt: z.string().datetime({ offset: true, message: 'Waktu cutoff harus ISO 8601' }),
+  reason: z.string().trim().min(3, 'Alasan minimal 3 karakter').max(255).optional(),
+});
+export type RunCutoffInput = z.infer<typeof runCutoffSchema>;
 
 export const reverseConsumptionSchema = z.object({
   reason: z.string().trim().min(3, 'Alasan minimal 3 karakter').max(255),

@@ -72,8 +72,10 @@ export function Td({
         align === 'right' && 'text-right',
         align === 'center' && 'text-center',
         strong && 'font-semibold text-ink',
-        sticky === 'left' && 'sticky left-0 z-10 border-r border-line bg-card',
-        sticky === 'right' && 'sticky right-0 z-10 border-l border-line bg-card',
+        sticky === 'left' &&
+          'sticky left-0 z-10 border-r border-line bg-card transition-colors duration-150 group-hover:bg-surface group-focus-visible:bg-surface',
+        sticky === 'right' &&
+          'sticky right-0 z-10 border-l border-line bg-card transition-colors duration-150 group-hover:bg-surface group-focus-visible:bg-surface',
         className,
       )}
     >
@@ -85,7 +87,7 @@ export function Td({
 /** Baris tabel dengan sorotan halus saat disapu kursor. */
 export function Tr({ children }: { children: React.ReactNode }) {
   return (
-    <tr className="relative transition-colors duration-150 last:[&>td]:border-b-0 hover:bg-surface">
+    <tr className="group relative transition-colors duration-150 last:[&>td]:border-b-0 hover:bg-surface">
       {children}
     </tr>
   );

@@ -1,8 +1,7 @@
 'use client';
 
-import { useActionState, useState } from 'react';
+import { useActionState, useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import Link from 'next/link';
 import { AlertCircle, ArrowLeft, ArrowRight, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { loginAction, type LoginState } from './actions';
 import { durations, easeSoft } from '@/components/motion/transitions';
@@ -14,7 +13,11 @@ const initial: LoginState = {};
 export default function LoginPage() {
   const [state, formAction, pending] = useActionState(loginAction, initial);
   const [showPassword, setShowPassword] = useState(false);
-  const [totpCode, setTotpCode] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+
+  useEffect(() => {
+    if (state.demoOtpCode) setOtpCode(state.demoOtpCode);
+  }, [state.demoOtpCode]);
 
   return (
     <main className="relative grid min-h-screen place-items-center overflow-hidden p-5">
@@ -32,7 +35,7 @@ export default function LoginPage() {
       </div>
 
       <div className="login-card-enter a-stagger w-full max-w-[420px] rounded-panel border border-line bg-shell p-9 shadow-shell">
-        {state.stage === 'TOTP' ? (
+        {state.stage === 'EMAIL_OTP' ? (
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -43,19 +46,25 @@ export default function LoginPage() {
             </div>
             <h1 className="mt-5 text-[22px] font-extrabold tracking-tight">Verifikasi keamanan</h1>
             <p className="mt-2 text-[14px] leading-6 text-ink-muted">
-              Buka Google Authenticator, lalu masukkan kode 6 digit. Sesi ini berlaku 5 menit.
+              Kode 6 digit sudah dikirim ke <strong className="text-ink">{state.emailHint}</strong>.
+              Kode berlaku 5 menit.
             </p>
             <form action={formAction} className="mt-7 space-y-4">
               <div>
-                <label htmlFor="totpCode" className="mb-3 block text-[14px] font-semibold">
-                  Kode Google Authenticator
+                <label htmlFor="otpCode" className="mb-3 block text-[14px] font-semibold">
+                  Kode OTP email
                 </label>
-                <OtpCodeInput value={totpCode} onChange={setTotpCode} autoFocus />
+                <OtpCodeInput value={otpCode} onChange={setOtpCode} autoFocus />
+                {state.demoOtpCode ? (
+                  <p className="mt-2 text-[12px] text-ink-muted">
+                    Mode demo: kode OTP sudah diisi otomatis.
+                  </p>
+                ) : null}
               </div>
               <ErrorMessage message={state.error} />
               <SubmitButton
                 pending={pending}
-                disabled={totpCode.length !== 6}
+                disabled={otpCode.length !== 6}
                 label="Verifikasi dan masuk"
               />
             </form>
@@ -123,11 +132,8 @@ export default function LoginPage() {
               <ErrorMessage message={state.error} />
               <SubmitButton pending={pending} label="Masuk" />
             </form>
-            <p className="mt-6 text-center text-[13px] text-ink-muted">
-              Supplier belum punya akun?{' '}
-              <Link href="/register" className="font-semibold text-ink hover:underline">
-                Daftar di sini
-              </Link>
+            <p className="mt-6 text-center text-[13px] leading-5 text-ink-muted">
+              Akun supplier dibuat oleh PPIC atau Admin. Hubungi PIC ARES jika belum memiliki akun.
             </p>
           </>
         )}

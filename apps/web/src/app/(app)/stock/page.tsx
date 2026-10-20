@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Boxes, Package, Search } from 'lucide-react';
-import { getMasterOptions, listStock } from '@/lib/queries';
+import { getMasterOptions, getStockTrend, listStock } from '@/lib/queries';
+import { StockTrend } from '@/components/stock/stock-trend';
 import { PageHeader } from '@/components/ui/page-header';
 import { StatCard } from '@/components/ui/stat-card';
 import { Card, CardHeader } from '@/components/ui/card';
@@ -32,18 +33,26 @@ export default async function StockPage({
   if (user.plantId == null) notFound();
   const sp = await searchParams;
   const vendorId = Number(sp.vendor);
+  const vendor = Number.isInteger(vendorId) && vendorId > 0 ? vendorId : undefined;
   const q = sp.q?.trim() || undefined;
   const page = Math.max(1, Math.floor(Number(sp.page ?? 1)) || 1);
   const [{ data: rows, meta }, vendorOptions] = await Promise.all([
     listStock({
       plantId: user.plantId,
-      vendorId: Number.isInteger(vendorId) && vendorId > 0 ? vendorId : undefined,
+      vendorId: vendor,
       q,
       page,
       perPage: PER_PAGE,
     }),
     getMasterOptions('vendors'),
   ]);
+  const tren = await getStockTrend({
+    plantId: user.plantId,
+    vendorId: vendor,
+    q,
+    days: 30,
+    saldoSekarang: meta.pcs,
+  });
 
   const tautanHalaman = (p: number) => {
     const query = new URLSearchParams();
@@ -110,6 +119,10 @@ export default async function StockPage({
           />
         </StaggerItem>
       </Stagger>
+
+      <Reveal>
+        <StockTrend data={tren} />
+      </Reveal>
 
       <Reveal>
         <Card>

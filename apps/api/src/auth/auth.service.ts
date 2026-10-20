@@ -1,8 +1,7 @@
 import {
-  BadRequestException,
-  ConflictException,
   Injectable,
   Logger,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -10,39 +9,28 @@ import type { JwtSignOptions } from '@nestjs/jwt';
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'node:crypto';
 import { eq, or, and, type Database } from '@ares/db';
-import { auditLogs, authChallenges, users, roles, devices, permissions, vendors } from '@ares/db';
+import { authChallenges, users, roles, devices, permissions } from '@ares/db';
 import type {
   LoginInput,
   LoginAttemptResponse,
   LoginResponse,
-  LoginTotpInput,
+  LoginOtpInput,
   DeviceLoginInput,
   DeviceLoginResponse,
   AuthSessionResponse,
-  SupplierRegistrationRequestInput,
-  SupplierRegistrationRequestResponse,
-  SupplierRegistrationVerifyInput,
-  SupplierRegistrationVerifyResponse,
 } from '@ares/contracts';
 import { InjectDb } from '../db/db.module';
 import { QueueService } from '../queue/queue.service';
 import { JOBS, QUEUES } from '../queue/queue.constants';
-import { qrPng } from '../document/pdf-runtime';
-import {
-  decryptTotpSecret,
-  encryptTotpSecret,
-  generateTotpSecret,
-  totpUri,
-  verifyTotp,
-} from './totp';
+import { generateEmailOtp, hashEmailOtp, maskEmail, verifyEmailOtp } from './email-otp';
 import type { UserPrincipal, DevicePrincipal, Principal } from './auth.types';
 
 interface LoginUser {
   id: number;
   npk: string;
   name: string;
+  email: string | null;
   passwordHash: string | null;
-  totpSecretEncrypted: string | null;
   isActive: boolean;
   plantId: number | null;
   vendorId: number | null;
@@ -64,202 +52,14 @@ export class AuthService {
     private readonly queue: QueueService,
   ) {}
 
-  async requestSupplierRegistration(
-    input: SupplierRegistrationRequestInput,
-    requestIp?: string,
-  ): Promise<SupplierRegistrationRequestResponse> {
-    const challengeId = randomUUID();
-    const secret = generateTotpSecret();
-    const uri = totpUri(secret, input.email.trim().toLowerCase());
-    const genericResponse = {
-      challengeId,
-      qrDataUrl: `data:image/png;base64,${(await qrPng(uri)).toString('base64')}`,
-      setupKey: secret,
-      message: 'Pindai QR dengan Google Authenticator, lalu masukkan kode 6 digit.',
-    };
-    const email = input.email.trim().toLowerCase();
-    const [vendorRows, userRows] = await Promise.all([
-      this.db
-        .select({
-          id: vendors.id,
-          name: vendors.name,
-          plantId: vendors.plantId,
-          email: vendors.email,
-        })
-        .from(vendors)
-        .where(and(eq(vendors.sapVendorNo, input.vendorCode.trim()), eq(vendors.isActive, true)))
-        .limit(1),
-      this.db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1),
-    ]);
-    const vendor = vendorRows[0];
-
-    // Respons sengaja sama agar endpoint tidak bisa dipakai untuk menebak kode
-    // supplier atau email yang sudah terdaftar.
-    if (!vendor || userRows[0]) return genericResponse;
-
-    const expiresInMinutes = 10;
-    const expiresAt = new Date(Date.now() + expiresInMinutes * 60_000);
-
-    await this.db.transaction(async (tx) => {
-      // Satu email hanya memerlukan challenge terbaru; menghapus yang lama
-      // juga membatasi penyimpanan data pribadi yang sudah tidak berguna.
-      await tx.delete(authChallenges).where(eq(authChallenges.email, email));
-      await tx.insert(authChallenges).values({
-        id: challengeId,
-        vendorId: vendor.id,
-        purpose: 'SUPPLIER_REGISTRATION',
-        name: input.name.trim(),
-        email,
-        totpSecretEncrypted: encryptTotpSecret(secret),
-        expiresAt,
-        requestIp: requestIp?.slice(0, 45) || null,
-      });
-    });
-    return genericResponse;
-  }
-
-  async verifySupplierRegistration(
-    input: SupplierRegistrationVerifyInput,
-  ): Promise<SupplierRegistrationVerifyResponse> {
-    // Dihitung sebelum membuka lock database agar transaksi tetap singkat.
-    const passwordHash = await bcrypt.hash(input.password, Number(process.env.BCRYPT_ROUNDS ?? 12));
-    const result = await this.db.transaction(async (tx) => {
-      const [challenge] = await tx
-        .select()
-        .from(authChallenges)
-        .where(eq(authChallenges.id, input.challengeId))
-        .limit(1)
-        .for('update');
-      const unusable =
-        !challenge ||
-        challenge.purpose !== 'SUPPLIER_REGISTRATION' ||
-        challenge.consumedAt !== null ||
-        challenge.expiresAt.getTime() <= Date.now() ||
-        challenge.attempts >= 5;
-      if (unusable) return { kind: 'INVALID' as const };
-
-      let authenticatorValid = false;
-      try {
-        authenticatorValid = verifyTotp(
-          decryptTotpSecret(challenge.totpSecretEncrypted),
-          input.code,
-        );
-      } catch {
-        authenticatorValid = false;
-      }
-      if (!authenticatorValid) {
-        const attempts = challenge.attempts + 1;
-        await tx
-          .update(authChallenges)
-          .set({ attempts, consumedAt: attempts >= 5 ? new Date() : null })
-          .where(eq(authChallenges.id, challenge.id));
-        // Kembalikan hasil biasa agar transaksi commit dan hitungan percobaan
-        // tidak ikut rollback bersama exception.
-        return { kind: 'INVALID' as const };
-      }
-
-      const [existing] = await tx
-        .select({ id: users.id })
-        .from(users)
-        .where(eq(users.email, challenge.email))
-        .limit(1)
-        .for('update');
-      if (existing) throw new ConflictException('Email sudah terdaftar. Silakan masuk.');
-
-      const [supplierRole] = await tx
-        .select({ id: roles.id })
-        .from(roles)
-        .where(eq(roles.name, 'supplier'))
-        .limit(1);
-      const [vendor] = await tx
-        .select({
-          id: vendors.id,
-          name: vendors.name,
-          code: vendors.sapVendorNo,
-          plantId: vendors.plantId,
-        })
-        .from(vendors)
-        .where(and(eq(vendors.id, challenge.vendorId), eq(vendors.isActive, true)))
-        .limit(1);
-      if (!supplierRole || !vendor) {
-        throw new BadRequestException('Supplier tidak lagi aktif. Hubungi PPIC.');
-      }
-
-      const userId = (
-        await tx
-          .insert(users)
-          .values({
-            npk: `SUP-${randomUUID().replaceAll('-', '').slice(0, 12).toUpperCase()}`,
-            name: challenge.name,
-            email: challenge.email,
-            passwordHash,
-            totpSecretEncrypted: challenge.totpSecretEncrypted,
-            roleId: supplierRole.id,
-            plantId: vendor.plantId,
-            vendorId: vendor.id,
-            isActive: false,
-          })
-          .$returningId()
-      )[0]!.id;
-      await tx.delete(authChallenges).where(eq(authChallenges.id, challenge.id));
-      await tx.insert(auditLogs).values({
-        entity: 'users',
-        entityId: String(userId),
-        action: 'SELF_REGISTER_PENDING',
-        userId,
-        before: null,
-        after: {
-          name: challenge.name,
-          email: challenge.email,
-          role: 'supplier',
-          vendorId: vendor.id,
-          isActive: false,
-        },
-      });
-      return {
-        kind: 'SUCCESS' as const,
-        email: challenge.email,
-        name: challenge.name,
-        vendorName: vendor.name,
-        vendorCode: vendor.code ?? '',
-      };
-    });
-
-    if (result.kind === 'INVALID') {
-      throw new BadRequestException('Kode Authenticator tidak valid atau sesi sudah kedaluwarsa');
-    }
-
-    void this.queue
-      .add(
-        QUEUES.NOTIFICATION,
-        JOBS.NOTIFY_SUPPLIER_REGISTRATION,
-        {
-          kind: 'SUPPLIER_REGISTRATION_PENDING',
-          email: result.email,
-          name: result.name,
-          vendorName: result.vendorName,
-          vendorCode: result.vendorCode,
-        },
-        { removeOnComplete: true, removeOnFail: { age: 24 * 3600 } },
-      )
-      .catch((error) =>
-        this.logger.warn(`gagal mengantrekan pemberitahuan PPIC: ${String(error)}`),
-      );
-
-    return {
-      status: 'PENDING_APPROVAL',
-      message: 'Google Authenticator terhubung. Akun menunggu persetujuan PPIC atau Admin.',
-    };
-  }
-
-  async login(input: LoginInput): Promise<LoginAttemptResponse> {
+  async login(input: LoginInput, requestIp?: string): Promise<LoginAttemptResponse> {
     const rows = await this.db
       .select({
         id: users.id,
         npk: users.npk,
         name: users.name,
+        email: users.email,
         passwordHash: users.passwordHash,
-        totpSecretEncrypted: users.totpSecretEncrypted,
         isActive: users.isActive,
         plantId: users.plantId,
         vendorId: users.vendorId,
@@ -296,64 +96,143 @@ export class AuthService {
         .where(eq(users.id, user.id));
     }
 
-    if (user.totpSecretEncrypted) {
+    if (user.roleName === 'supplier') {
+      const email = user.email?.trim().toLowerCase();
+      if (!email || !user.vendorId || input.npk.trim().toLowerCase() !== email) {
+        throw new UnauthorizedException({
+          statusCode: 401,
+          error: 'Unauthorized',
+          message: 'Supplier harus masuk memakai email yang didaftarkan PPIC atau Admin',
+        });
+      }
+
+      const challengeId = randomUUID();
+      const code = generateEmailOtp();
+      const expiresInMinutes = 5;
+      await this.db.transaction(async (tx) => {
+        await tx.delete(authChallenges).where(eq(authChallenges.email, email));
+        await tx.insert(authChallenges).values({
+          id: challengeId,
+          vendorId: user.vendorId!,
+          purpose: 'LOGIN_EMAIL_OTP',
+          name: user.name,
+          email,
+          codeHash: hashEmailOtp(challengeId, code),
+          expiresAt: new Date(Date.now() + expiresInMinutes * 60_000),
+          requestIp: requestIp?.slice(0, 45) || null,
+        });
+      });
+
+      try {
+        await this.queue.add(
+          QUEUES.NOTIFICATION,
+          JOBS.SEND_LOGIN_OTP,
+          { email, name: user.name, code, expiresInMinutes },
+          { removeOnComplete: true, removeOnFail: { age: 24 * 3600 } },
+        );
+      } catch (error) {
+        await this.db.delete(authChallenges).where(eq(authChallenges.id, challengeId));
+        this.logger.error(`gagal mengantrekan OTP login: ${String(error)}`);
+        throw new ServiceUnavailableException('Kode OTP belum bisa dikirim. Silakan coba lagi.');
+      }
+
       return {
         mfaRequired: true,
         mfaToken: await this.jwt.signAsync(
-          { kind: 'mfa', purpose: 'LOGIN_TOTP', sub: user.id },
+          { kind: 'mfa', purpose: 'LOGIN_EMAIL_OTP', sub: user.id, challengeId },
           { expiresIn: '5m' },
         ),
+        emailHint: maskEmail(email),
+        demoOtpCode: demoOtpAutofillEnabled() ? code : undefined,
       };
     }
 
     return this.issueLoginToken(user);
   }
 
-  async loginTotp(input: LoginTotpInput): Promise<LoginResponse> {
-    let challenge: { kind?: string; purpose?: string; sub?: number } | null = null;
+  async loginOtp(input: LoginOtpInput): Promise<LoginResponse> {
+    let token: {
+      kind?: string;
+      purpose?: string;
+      sub?: number;
+      challengeId?: string;
+    } | null = null;
     try {
-      challenge = await this.jwt.verifyAsync(input.mfaToken);
+      token = await this.jwt.verifyAsync(input.mfaToken);
     } catch {
-      challenge = null;
+      token = null;
     }
     if (
-      challenge?.kind !== 'mfa' ||
-      challenge.purpose !== 'LOGIN_TOTP' ||
-      !Number.isInteger(challenge.sub)
+      token?.kind !== 'mfa' ||
+      token.purpose !== 'LOGIN_EMAIL_OTP' ||
+      !Number.isInteger(token.sub) ||
+      !token.challengeId
     ) {
-      throw new UnauthorizedException('Kode Authenticator salah atau sesi verifikasi kedaluwarsa');
+      throw new UnauthorizedException('Kode OTP salah atau sesi verifikasi kedaluwarsa');
     }
 
-    const [user] = await this.db
-      .select({
-        id: users.id,
-        npk: users.npk,
-        name: users.name,
-        passwordHash: users.passwordHash,
-        totpSecretEncrypted: users.totpSecretEncrypted,
-        isActive: users.isActive,
-        plantId: users.plantId,
-        vendorId: users.vendorId,
-        roleName: roles.name,
-      })
-      .from(users)
-      .leftJoin(roles, eq(users.roleId, roles.id))
-      .where(eq(users.id, challenge.sub!))
-      .limit(1);
+    const result = await this.db.transaction(async (tx) => {
+      const [challenge] = await tx
+        .select()
+        .from(authChallenges)
+        .where(eq(authChallenges.id, token!.challengeId!))
+        .limit(1)
+        .for('update');
+      const unusable =
+        !challenge ||
+        challenge.purpose !== 'LOGIN_EMAIL_OTP' ||
+        challenge.consumedAt !== null ||
+        challenge.expiresAt.getTime() <= Date.now() ||
+        challenge.attempts >= 5;
+      if (unusable) return null;
 
-    let authenticatorOk = false;
-    if (user?.totpSecretEncrypted) {
+      const [user] = await tx
+        .select({
+          id: users.id,
+          npk: users.npk,
+          name: users.name,
+          email: users.email,
+          passwordHash: users.passwordHash,
+          isActive: users.isActive,
+          plantId: users.plantId,
+          vendorId: users.vendorId,
+          roleName: roles.name,
+        })
+        .from(users)
+        .leftJoin(roles, eq(users.roleId, roles.id))
+        .where(eq(users.id, token!.sub!))
+        .limit(1);
+
+      let codeOk = false;
       try {
-        authenticatorOk = verifyTotp(decryptTotpSecret(user.totpSecretEncrypted), input.totpCode);
+        codeOk = verifyEmailOtp(challenge.id, input.otpCode, challenge.codeHash);
       } catch {
-        authenticatorOk = false;
+        codeOk = false;
       }
-    }
-    if (!user || !user.passwordHash || !user.isActive || !authenticatorOk) {
-      throw new UnauthorizedException('Kode Authenticator salah atau sesi verifikasi kedaluwarsa');
-    }
+      const userOk =
+        user?.isActive &&
+        user.roleName === 'supplier' &&
+        user.email?.toLowerCase() === challenge.email.toLowerCase() &&
+        user.vendorId === challenge.vendorId;
+      if (!codeOk || !userOk) {
+        const attempts = challenge.attempts + 1;
+        await tx
+          .update(authChallenges)
+          .set({ attempts, consumedAt: attempts >= 5 ? new Date() : null })
+          .where(eq(authChallenges.id, challenge.id));
+        return null;
+      }
 
-    return this.issueLoginToken(user);
+      await tx
+        .update(authChallenges)
+        .set({ consumedAt: new Date() })
+        .where(eq(authChallenges.id, challenge.id));
+      return user;
+    });
+
+    if (!result) throw new UnauthorizedException('Kode OTP salah atau sesi verifikasi kedaluwarsa');
+
+    return this.issueLoginToken(result);
   }
 
   private async issueLoginToken(user: LoginUser): Promise<LoginResponse> {
@@ -475,4 +354,11 @@ export class AuthService {
       expiresIn: (process.env.DEVICE_JWT_EXPIRES_IN ?? '365d') as JwtSignOptions['expiresIn'],
     });
   }
+}
+
+function demoOtpAutofillEnabled(): boolean {
+  if (process.env.NODE_ENV === 'production') return false;
+  return ['true', '1', 'yes', 'y', 'on'].includes(
+    (process.env.DEMO_OTP_AUTOFILL ?? '').trim().toLowerCase(),
+  );
 }

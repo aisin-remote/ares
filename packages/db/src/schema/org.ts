@@ -41,7 +41,7 @@ export const users = mysqlTable(
     name: varchar('NAME', { length: 128 }).notNull(),
     email: varchar('EMAIL', { length: 191 }),
     passwordHash: varchar('PASSWORD_HASH', { length: 255 }),
-    /** Secret Google Authenticator terenkripsi AES-GCM; null untuk akun tanpa MFA. */
+    /** Kolom lama Google Authenticator; dipertahankan agar data lama tetap terbaca. */
     totpSecretEncrypted: varchar('TOTP_SECRET_ENCRYPTED', { length: 512 }),
     roleId: fk('ROLE_ID').references(() => roles.id),
     plantId: fk('PLANT_ID').references(() => plants.id),

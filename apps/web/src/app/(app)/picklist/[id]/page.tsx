@@ -59,7 +59,7 @@ export default async function PicklistDetailPage({ params }: { params: Promise<{
         description={`${picklist.vendorName} — kirim ${tanggal(picklist.deliveryDate)} jam ${jam(picklist.arrivalTime)}${penanda ? ` · ${penanda.label}` : ''}`}
         actions={
           picklist.pdfReadyAt && picklist.status !== 'CANCELLED' ? (
-            <UnduhDokumen picklistId={picklist.publicId} siap bentuk="ringkas" />
+            <UnduhDokumen picklistId={picklist.publicId} siap />
           ) : (
             <span className="inline-flex h-11 items-center gap-2 rounded-full border border-line px-5 text-[14px] font-semibold text-ink-muted">
               {picklist.status === 'CANCELLED' ? (

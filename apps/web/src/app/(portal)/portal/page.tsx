@@ -19,7 +19,6 @@ import { Card, CardHeader } from '@/components/ui/card';
 import { Table, Th, Td, EmptyState } from '@/components/ui/table';
 import { ClickableRow } from '@/components/ui/clickable-row';
 import { Reveal, Stagger, StaggerItem } from '@/components/motion/reveal';
-import { UnduhDokumen } from '@/components/portal/unduh-dokumen';
 import { STATUS_LABEL, STATUS_TONE, jam, tanggal } from '@/components/picklist/status';
 import { ArrivalIndicator } from '@/components/picklist/schedule-indicator';
 import { cn } from '@/components/ui/cn';
@@ -63,9 +62,9 @@ export default async function PortalPage({
   return (
     <>
       <PageHeader
-        crumbs={[{ label: 'Order berjalan' }]}
+        crumbs={[{ label: 'Order aktif' }]}
         title="Order dari Aisin"
-        description={`${meta.total} order berjalan — unduh, cetak kanbannya, lalu kirim sesuai jam kedatangan`}
+        description={`${meta.total} order aktif — buka detail untuk unduh dokumen dan konfirmasi pengiriman`}
       />
 
       <Stagger className="mb-5 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
@@ -113,8 +112,8 @@ export default async function PortalPage({
         <Card>
           <CardHeader
             icon={ClipboardList}
-            title="Order berjalan"
-            subtitle={`${meta.total} dokumen — unduh, cetak kanbannya, lalu konfirmasi kirim`}
+            title="Order aktif"
+            subtitle={`${meta.total} dokumen — buka detail untuk melihat dan memproses order`}
             actions={
               <div className="hidden flex-wrap gap-1.5 md:flex">
                 {[undefined, ...AKTIF].map((item) => (
@@ -152,14 +151,13 @@ export default async function PortalPage({
 
           {data.length === 0 ? (
             <div className="border-t border-line px-5 py-10 text-center text-[14px] leading-6 text-ink-muted md:hidden">
-              Belum ada order berjalan. Order baru muncul setelah diterbitkan PPIC dan Anda akan
+              Belum ada order aktif. Order baru muncul setelah diterbitkan PPIC dan Anda akan
               menerima email pemberitahuan.
             </div>
           ) : (
             <div className="divide-y divide-line border-t border-line md:hidden">
               {data.map((p) => {
                 const nomor = orderSheetDisplayNo(p.picklistNo, p.revision);
-                const perluKonfirmasi = p.status === 'ISSUED' || p.status === 'DOWNLOADED';
                 return (
                   <article key={p.id} className="p-4">
                     <div className="flex items-start justify-between gap-3">
@@ -212,22 +210,10 @@ export default async function PortalPage({
                     <div className="mt-4 flex flex-wrap items-center gap-2">
                       <Link
                         href={`/portal/${p.publicId}`}
-                        className={cn(
-                          'inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-full px-4 text-[13px] font-semibold',
-                          perluKonfirmasi
-                            ? 'bg-accent text-white hover:bg-accent-soft'
-                            : 'border border-line bg-card text-ink hover:border-ink',
-                        )}
+                        className="inline-flex h-10 flex-1 items-center justify-center rounded-full border border-line bg-card px-4 text-[13px] font-semibold text-ink hover:border-ink"
                       >
-                        <Truck className="size-4" strokeWidth={2.2} aria-hidden />
-                        {perluKonfirmasi ? 'Konfirmasi kirim' : 'Lihat penerimaan'}
+                        Lihat detail
                       </Link>
-                      <UnduhDokumen
-                        picklistId={p.publicId}
-                        siap={p.pdfReadyAt !== null}
-                        ukuran="sm"
-                        bentuk="ringkas"
-                      />
                     </div>
                   </article>
                 );
@@ -246,19 +232,13 @@ export default async function PortalPage({
                   <Th align="right">Line</Th>
                   <Th align="right">Box</Th>
                   <Th>Status</Th>
-                  {/* Langkah berikutnya setelah dokumen diunduh (F-30); tanpa ini supplier
-                    harus menebak bahwa nomor order bisa diklik. */}
-                  <Th>Aksi</Th>
-                  {/* Paling kanan: tombol unduh paling lebar dan paling jarang dibaca berurutan. */}
-                  <Th align="center" sticky="right">
-                    Download
-                  </Th>
+                  <Th align="center" sticky="right">Aksi</Th>
                 </tr>
               </thead>
               <tbody>
                 {data.length === 0 ? (
-                  <EmptyState colSpan={9}>
-                    Belum ada order berjalan. Order baru muncul di sini begitu PPIC menerbitkannya,
+                  <EmptyState colSpan={8}>
+                    Belum ada order aktif. Order baru muncul di sini begitu PPIC menerbitkannya,
                     dan Anda akan menerima email pemberitahuan.
                   </EmptyState>
                 ) : (
@@ -304,31 +284,13 @@ export default async function PortalPage({
                           {STATUS_LABEL[p.status] ?? p.status}
                         </span>
                       </Td>
-                      <Td className="whitespace-nowrap">
-                        {p.status === 'ISSUED' || p.status === 'DOWNLOADED' ? (
-                          <Link
-                            href={`/portal/${p.publicId}`}
-                            className="inline-flex h-9 items-center gap-1.5 rounded-full bg-accent px-4 text-[13px] font-semibold text-white transition-colors hover:bg-accent-soft"
-                          >
-                            <Truck className="size-4" strokeWidth={2.2} aria-hidden />
-                            Konfirmasi kirim
-                          </Link>
-                        ) : (
-                          <Link
-                            href={`/portal/${p.publicId}`}
-                            className="text-[13px] font-semibold text-ink-muted transition-colors hover:text-ink hover:underline"
-                          >
-                            Lihat detail
-                          </Link>
-                        )}
-                      </Td>
                       <Td align="center" sticky="right" className="whitespace-nowrap">
-                        <UnduhDokumen
-                          picklistId={p.publicId}
-                          siap={p.pdfReadyAt !== null}
-                          ukuran="sm"
-                          bentuk="ringkas"
-                        />
+                        <Link
+                          href={`/portal/${p.publicId}`}
+                          className="inline-flex h-9 items-center rounded-full border border-line bg-card px-4 text-[13px] font-semibold text-ink transition-colors hover:border-ink"
+                        >
+                          Lihat detail
+                        </Link>
                       </Td>
                     </ClickableRow>
                   ))

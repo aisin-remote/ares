@@ -139,6 +139,23 @@ export const vendorParts = mysqlTable(
   ],
 );
 
+/** Standar jumlah kanban per supplier-part untuk penanda anomali order PPIC. */
+export const orderStandards = mysqlTable(
+  'TM_ORDER_STANDARD',
+  {
+    id: pk(),
+    vendorPartId: fk('VENDOR_PART_ID')
+      .notNull()
+      .references(() => vendorParts.id, { onDelete: 'cascade' }),
+    standardKanban: int('STANDARD_KANBAN').notNull(),
+    isActive: boolean('IS_ACTIVE').notNull().default(true),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex('TM_ORDER_STANDARD_VENDOR_PART_UNIQUE').on(t.vendorPartId),
+  ],
+);
+
 /**
  * Jadwal cutoff per supplier (F-04–F-07). Satu baris per jam cutoff; supplier
  * boleh punya beberapa. Jam disimpan sebagai jam pabrik Asia/Jakarta (6.2.1).
@@ -258,6 +275,14 @@ export const vendorPartsRelations = relations(vendorParts, ({ one }) => ({
   part: one(parts, { fields: [vendorParts.partId], references: [parts.id] }),
   vendor: one(vendors, { fields: [vendorParts.vendorId], references: [vendors.id] }),
   poItemDefault: one(poLines, { fields: [vendorParts.poItemDefaultId], references: [poLines.id] }),
+  orderStandard: one(orderStandards),
+}));
+
+export const orderStandardsRelations = relations(orderStandards, ({ one }) => ({
+  vendorPart: one(vendorParts, {
+    fields: [orderStandards.vendorPartId],
+    references: [vendorParts.id],
+  }),
 }));
 
 export const vendorCutoffsRelations = relations(vendorCutoffs, ({ one }) => ({

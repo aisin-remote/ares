@@ -12,7 +12,10 @@ import { cn } from '../ui/cn';
 import { SelectSearch } from '../ui/select-search';
 import { useFeedback } from '../ui/feedback-provider';
 
-export type RefOptions = Record<string, Array<{ value: number; label: string; short?: string }>>;
+export type RefOptions = Record<
+  string,
+  Array<{ value: number; label: string; short?: string; key?: string }>
+>;
 
 const initial: FormState = {};
 
@@ -55,6 +58,12 @@ export function MasterForm({
   const handled = useRef(false);
   const titleId = useId();
   const isEdit = Boolean(row);
+  const supplierRoleId = options.roles?.find((option) => option.key === 'supplier')?.value;
+  const [selectedRoleId, setSelectedRoleId] = useState(String(row?.roleId ?? ''));
+  const isSupplierAccount =
+    entity === 'users' &&
+    supplierRoleId !== undefined &&
+    selectedRoleId === String(supplierRoleId);
   // Portal hanya bisa dibuat setelah komponen hidup di browser; saat render
   // di server document belum ada.
   const [mounted, setMounted] = useState(false);
@@ -151,16 +160,29 @@ export function MasterForm({
                   </p>
                 ) : null}
 
-                {def.fields.map((field) => (
-                  <Field
-                    key={field.name}
-                    field={field}
-                    value={row?.[field.name]}
-                    options={options[field.refEntity ?? ''] ?? []}
-                    error={state.fieldErrors?.[field.name]}
-                    isEdit={isEdit}
-                  />
-                ))}
+                {def.fields.map((field) => {
+                  if (entity === 'users' && field.name === 'vendorId' && !isSupplierAccount) {
+                    return <input key={field.name} type="hidden" name={field.name} value="" />;
+                  }
+                  if (entity === 'users' && field.name === 'plantId' && isSupplierAccount) {
+                    return <input key={field.name} type="hidden" name={field.name} value="" />;
+                  }
+                  return (
+                    <Field
+                      key={field.name}
+                      field={
+                        entity === 'users' && field.name === 'vendorId'
+                          ? { ...field, required: true }
+                          : field
+                      }
+                      value={row?.[field.name]}
+                      options={options[field.refEntity ?? ''] ?? []}
+                      error={state.fieldErrors?.[field.name]}
+                      isEdit={isEdit}
+                      onValueChange={field.name === 'roleId' ? setSelectedRoleId : undefined}
+                    />
+                  );
+                })}
               </div>
 
               <footer className="flex items-center justify-end gap-3 border-t border-line px-6 py-4">
@@ -208,12 +230,14 @@ function Field({
   options,
   error,
   isEdit,
+  onValueChange,
 }: {
   field: FieldDef;
   value: unknown;
-  options: Array<{ value: number; label: string; short?: string }>;
+  options: Array<{ value: number; label: string; short?: string; key?: string }>;
   error?: string;
   isEdit: boolean;
+  onValueChange?: (value: string) => void;
 }) {
   const id = useId();
   const [checked, setChecked] = useState(
@@ -282,6 +306,7 @@ function Field({
           required={field.required && !isEdit}
           defaultValue={value === undefined || value === null ? '' : String(value)}
           options={options}
+          onValueChange={onValueChange}
         />
       ) : (
         <input

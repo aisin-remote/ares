@@ -39,12 +39,11 @@ export interface VendorPartNoticeJob {
   changes: Array<{ field: string; label: string; before: string; after: string }>;
 }
 
-export interface SupplierRegistrationNoticeJob {
-  kind: 'SUPPLIER_REGISTRATION_PENDING';
+export interface LoginOtpEmailJob {
   email: string;
   name: string;
-  vendorName: string;
-  vendorCode: string;
+  code: string;
+  expiresInMinutes: number;
 }
 
 /**
@@ -80,34 +79,24 @@ export class NotifyService {
     if (!this.transport) this.logger.warn('SMTP_HOST kosong — email hanya ditulis ke log');
   }
 
-  async sendSupplierRegistrationNotice(
-    job: SupplierRegistrationNoticeJob,
-  ): Promise<{ recipients: number; sent: boolean }> {
-    const ppic = await this.db
-      .select({ email: users.email })
-      .from(users)
-      .innerJoin(roles, eq(users.roleId, roles.id))
-      .where(and(inArray(roles.name, ['ppic', 'admin']), eq(users.isActive, true), isNotNull(users.email)));
-    const to = ppic.map((row) => row.email!).filter(Boolean);
-    if (to.length === 0) return { recipients: 0, sent: false };
-
-    const link = `${process.env.WEB_ORIGIN ?? 'http://127.0.0.1:3000'}/master/users?q=${encodeURIComponent(job.email)}`;
-    const subject = `[ARES] Pendaftaran supplier ${job.vendorName} perlu ditinjau`;
+  async sendLoginOtp(job: LoginOtpEmailJob): Promise<{ recipients: number; sent: boolean }> {
+    const subject = '[ARES] Kode OTP login';
     const text = [
-      'Ada pendaftaran supplier yang emailnya belum cocok dengan email perusahaan di master.',
+      `Halo ${job.name},`,
       '',
-      `Supplier : ${job.vendorName} (${job.vendorCode})`,
-      `Nama     : ${job.name}`,
-      `Email    : ${job.email}`,
+      `Kode OTP login ARES Anda: ${job.code}`,
       '',
-      `Tinjau dan aktifkan akun melalui Master User: ${link}`,
+      `Kode berlaku ${job.expiresInMinutes} menit dan hanya dapat dipakai satu kali.`,
+      'Abaikan email ini jika Anda tidak sedang mencoba masuk.',
     ].join('\n');
     if (!this.transport) {
-      this.logger.warn(`pemberitahuan pendaftaran ${job.email} tidak dikirim karena SMTP belum dikonfigurasi`);
-      return { recipients: to.length, sent: false };
+      if (process.env.NODE_ENV !== 'production') {
+        this.logger.warn(`[DEV OTP] ${job.email}: ${job.code}`);
+      }
+      return { recipients: 1, sent: false };
     }
-    await this.transport.sendMail({ from: process.env.SMTP_FROM, to, subject, text });
-    return { recipients: to.length, sent: true };
+    await this.transport.sendMail({ from: process.env.SMTP_FROM, to: job.email, subject, text });
+    return { recipients: 1, sent: true };
   }
 
   /** Isi email picklist terbit / direvisi: nomor, tanggal & jam kirim, jumlah line & box, tautan portal. */

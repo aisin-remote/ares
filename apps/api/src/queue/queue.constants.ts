@@ -11,7 +11,7 @@ export const QUEUES = {
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
 
 export const JOBS = {
-  // PRD 6.1–6.2: job cutoff per supplier, repeatable, kunci di DB.
+  // PRD 6.1–6.2: cutoff pilihan PPIC diproses worker, kunci di DB.
   RUN_CUTOFF: 'run-cutoff',
   // PRD 8.2: tarik hasil produksi dari API MES, cursor per sumber.
   MES_SYNC: 'mes-sync',
@@ -26,8 +26,8 @@ export const JOBS = {
   SEND_NOTIFICATION: 'send-notification',
   // Kabar ke PPIC saat supplier mengubah kemasan vendor part-nya sendiri.
   NOTIFY_VENDOR_PART: 'notify-vendor-part',
-  // Pemberitahuan akun supplier yang perlu disetujui PPIC/Admin.
-  NOTIFY_SUPPLIER_REGISTRATION: 'notify-supplier-registration',
+  // OTP email setelah password akun supplier tervalidasi.
+  SEND_LOGIN_OTP: 'send-login-otp',
   SEND_REMINDER: 'send-reminder',
   // F-41: membekukan saldo stok harian supaya layar Stok WH tidak perlu
   // menjumlahkan seluruh riwayat mutasi tiap kali dibuka.
