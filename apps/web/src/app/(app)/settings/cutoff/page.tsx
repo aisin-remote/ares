@@ -1,4 +1,5 @@
-import { AlertTriangle, ArrowRight, CalendarDays, Clock } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CalendarDays } from 'lucide-react';
+import Link from 'next/link';
 import { MasterEntityPage } from '@/components/master/master-entity-page';
 import { Card, CardBody, CardHeader } from '@/components/ui/card';
 import { getNextCutoffPreviews } from '@/lib/queries';
@@ -40,7 +41,13 @@ function deliveryDate(value: string) {
 
 export default async function Page({ searchParams }: { searchParams: Promise<{ page?: string; q?: string }> }) {
   await requirePermission('setting.write');
-  const previews = await getNextCutoffPreviews();
+  const params = await searchParams;
+  const search = params.q?.trim().toLocaleLowerCase('id-ID');
+  const previews = (await getNextCutoffPreviews()).filter((item) => !search
+    || item.vendorName.toLocaleLowerCase('id-ID').includes(search)
+    || item.vendorCode?.toLocaleLowerCase('id-ID').includes(search));
+  const settingsHref = (item: typeof previews[number]) =>
+    `/settings/cutoff?${new URLSearchParams({ q: item.vendorCode || item.vendorName })}#cutoff-settings`;
   const terjadwal = previews
     .filter((item) => item.cutoffAt && item.arrivalAt && item.deliveryDate)
     .sort((a, b) => a.cutoffAt!.getTime() - b.cutoffAt!.getTime());
@@ -56,7 +63,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ p
     <CardHeader
       icon={CalendarDays}
       title="Kalender cutoff berikutnya"
-      subtitle="Supplier dikelompokkan berdasarkan hari cutoff · waktu Asia/Jakarta"
+      subtitle="Supplier dikelompokkan berdasarkan hari cutoff · Order Sheet bisa diterbitkan sejak pagi hari cutoff"
       actions={<div className="flex flex-wrap justify-end gap-2">
         <span className="rounded-full border border-line bg-surface px-3 py-1.5 text-[12px] font-semibold text-ink-soft">
           {terjadwal.length} terjadwal
@@ -81,13 +88,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ p
               </span>
             </header>
             <div className="space-y-2.5 p-3">
-              {group.items.map((item) => <article key={item.vendorName} className="rounded-2xl border border-line bg-card p-3.5 transition-colors hover:border-line-strong">
-                <div className="flex items-start justify-between gap-3">
-                  <p className="min-w-0 text-[13px] font-bold leading-snug text-ink">{item.vendorName}</p>
-                  <time dateTime={item.cutoffAt!.toISOString()} className="shrink-0 font-mono text-[18px] font-bold leading-none text-accent">
-                    {clock.format(item.cutoffAt!)}
-                  </time>
-                </div>
+              {group.items.map((item) => <article key={item.vendorId} className="rounded-2xl border border-line bg-card p-3.5 transition-colors hover:border-line-strong">
+                <p className="text-[13px] font-bold leading-snug text-ink">{item.vendorName}</p>
                 <div className="mt-3 flex items-center gap-2 border-t border-line pt-3 text-[11px] leading-tight text-ink-muted">
                   <span className="min-w-0 flex-1">
                     <span className="block uppercase tracking-wide">Kirim</span>
@@ -99,11 +101,17 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ p
                     <span className="mt-1 block truncate font-semibold text-ink-soft">{shortDate.format(item.arrivalAt!)} · {clock.format(item.arrivalAt!)}</span>
                   </span>
                 </div>
+                <Link href={settingsHref(item)} aria-label={`Kelola jadwal ${item.vendorName}`}
+                  className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-ink-soft hover:text-ink hover:underline">
+                  Kelola jadwal <ArrowRight className="size-3.5" aria-hidden />
+                </Link>
               </article>)}
             </div>
           </section>)}
         </div>
-      </div> : <p className="px-5 py-8 text-center text-[14px] text-ink-muted">Belum ada jadwal cutoff aktif. Tambahkan jadwal agar simulasi tersedia.</p>}
+      </div> : <p className="px-5 py-8 text-center text-[14px] text-ink-muted">{search
+        ? 'Tidak ada jadwal cutoff aktif yang cocok dengan pencarian supplier.'
+        : 'Belum ada jadwal cutoff aktif. Tambahkan jadwal agar simulasi tersedia.'}</p>}
 
       {belumTerjadwal.length ? <div className="border-t border-line bg-warn/[0.035] px-5 py-4">
         <div className="flex items-start gap-3">
@@ -120,7 +128,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ p
   </Card>;
   return <MasterEntityPage rawEntity="vendorCutoffs" searchParams={searchParams} view={{
     path: '/settings/cutoff', section: 'Setting', title: 'Cutoff Supplier',
-    description: 'Jam tutup order, waktu kedatangan, dan batas pengingat per supplier',
-    listFields: ['vendorId', 'cutoffTime', 'workdays', 'leadDays', 'arrivalTime', 'downloadWarningHours', 'confirmWarningHours', 'isActive'], intro,
+    description: 'Hari cutoff, waktu kedatangan, dan batas pengingat per supplier',
+    listFields: ['vendorId', 'workdays', 'leadDays', 'arrivalTime', 'isActive'], intro,
   }} />;
 }

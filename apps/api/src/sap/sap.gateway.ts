@@ -1,4 +1,5 @@
 import type { sapOutbox } from '@ares/db';
+import { readStagingConfig } from './staging.config';
 
 export const SAP_GATEWAY = Symbol('SAP_GATEWAY');
 
@@ -32,11 +33,12 @@ export class MssqlStagingGateway implements SapGateway {
   readonly mode = 'mssql' as const;
 
   get enabled(): boolean {
-    return process.env.SAP_MSSQL_ENABLED === 'true';
+    return readStagingConfig().STAGING_PUSH_ENABLED;
   }
 
   async send(row: typeof sapOutbox.$inferSelect): Promise<SapGatewayResult> {
     void row;
+    if (!this.enabled) throw new Error('Pengiriman staging dinonaktifkan (STAGING_PUSH_ENABLED=false).');
     throw new Error(
       'Pengiriman ke MS SQL belum diimplementasikan. ' +
         'Bentuk tabel tujuan dan movement type harus disepakati tim SAP lebih dulu.',

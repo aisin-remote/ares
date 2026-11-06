@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   parseScanCode,
+  summarizeReceiptSheet,
   formatScanCode,
+  formatKanbanQr,
   formatDocNo,
   dateKey,
   validateKanbanScan,
@@ -260,6 +262,16 @@ describe('formatScanCode (8.3)', () => {
     expect(formatScanCode({ kind: 'KANBAN', id: ULID })).toBe(`ARES:K:${ULID}`);
   });
 
+  it('QR kartu kanban: ID, part number, lalu qty per kanban; tetap terbaca sebagai ID', () => {
+    const qr = formatKanbanQr({ id: ULID, partNo: '90312-38013', qtyPerBox: 200 });
+    expect(qr).toBe(`ARES:K:${ULID}|90312-38013|200`);
+    expect(parseScanCode(qr)).toEqual({ kind: 'KANBAN', id: ULID });
+    // Scanner keyboard-wedge dengan layout lain bisa salah mengetik `|`.
+    expect(parseScanCode(`ARES:K:${ULID}\\90312-38013\\200`)).toEqual({ kind: 'KANBAN', id: ULID });
+    // Huruf/angka langsung setelah ID berarti ID-nya bukan 26 karakter.
+    expect(parseScanCode(`ARES:K:${ULID}X|90312-38013|200`)).toBeNull();
+  });
+
   it('barcode picklist memuat nomor dan revisi', () => {
     expect(formatScanCode({ kind: 'PICKLIST', no: 'PL-260917-0042', revision: 0 })).toBe(
       'ARES:P:PL-260917-0042-0',
@@ -274,6 +286,19 @@ describe('formatScanCode (8.3)', () => {
       { kind: 'PICKLIST', no: 'PL-260917-0042', revision: 12 },
     ];
     for (const k of kode) expect(parseScanCode(formatScanCode(k))).toEqual(k);
+  });
+
+  it('barcode Delivery Sheet memakai prefix D dan DO# = nomor Order Sheet + recovery', () => {
+    const code = formatScanCode({ kind: 'DELIVERY', no: '826092300100', revision: 2 });
+    expect(code).toBe('ARES:D:826092300102');
+    expect(parseScanCode(code)).toEqual({ kind: 'DELIVERY', no: '826092300100', revision: 2 });
+    expect(parseScanCode('ARES:D:PL-260917-0042-1')).toEqual({
+      kind: 'DELIVERY',
+      no: 'PL-260917-0042',
+      revision: 1,
+    });
+    // Nomor sama, jenis dokumen beda: Order Sheet tidak boleh terbaca sebagai Delivery Sheet.
+    expect(parseScanCode('ARES:P:826092300102')?.kind).toBe('PICKLIST');
   });
 
   it('nomor dari formatDocNo ikut bulat bolak-balik (F-21 + 8.3)', () => {
@@ -306,5 +331,22 @@ describe('picklistStatusPathOnClose (6.5 + catatan 6.4)', () => {
     expect(() => picklistStatusPathOnClose('COMPLETE', 'COMPLETE')).not.toThrow();
     expect(() => picklistStatusPathOnClose('COMPLETE', 'PARTIAL')).toThrow(/COMPLETE/);
     expect(() => picklistStatusPathOnClose('CANCELLED', 'COMPLETE')).toThrow(/CANCELLED/);
+  });
+});
+
+describe('summarizeReceiptSheet (Receipt Sheet)', () => {
+  it('qty diterima, undelivered, dan total box dari baris receipt', () => {
+    const out = summarizeReceiptSheet([
+      { boxOrdered: 16, qtyPerBox: 100, boxReceived: 16, sapPoNo: '4500001' },
+      { boxOrdered: 4, qtyPerBox: 50, boxReceived: 1, sapPoNo: '4500002' },
+      { boxOrdered: 2, qtyPerBox: 10, boxReceived: 0, sapPoNo: '4500001' },
+    ]);
+    expect(out.lines).toEqual([
+      { boxReceived: 16, orderPcs: 1600, receivedPcs: 1600, undeliveredPcs: 0 },
+      { boxReceived: 1, orderPcs: 200, receivedPcs: 50, undeliveredPcs: 150 },
+      { boxReceived: 0, orderPcs: 20, receivedPcs: 0, undeliveredPcs: 20 },
+    ]);
+    expect(out.totalBoxReceived).toBe(17);
+    expect(out.poNumbers).toEqual(['4500001', '4500002']);
   });
 });

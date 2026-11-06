@@ -6,9 +6,10 @@ import { PicklistController } from './picklist.controller';
 import { CutoffController } from './cutoff.controller';
 import { CutoffService } from './cutoff.service';
 import { CutoffWorker } from './cutoff.worker';
+import { NotifyModule } from '../notify/notify.module';
 
 @Module({
-  imports: [QueueModule],
+  imports: [QueueModule, NotifyModule],
   controllers: [PicklistController, CutoffController],
   providers: [PicklistService, SequenceService, CutoffService, CutoffWorker],
   exports: [PicklistService, CutoffService],

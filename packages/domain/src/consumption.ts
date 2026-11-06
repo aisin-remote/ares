@@ -91,15 +91,26 @@ export interface AssignedCutoff extends NextCutoffResult {
   cutoffId: number;
 }
 
-/** F-14: pilih cutoff efektif pertama setelah waktu konsumsi. */
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * F-14: hari cutoff pertama sejak `from` yang antrean supplier-nya belum
+ * ditutup (`closed` berisi `cutoffAt` dalam ms). Order Sheet boleh terbit sejak
+ * pagi hari cutoff, jadi konsumsi yang datang sesudah terbit masuk ke hari
+ * cutoff berikutnya.
+ */
 export function assignCutoff(
-  occurredAt: Date,
+  from: Date,
   cutoffs: readonly CutoffSchedule[],
   holidays: readonly string[],
+  closed: ReadonlySet<number> = new Set(),
 ): AssignedCutoff | null {
   let selected: AssignedCutoff | null = null;
   for (const cutoff of cutoffs) {
-    const result = nextCutoff({ now: occurredAt, holidays, ...cutoff });
+    let result = nextCutoff({ now: from, holidays, ...cutoff });
+    while (result && closed.has(result.cutoffAt.getTime())) {
+      result = nextCutoff({ now: new Date(result.cutoffAt.getTime() + DAY_MS), holidays, ...cutoff });
+    }
     if (!result) continue;
     if (!selected || result.cutoffAt < selected.cutoffAt) {
       selected = { cutoffId: cutoff.id, ...result };

@@ -1,0 +1,1494 @@
+{
+  "schema": "openai.presentation.layout/v5",
+  "unit": "px",
+  "slide": {
+    "id": "sl/y90nupkv",
+    "index": 0,
+    "layout": {
+      "id": "ly/ux4ruhcv",
+      "name": "Title Slide"
+    },
+    "masterLayoutId": "ly/atofqts7",
+    "backgroundColor": "rgba(255,255,255,1)",
+    "position": {
+      "left": 0,
+      "top": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "inheritedLayers": [
+    {
+      "scope": "layout",
+      "id": "ly/ux4ruhcv",
+      "name": "Title Slide",
+      "type": "title",
+      "parentLayoutId": "ly/atofqts7",
+      "elements": [
+        {
+          "order": 1,
+          "kind": "textbox",
+          "scope": "layout",
+          "id": "sh/gral4reh",
+          "editable": false,
+          "name": "Title 1",
+          "position": {
+            "left": 160,
+            "top": 117.83,
+            "width": 960,
+            "height": 250.67
+          },
+          "text": "Click to edit Master title style",
+          "style": {
+            "anchor": 3,
+            "verticalAlignment": "bottom"
+          },
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Click to edit Master title style",
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Click to edit Master title style",
+                  "anchor": 3,
+                  "verticalAlignment": "bottom"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "order": 2,
+          "kind": "textbox",
+          "scope": "layout",
+          "id": "sh/hsjmdwf2",
+          "editable": false,
+          "name": "Subtitle 2",
+          "position": {
+            "left": 160,
+            "top": 378.17,
+            "width": 960,
+            "height": 173.83
+          },
+          "text": "Click to edit Master subtitle style",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Click to edit Master subtitle style",
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Click to edit Master subtitle style"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "order": 3,
+          "kind": "textbox",
+          "scope": "layout",
+          "id": "sh/61s3yhwf",
+          "editable": false,
+          "name": "Date Placeholder 3",
+          "position": {
+            "left": 0,
+            "top": 0,
+            "width": 0,
+            "height": 0
+          },
+          "text": "15/10/2026",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "15/10/2026",
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "15/10/2026"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "order": 4,
+          "kind": "shape",
+          "scope": "layout",
+          "id": "sh/721472xk",
+          "editable": false,
+          "name": "Footer Placeholder 4",
+          "position": {
+            "left": 0,
+            "top": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "order": 5,
+          "kind": "textbox",
+          "scope": "layout",
+          "id": "sh/83al07e5",
+          "editable": false,
+          "name": "Slide Number Placeholder 5",
+          "position": {
+            "left": 0,
+            "top": 0,
+            "width": 0,
+            "height": 0
+          },
+          "text": "1",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "1",
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "1"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scope": "master",
+      "id": "ly/atofqts7",
+      "type": "master",
+      "elements": [
+        {
+          "order": 1,
+          "kind": "textbox",
+          "scope": "master",
+          "id": "sh/4va94z21",
+          "editable": false,
+          "name": "Title Placeholder 1",
+          "position": {
+            "left": 88,
+            "top": 38.33,
+            "width": 1104,
+            "height": 139.17
+          },
+          "geometry": "rect",
+          "text": "Click to edit Master title style",
+          "style": {
+            "anchor": 2,
+            "vertical": 1,
+            "verticalAlignment": "middle",
+            "autoFit": "shrinkText",
+            "insets": {
+              "top": 4.8,
+              "right": 9.6,
+              "bottom": 4.8,
+              "left": 9.6
+            }
+          },
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Click to edit Master title style",
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Click to edit Master title style",
+                  "anchor": 2,
+                  "vertical": 1,
+                  "verticalAlignment": "middle",
+                  "autoFit": "shrinkText",
+                  "insets": {
+                    "top": 4.8,
+                    "right": 9.6,
+                    "bottom": 4.8,
+                    "left": 9.6
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "order": 2,
+          "kind": "textbox",
+          "scope": "master",
+          "id": "sh/pwjax436",
+          "editable": false,
+          "name": "Text Placeholder 2",
+          "position": {
+            "left": 88,
+            "top": 191.67,
+            "width": 1104,
+            "height": 456.83
+          },
+          "geometry": "rect",
+          "text": "Click to edit Master text styles\nSecond level\nThird level\nFourth level\nFifth level",
+          "style": {
+            "vertical": 1,
+            "autoFit": "shrinkText",
+            "insets": {
+              "top": 4.8,
+              "right": 9.6,
+              "bottom": 4.8,
+              "left": 9.6
+            }
+          },
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Click to edit Master text styles",
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Click to edit Master text styles",
+                  "vertical": 1,
+                  "autoFit": "shrinkText",
+                  "insets": {
+                    "top": 4.8,
+                    "right": 9.6,
+                    "bottom": 4.8,
+                    "left": 9.6
+                  }
+                }
+              ]
+            },
+            {
+              "index": 2,
+              "text": "Second level",
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Second level",
+                  "vertical": 1,
+                  "autoFit": "shrinkText",
+                  "insets": {
+                    "top": 4.8,
+                    "right": 9.6,
+                    "bottom": 4.8,
+                    "left": 9.6
+                  }
+                }
+              ]
+            },
+            {
+              "index": 3,
+              "text": "Third level",
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Third level",
+                  "vertical": 1,
+                  "autoFit": "shrinkText",
+                  "insets": {
+                    "top": 4.8,
+                    "right": 9.6,
+                    "bottom": 4.8,
+                    "left": 9.6
+                  }
+                }
+              ]
+            },
+            {
+              "index": 4,
+              "text": "Fourth level",
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Fourth level",
+                  "vertical": 1,
+                  "autoFit": "shrinkText",
+                  "insets": {
+                    "top": 4.8,
+                    "right": 9.6,
+                    "bottom": 4.8,
+                    "left": 9.6
+                  }
+                }
+              ]
+            },
+            {
+              "index": 5,
+              "text": "Fifth level",
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Fifth level",
+                  "vertical": 1,
+                  "autoFit": "shrinkText",
+                  "insets": {
+                    "top": 4.8,
+                    "right": 9.6,
+                    "bottom": 4.8,
+                    "left": 9.6
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "order": 3,
+          "kind": "textbox",
+          "scope": "master",
+          "id": "sh/qxsr69kr",
+          "editable": false,
+          "name": "Date Placeholder 3",
+          "position": {
+            "left": 88,
+            "top": 667.33,
+            "width": 288,
+            "height": 38.33
+          },
+          "geometry": "rect",
+          "text": "15/10/2026",
+          "style": {
+            "anchor": 2,
+            "vertical": 1,
+            "verticalAlignment": "middle",
+            "insets": {
+              "top": 4.8,
+              "right": 9.6,
+              "bottom": 4.8,
+              "left": 9.6
+            }
+          },
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "15/10/2026",
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "15/10/2026",
+                  "anchor": 2,
+                  "vertical": 1,
+                  "verticalAlignment": "middle",
+                  "insets": {
+                    "top": 4.8,
+                    "right": 9.6,
+                    "bottom": 4.8,
+                    "left": 9.6
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "order": 4,
+          "kind": "shape",
+          "scope": "master",
+          "id": "sh/ry1szulc",
+          "editable": false,
+          "name": "Footer Placeholder 4",
+          "position": {
+            "left": 424,
+            "top": 667.33,
+            "width": 432,
+            "height": 38.33
+          },
+          "geometry": "rect",
+          "style": {
+            "anchor": 2,
+            "vertical": 1,
+            "verticalAlignment": "middle",
+            "insets": {
+              "top": 4.8,
+              "right": 9.6,
+              "bottom": 4.8,
+              "left": 9.6
+            }
+          }
+        },
+        {
+          "order": 5,
+          "kind": "textbox",
+          "scope": "master",
+          "id": "sh/czu98z2x",
+          "editable": false,
+          "name": "Slide Number Placeholder 5",
+          "position": {
+            "left": 904,
+            "top": 667.33,
+            "width": 288,
+            "height": 38.33
+          },
+          "geometry": "rect",
+          "text": "1",
+          "style": {
+            "anchor": 2,
+            "vertical": 1,
+            "verticalAlignment": "middle",
+            "insets": {
+              "top": 4.8,
+              "right": 9.6,
+              "bottom": 4.8,
+              "left": 9.6
+            }
+          },
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "1",
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "1",
+                  "anchor": 2,
+                  "vertical": 1,
+                  "verticalAlignment": "middle",
+                  "insets": {
+                    "top": 4.8,
+                    "right": 9.6,
+                    "bottom": 4.8,
+                    "left": 9.6
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "elements": [
+    {
+      "order": 1,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/7qp4be9c",
+      "editable": true,
+      "name": "Rectangle 3",
+      "position": {
+        "left": 97.54,
+        "top": 132.86,
+        "width": 168.96,
+        "height": 109.82
+      },
+      "geometry": "rect",
+      "text": "MP PRD ambil material & Scan kanban Material\n(Avicenna)",
+      "style": {
+        "anchor": 2,
+        "fontSize": 16,
+        "typeface": "Aptos",
+        "color": "#FFFFFF",
+        "bold": false,
+        "italic": false,
+        "alignment": "center",
+        "verticalAlignment": "middle",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "MP PRD ambil material & Scan kanban Material",
+          "style": {
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "MP PRD ",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 2,
+              "text": "ambil",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 3,
+              "text": " material & Scan kanban Material",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            }
+          ],
+          "marginLeft": 0
+        },
+        {
+          "index": 2,
+          "text": "(Avicenna)",
+          "style": {
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "(Avicenna)",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 2,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/ts7md4r2",
+      "editable": true,
+      "name": "Rectangle 5",
+      "position": {
+        "left": 304,
+        "top": 132.86,
+        "width": 168.96,
+        "height": 109.82
+      },
+      "geometry": "rect",
+      "text": "Data Otomatis masuk ke antrian di ARES",
+      "style": {
+        "anchor": 2,
+        "fontSize": 16,
+        "typeface": "Aptos",
+        "color": "#FFFFFF",
+        "bold": false,
+        "italic": false,
+        "alignment": "center",
+        "verticalAlignment": "middle",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Data Otomatis masuk ke antrian di ARES",
+          "style": {
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Data ",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 2,
+              "text": "Otomatis",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 3,
+              "text": " ",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 4,
+              "text": "masuk",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 5,
+              "text": " ",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 6,
+              "text": "ke",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 7,
+              "text": " ",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 8,
+              "text": "antrian",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 9,
+              "text": " di ARES",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 3,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/fu94fe98",
+      "editable": true,
+      "name": "Rectangle 7",
+      "position": {
+        "left": 527.36,
+        "top": 132.86,
+        "width": 168.96,
+        "height": 109.82
+      },
+      "geometry": "rect",
+      "text": "PPIC W/H lihat data antrian yg dikelompokkan by Supplier (ARES)",
+      "style": {
+        "anchor": 2,
+        "fontSize": 16,
+        "typeface": "Aptos",
+        "color": "#FFFFFF",
+        "bold": false,
+        "italic": false,
+        "alignment": "center",
+        "verticalAlignment": "middle",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "PPIC W/H lihat data antrian yg dikelompokkan by Supplier (ARES)",
+          "style": {
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "PPIC W/H ",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 2,
+              "text": "lihat",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 3,
+              "text": " data ",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 4,
+              "text": "antrian",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 5,
+              "text": " ",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 6,
+              "text": "yg",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 7,
+              "text": " ",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 8,
+              "text": "dikelompokkan",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 9,
+              "text": " by Supplier (ARES)",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 4,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/wn6dc7eh",
+      "editable": true,
+      "name": "Rectangle 9",
+      "position": {
+        "left": 749.95,
+        "top": 66.05,
+        "width": 168.96,
+        "height": 176.64
+      },
+      "geometry": "rect",
+      "text": "PPIC W/H mengkonfirmsi untuk publish Order \n(Bisa ada adjustmen)\nAda notif ke Email Supplier + link\n\nMuncul Order Sheet & Kanban SUpplier",
+      "style": {
+        "anchor": 2,
+        "fontSize": 14.67,
+        "typeface": "Aptos",
+        "color": "#FFFFFF",
+        "bold": false,
+        "italic": false,
+        "alignment": "center",
+        "verticalAlignment": "middle",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "PPIC W/H mengkonfirmsi untuk publish Order ",
+          "style": {
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "PPIC W/H ",
+              "anchor": 2,
+              "fontSize": 14.67,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 2,
+              "text": "mengkonfirmsi",
+              "anchor": 2,
+              "fontSize": 14.67,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 3,
+              "text": " ",
+              "anchor": 2,
+              "fontSize": 14.67,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 4,
+              "text": "untuk",
+              "anchor": 2,
+              "fontSize": 14.67,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 5,
+              "text": " publish Order ",
+              "anchor": 2,
+              "fontSize": 14.67,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            }
+          ],
+          "marginLeft": 0
+        },
+        {
+          "index": 2,
+          "text": "(Bisa ada adjustmen)",
+          "style": {
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "(Bisa ",
+              "anchor": 2,
+              "fontSize": 14.67,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 2,
+              "text": "ada",
+              "anchor": 2,
+              "fontSize": 14.67,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 3,
+              "text": " ",
+              "anchor": 2,
+              "fontSize": 14.67,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 4,
+              "text": "adjustmen",
+              "anchor": 2,
+              "fontSize": 14.67,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 5,
+              "text": ")",
+              "anchor": 2,
+              "fontSize": 14.67,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            }
+          ],
+          "marginLeft": 0
+        },
+        {
+          "index": 3,
+          "text": "Ada notif ke Email Supplier + link",
+          "style": {
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Ada ",
+              "anchor": 2,
+              "fontSize": 14.67,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 2,
+              "text": "notif",
+              "anchor": 2,
+              "fontSize": 14.67,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 3,
+              "text": " ",
+              "anchor": 2,
+              "fontSize": 14.67,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 4,
+              "text": "ke",
+              "anchor": 2,
+              "fontSize": 14.67,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 5,
+              "text": " Email Supplier + link",
+              "anchor": 2,
+              "fontSize": 14.67,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            }
+          ],
+          "marginLeft": 0
+        },
+        {
+          "index": 5,
+          "text": "Muncul Order Sheet & Kanban SUpplier",
+          "style": {
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Muncul",
+              "anchor": 2,
+              "fontSize": 14.67,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 2,
+              "text": " Order Sheet & Kanban ",
+              "anchor": 2,
+              "fontSize": 14.67,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 3,
+              "text": "SUpplier",
+              "anchor": 2,
+              "fontSize": 14.67,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 5,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/ul4vaxgb",
+      "editable": true,
+      "name": "Rectangle 11",
+      "position": {
+        "left": 957.18,
+        "top": 132.86,
+        "width": 168.96,
+        "height": 109.82
+      },
+      "geometry": "rect",
+      "text": "Supplier Melihat Order\n(Download Order Sheet + Kanban Material)",
+      "style": {
+        "anchor": 2,
+        "fontSize": 16,
+        "typeface": "Aptos",
+        "color": "#FFFFFF",
+        "bold": false,
+        "italic": false,
+        "alignment": "center",
+        "verticalAlignment": "middle",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Supplier Melihat Order",
+          "style": {
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Supplier ",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 2,
+              "text": "Melihat",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 3,
+              "text": " Order",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            }
+          ],
+          "marginLeft": 0
+        },
+        {
+          "index": 2,
+          "text": "(Download Order Sheet + Kanban Material)",
+          "style": {
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "(Download Order Sheet + Kanban Material)",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 6,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/4r6dg7et",
+      "editable": true,
+      "name": "Rectangle 13",
+      "position": {
+        "left": 742.14,
+        "top": 287.87,
+        "width": 168.96,
+        "height": 249.73
+      },
+      "geometry": "rect",
+      "text": "Supplier Kirim Barang (Bisa Parsial)\nBawa:\nBarang, Kanban, Delivery Sheet\n",
+      "style": {
+        "anchor": 2,
+        "fontSize": 16,
+        "typeface": "Aptos",
+        "color": "#FFFFFF",
+        "bold": false,
+        "italic": false,
+        "alignment": "center",
+        "verticalAlignment": "middle",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Supplier Kirim Barang (Bisa Parsial)",
+          "style": {
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Supplier Kirim Barang (Bisa ",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 2,
+              "text": "Parsial",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 3,
+              "text": ")",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            }
+          ],
+          "marginLeft": 0
+        },
+        {
+          "index": 2,
+          "text": "Bawa:\nBarang, Kanban, Delivery Sheet",
+          "style": {
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Bawa:",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 2,
+              "text": "\n",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 3,
+              "text": "Barang, Kanban, Delivery Sheet",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 7,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/ipovexwn",
+      "editable": true,
+      "name": "Rectangle 15",
+      "position": {
+        "left": 534.91,
+        "top": 287.87,
+        "width": 168.96,
+        "height": 189.44
+      },
+      "geometry": "rect",
+      "text": "PPIC W/H Terima Barang.\n\nScan Delivery Sheet.\n(Delivery sheet akan consume Order Original)\nScan Kanban",
+      "style": {
+        "anchor": 2,
+        "fontSize": 16,
+        "typeface": "Aptos",
+        "color": "#FFFFFF",
+        "bold": false,
+        "italic": false,
+        "alignment": "center",
+        "verticalAlignment": "middle",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "PPIC W/H Terima Barang.\n\nScan Delivery Sheet.",
+          "style": {
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "PPIC W/H ",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 2,
+              "text": "Terima",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 3,
+              "text": " Barang.",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 4,
+              "text": "\n",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 5,
+              "text": "\n",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 6,
+              "text": "Scan Delivery Sheet.",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            }
+          ],
+          "marginLeft": 0
+        },
+        {
+          "index": 2,
+          "text": "(Delivery sheet akan consume Order Original)",
+          "style": {
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "(Delivery sheet ",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 2,
+              "text": "akan",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 3,
+              "text": " consume Order Original)",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            }
+          ],
+          "marginLeft": 0
+        },
+        {
+          "index": 3,
+          "text": "Scan Kanban",
+          "style": {
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Scan Kanban",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 8,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/sfqdkrep",
+      "editable": true,
+      "name": "Rectangle 17",
+      "position": {
+        "left": 957.18,
+        "top": 287.87,
+        "width": 168.96,
+        "height": 172.93
+      },
+      "geometry": "rect",
+      "text": "Supplier membuat Shipping Confirmation.\nCetak Delivery Sheet\nKetika Parsial:\nKeluar lagi Order Sheet Recovery ",
+      "style": {
+        "anchor": 2,
+        "fontSize": 16,
+        "typeface": "Aptos",
+        "color": "#FFFFFF",
+        "bold": false,
+        "italic": false,
+        "alignment": "center",
+        "verticalAlignment": "middle",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Supplier membuat Shipping Confirmation.",
+          "style": {
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Supplier ",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 2,
+              "text": "membuat",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 3,
+              "text": " Shipping Confirmation.",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            }
+          ],
+          "marginLeft": 0
+        },
+        {
+          "index": 2,
+          "text": "Cetak Delivery Sheet",
+          "style": {
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Cetak",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 2,
+              "text": " Delivery Sheet",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            }
+          ],
+          "marginLeft": 0
+        },
+        {
+          "index": 3,
+          "text": "Ketika Parsial:\nKeluar lagi Order Sheet Recovery ",
+          "style": {
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Ketika ",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 2,
+              "text": "Parsial",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 3,
+              "text": ":",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 4,
+              "text": "\n",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 5,
+              "text": "Keluar",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 6,
+              "text": " ",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 7,
+              "text": "lagi",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            },
+            {
+              "index": 8,
+              "text": " Order Sheet Recovery ",
+              "anchor": 2,
+              "fontSize": 16,
+              "alignment": "center",
+              "verticalAlignment": "middle"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,564 @@
+{
+  "schema": "openai.presentation.layout/v5",
+  "unit": "px",
+  "slide": {
+    "id": "sl/fu1gfa1s",
+    "index": 7,
+    "layout": {
+      "id": "ly/14ra9krq",
+      "name": "Blank"
+    },
+    "masterLayoutId": "ly/atofqts7",
+    "masterLayoutName": "Master",
+    "backgroundColor": "rgba(247,248,245,1)",
+    "position": {
+      "left": 0,
+      "top": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "inheritedLayers": [
+    {
+      "scope": "layout",
+      "id": "ly/14ra9krq",
+      "name": "Blank",
+      "type": "blank",
+      "parentLayoutId": "ly/atofqts7",
+      "elements": []
+    },
+    {
+      "scope": "master",
+      "id": "ly/atofqts7",
+      "name": "Master",
+      "type": "master",
+      "elements": []
+    }
+  ],
+  "elements": [
+    {
+      "order": 1,
+      "kind": "shape",
+      "scope": "slide",
+      "id": "sh/0jydkreh",
+      "editable": true,
+      "name": "top-accent-8",
+      "position": {
+        "left": 0,
+        "top": 0,
+        "width": 1280,
+        "height": 14
+      },
+      "geometry": "rect",
+      "fillColor": "#1E6786",
+      "lineColor": "#1E6786",
+      "lineWidth": 0
+    },
+    {
+      "order": 2,
+      "kind": "shape",
+      "scope": "slide",
+      "id": "sh/18byd4zy",
+      "editable": true,
+      "name": "flow-badge-8",
+      "position": {
+        "left": 64,
+        "top": 55,
+        "width": 105,
+        "height": 34
+      },
+      "geometry": "roundRect",
+      "fillColor": "#1E6786",
+      "lineColor": "#1E6786",
+      "lineWidth": 0
+    },
+    {
+      "order": 3,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/g72x4zyd",
+      "editable": true,
+      "name": "flow-label-8",
+      "position": {
+        "left": 77,
+        "top": 62,
+        "width": 82,
+        "height": 21
+      },
+      "geometry": "rect",
+      "lineWidth": 0,
+      "text": "FLOW 08",
+      "style": {
+        "fontSize": 13,
+        "typeface": "Aptos",
+        "color": "#FFFFFF",
+        "bold": true,
+        "italic": false,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "FLOW 08",
+          "style": {
+            "fontSize": 13,
+            "color": "#FFFFFF",
+            "bold": true
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "FLOW 08",
+              "fontSize": 13,
+              "color": "#FFFFFF",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 4,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/ri9g7uhw",
+      "editable": true,
+      "name": "role-8",
+      "position": {
+        "left": 188,
+        "top": 62,
+        "width": 320,
+        "height": 22
+      },
+      "geometry": "rect",
+      "lineWidth": 0,
+      "text": "PPIC WAREHOUSE",
+      "style": {
+        "fontSize": 13,
+        "typeface": "Aptos",
+        "color": "#124B62",
+        "bold": true,
+        "italic": false,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "PPIC WAREHOUSE",
+          "style": {
+            "fontSize": 13,
+            "color": "#124B62",
+            "bold": true
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "PPIC WAREHOUSE",
+              "fontSize": 13,
+              "color": "#124B62",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 5,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/6h0fypgb",
+      "editable": true,
+      "name": "title-8",
+      "position": {
+        "left": 64,
+        "top": 118,
+        "width": 520,
+        "height": 145
+      },
+      "geometry": "rect",
+      "lineWidth": 0,
+      "text": "Receiving memindai dokumen dan kanban",
+      "style": {
+        "fontSize": 38,
+        "typeface": "Aptos",
+        "color": "#10272F",
+        "bold": true,
+        "italic": false,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Receiving memindai dokumen dan kanban",
+          "style": {
+            "fontSize": 38,
+            "color": "#10272F",
+            "bold": true
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Receiving memindai dokumen dan kanban",
+              "fontSize": 38,
+              "color": "#10272F",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 6,
+      "kind": "shape",
+      "scope": "slide",
+      "id": "sh/tkby9kzm",
+      "editable": true,
+      "name": "title-rule-8",
+      "position": {
+        "left": 64,
+        "top": 278,
+        "width": 72,
+        "height": 5
+      },
+      "geometry": "rect",
+      "fillColor": "#1E6786",
+      "lineColor": "#1E6786",
+      "lineWidth": 0
+    },
+    {
+      "order": 7,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/sjix0zy1",
+      "editable": true,
+      "name": "body-8",
+      "position": {
+        "left": 64,
+        "top": 313,
+        "width": 512,
+        "height": 154
+      },
+      "geometry": "rect",
+      "lineWidth": 0,
+      "text": "Petugas membuka sesi dari barcode Delivery Sheet, lalu memindai setiap QR kanban. ARES mencatat hasil penerimaan dan mengonsumsi order asal.",
+      "style": {
+        "fontSize": 20,
+        "typeface": "Aptos",
+        "color": "#5D6C70",
+        "bold": false,
+        "italic": false,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Petugas membuka sesi dari barcode Delivery Sheet, lalu memindai setiap QR kanban. ARES mencatat hasil penerimaan dan mengonsumsi order asal.",
+          "style": {
+            "fontSize": 20,
+            "color": "#5D6C70"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Petugas membuka sesi dari barcode Delivery Sheet, lalu memindai setiap QR kanban. ARES mencatat hasil penerimaan dan mengonsumsi order asal.",
+              "fontSize": 20,
+              "color": "#5D6C70"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 8,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/je9g3ahk",
+      "editable": true,
+      "name": "output-label-8",
+      "position": {
+        "left": 64,
+        "top": 503,
+        "width": 170,
+        "height": 22
+      },
+      "geometry": "rect",
+      "lineWidth": 0,
+      "text": "OUTPUT PROSES",
+      "style": {
+        "fontSize": 12,
+        "typeface": "Aptos",
+        "color": "#1E6786",
+        "bold": true,
+        "italic": false,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "OUTPUT PROSES",
+          "style": {
+            "fontSize": 12,
+            "color": "#1E6786",
+            "bold": true
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "OUTPUT PROSES",
+              "fontSize": 12,
+              "color": "#1E6786",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 9,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/id0fu50z",
+      "editable": true,
+      "name": "output-8",
+      "position": {
+        "left": 64,
+        "top": 533,
+        "width": 500,
+        "height": 58
+      },
+      "geometry": "rect",
+      "lineWidth": 0,
+      "text": "Penerimaan dan progress scan tercatat",
+      "style": {
+        "fontSize": 23,
+        "typeface": "Aptos",
+        "color": "#10272F",
+        "bold": true,
+        "italic": false,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Penerimaan dan progress scan tercatat",
+          "style": {
+            "fontSize": 23,
+            "color": "#10272F",
+            "bold": true
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Penerimaan dan progress scan tercatat",
+              "fontSize": 23,
+              "color": "#10272F",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 10,
+      "kind": "shape",
+      "scope": "slide",
+      "id": "sh/o7ydoret",
+      "editable": true,
+      "name": "screen-frame-8",
+      "position": {
+        "left": 626,
+        "top": 56,
+        "width": 606,
+        "height": 604
+      },
+      "geometry": "roundRect",
+      "fillColor": "#11140F",
+      "lineColor": "#124B62",
+      "lineWidth": 2
+    },
+    {
+      "order": 11,
+      "kind": "image",
+      "scope": "slide",
+      "id": "im/q1k7i9kr",
+      "editable": true,
+      "position": {
+        "left": 646,
+        "top": 83.91,
+        "width": 566,
+        "height": 548.17
+      },
+      "geometry": "roundRect",
+      "contentType": "image/jpeg",
+      "mask": {
+        "geometry": "roundRect",
+        "adjustmentList": [
+          {
+            "name": "adj",
+            "formula": "val 2120"
+          }
+        ]
+      },
+      "asset": {
+        "contentType": "image/jpeg",
+        "byteLength": 24958
+      },
+      "fillImage": {
+        "contentType": "image/jpeg",
+        "byteLength": 24958
+      }
+    },
+    {
+      "order": 12,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/m5gvmhwn",
+      "editable": true,
+      "name": "footer-brand-8",
+      "position": {
+        "left": 64,
+        "top": 657,
+        "width": 280,
+        "height": 20
+      },
+      "geometry": "rect",
+      "lineWidth": 0,
+      "text": "ARES · e-Kanban supplier",
+      "style": {
+        "fontSize": 11,
+        "typeface": "Aptos",
+        "color": "#5D6C70",
+        "bold": false,
+        "italic": false,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "ARES · e-Kanban supplier",
+          "style": {
+            "fontSize": 11,
+            "color": "#5D6C70"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "ARES · e-Kanban supplier",
+              "fontSize": 11,
+              "color": "#5D6C70"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 13,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/n6pwfmd8",
+      "editable": true,
+      "name": "footer-page-8",
+      "position": {
+        "left": 520,
+        "top": 655,
+        "width": 58,
+        "height": 22
+      },
+      "geometry": "rect",
+      "lineWidth": 0,
+      "text": "08 / 08",
+      "style": {
+        "fontSize": 12,
+        "typeface": "Aptos",
+        "color": "#124B62",
+        "bold": true,
+        "italic": false,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "08 / 08",
+          "style": {
+            "fontSize": 12,
+            "color": "#124B62",
+            "bold": true
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "08 / 08",
+              "fontSize": 12,
+              "color": "#124B62",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ]
+    }
+  ]
+}

@@ -167,7 +167,7 @@ export function ReceivingStation({
           : 'bad';
 
   return (
-    <div className="flex h-dvh flex-col xl:h-auto xl:min-h-screen">
+    <div className="flex h-dvh flex-col @[1280px]:h-auto @[1280px]:min-h-screen">
       <StationBar
         picklistNo={session.picklistNo}
         revision={session.revision}
@@ -182,15 +182,15 @@ export function ReceivingStation({
 
       {/*
        * Handheld: kolom tunggal dengan tinggi layar; hasil dan input tetap
-       * terlihat, hanya daftar line yang menggulir. Mulai xl: tiga kolom.
+       * terlihat, hanya daftar line yang menggulir. Mulai @[1280px]: tiga kolom.
        */}
-      <main className="flex min-h-0 flex-1 flex-col gap-3 p-3 xl:grid xl:grid-cols-[minmax(0,320px)_minmax(0,1fr)_minmax(0,460px)] xl:gap-5 xl:p-6">
+      <main className="flex min-h-0 flex-1 flex-col gap-3 p-3 @[1280px]:grid @[1280px]:grid-cols-[minmax(0,320px)_minmax(0,1fr)_minmax(0,460px)] @[1280px]:gap-5 @[1280px]:p-6">
         {/* ── Input ─────────────────────────────────────────────────────── */}
-        <section className="order-2 shrink-0 rounded-card border border-line bg-card p-3 xl:order-1 xl:p-5">
-          <h2 className="hidden text-[12px] font-semibold uppercase tracking-wide text-ink-muted xl:block">
+        <section className="order-2 shrink-0 rounded-card border border-line bg-card p-3 @[1280px]:order-1 @[1280px]:p-5">
+          <h2 className="hidden text-[12px] font-semibold uppercase tracking-wide text-ink-muted @[1280px]:block">
             Scan kanban
           </h2>
-          <p className="mt-2 hidden text-[13px] leading-snug text-ink-muted xl:block">
+          <p className="mt-2 hidden text-[13px] leading-snug text-ink-muted @[1280px]:block">
             Arahkan QR di kartu kanban ke scanner. Hasilnya muncul besar di sebelah kanan.
           </p>
           <form
@@ -198,7 +198,7 @@ export function ReceivingStation({
               e.preventDefault();
               void submit(code);
             }}
-            className="flex items-center gap-2 xl:mt-4 xl:block"
+            className="flex items-center gap-2 @[1280px]:mt-4 @[1280px]:block"
           >
             <input
               ref={inputRef}
@@ -220,9 +220,9 @@ export function ReceivingStation({
               spellCheck={false}
               aria-label="QR kanban"
               placeholder={manual ? 'Ketik kode kanban' : 'Siap — tembak QR kanban'}
-              className="tabular h-12 min-w-0 flex-1 rounded-2xl border-2 border-line bg-surface px-4 text-[17px] font-semibold outline-none transition-colors duration-200 placeholder:text-[14px] placeholder:font-normal placeholder:text-ink-muted focus:border-ink focus:bg-card xl:h-14 xl:w-full xl:text-[18px] xl:placeholder:text-[15px]"
+              className="tabular h-12 min-w-0 flex-1 rounded-2xl border-2 border-line bg-surface px-4 text-[17px] font-semibold outline-none transition-colors duration-200 placeholder:text-[14px] placeholder:font-normal placeholder:text-ink-muted focus:border-ink focus:bg-card @[1280px]:h-14 @[1280px]:w-full @[1280px]:text-[18px] @[1280px]:placeholder:text-[15px]"
             />
-            <div className="flex shrink-0 items-center gap-2 xl:mt-4">
+            <div className="flex shrink-0 items-center gap-2 @[1280px]:mt-4">
               <IconButton
                 icon={manual ? KeyboardOff : Keyboard}
                 label={manual ? 'Kembali ke mode scanner' : 'Ketik manual'}
@@ -250,14 +250,14 @@ export function ReceivingStation({
           id="scan-status"
           aria-live="assertive"
           className={cn(
-            'order-1 flex shrink-0 flex-col rounded-card border-2 transition-colors duration-300 xl:order-2 xl:min-h-[260px]',
+            'order-1 flex shrink-0 flex-col rounded-card border-2 transition-colors duration-300 @[1280px]:order-2 @[1280px]:min-h-[260px]',
             tone === 'idle' && 'border-line bg-card',
             tone === 'ok' && 'border-ok/30 bg-ok/8',
             tone === 'dup' && 'border-warn/30 bg-warn/8',
             tone === 'bad' && 'border-ng/30 bg-ng/8',
           )}
         >
-          <div className="flex min-h-[176px] flex-1 items-center justify-center p-4 text-center sm:min-h-[220px] xl:p-6">
+          <div className="flex min-h-[176px] flex-1 items-center justify-center p-4 text-center @[640px]:min-h-[220px] @[1280px]:p-6">
             <AnimatePresence mode="wait">
               <motion.div
                 key={`${result?.result ?? 'idle'}-${seq.current}`}
@@ -265,12 +265,16 @@ export function ReceivingStation({
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.98 }}
                 transition={springSoft}
-                className="flex flex-col items-center gap-2 xl:gap-3"
+                className="flex flex-col items-center gap-2 @[1280px]:gap-3"
               >
                 {error ? (
                   <>
-                    <XCircle className="size-10 text-ng xl:size-12" strokeWidth={1.6} aria-hidden />
-                    <div className="text-[24px] font-extrabold leading-tight text-ng xl:text-[26px]">
+                    <XCircle
+                      className="size-10 text-ng @[1280px]:size-12"
+                      strokeWidth={1.6}
+                      aria-hidden
+                    />
+                    <div className="text-[24px] font-extrabold leading-tight text-ng @[1280px]:text-[26px]">
                       GAGAL KIRIM
                     </div>
                     <p className="max-w-md text-[15px] text-ink-soft">{error}</p>
@@ -278,25 +282,25 @@ export function ReceivingStation({
                 ) : !result ? (
                   <>
                     <ScanLine
-                      className="size-10 text-ink-muted xl:size-12"
+                      className="size-10 text-ink-muted @[1280px]:size-12"
                       strokeWidth={1.4}
                       aria-hidden
                     />
-                    <div className="text-[22px] font-extrabold leading-tight text-ink-muted xl:text-[26px]">
+                    <div className="text-[22px] font-extrabold leading-tight text-ink-muted @[1280px]:text-[26px]">
                       MENUNGGU SCAN
                     </div>
                   </>
                 ) : result.result === 'OK' ? (
                   <>
                     <CheckCircle2
-                      className="size-10 text-ok xl:size-12"
+                      className="size-10 text-ok @[1280px]:size-12"
                       strokeWidth={1.6}
                       aria-hidden
                     />
-                    <div className="text-[36px] font-extrabold leading-none tracking-tight text-ok xl:text-[38px]">
+                    <div className="text-[36px] font-extrabold leading-none tracking-tight text-ok @[1280px]:text-[38px]">
                       OK
                     </div>
-                    <div className="tabular text-[18px] font-bold xl:text-[20px]">
+                    <div className="tabular text-[18px] font-bold @[1280px]:text-[20px]">
                       Kanban {result.kanbanSerial ?? '?'} / {totalOrdered}
                     </div>
                     <div className="text-[15px] text-ink-soft">
@@ -315,20 +319,20 @@ export function ReceivingStation({
                   <>
                     {result.result === 'DUPLICATE' ? (
                       <CopyX
-                        className="size-10 text-warn xl:size-12"
+                        className="size-10 text-warn @[1280px]:size-12"
                         strokeWidth={1.6}
                         aria-hidden
                       />
                     ) : (
                       <XCircle
-                        className="size-10 text-ng xl:size-12"
+                        className="size-10 text-ng @[1280px]:size-12"
                         strokeWidth={1.6}
                         aria-hidden
                       />
                     )}
                     <div
                       className={cn(
-                        'text-[28px] font-extrabold leading-none tracking-tight xl:text-[32px]',
+                        'text-[28px] font-extrabold leading-none tracking-tight @[1280px]:text-[32px]',
                         result.result === 'DUPLICATE' ? 'text-warn' : 'text-ng',
                       )}
                     >
@@ -347,7 +351,7 @@ export function ReceivingStation({
           </div>
 
           {/* Progres sesi menempel pada hasil: satu pandangan, dua jawaban. */}
-          <div className="flex items-baseline justify-between border-t border-line/60 px-4 py-2.5 xl:px-6">
+          <div className="flex items-baseline justify-between border-t border-line/60 px-4 py-2.5 @[1280px]:px-6">
             <span className="text-[12px] font-semibold uppercase tracking-wide text-ink-muted">
               Progres sesi
             </span>
@@ -362,8 +366,8 @@ export function ReceivingStation({
         </section>
 
         {/* ── Line picklist ─────────────────────────────────────────────── */}
-        <section className="order-3 flex min-h-0 flex-1 flex-col rounded-card border border-line bg-card xl:order-3">
-          <header className="flex shrink-0 items-center justify-between border-b border-line px-4 py-3 xl:px-5 xl:py-4">
+        <section className="order-3 flex min-h-0 flex-1 flex-col rounded-card border border-line bg-card @[1280px]:order-3">
+          <header className="flex shrink-0 items-center justify-between border-b border-line px-4 py-3 @[1280px]:px-5 @[1280px]:py-4">
             <h2 className="text-[15px] font-bold">Line Order Sheet</h2>
             <span className="text-[13px] text-ink-muted">{lines.length} part</span>
           </header>
@@ -376,7 +380,7 @@ export function ReceivingStation({
                 <li
                   key={l.id}
                   className={cn(
-                    'flex items-center gap-3 px-4 py-3 transition-colors duration-500 xl:px-5',
+                    'flex items-center gap-3 px-4 py-3 transition-colors duration-500 @[1280px]:px-5',
                     aktif && 'bg-ok/8',
                   )}
                 >

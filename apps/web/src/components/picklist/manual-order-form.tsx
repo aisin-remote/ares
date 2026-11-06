@@ -8,6 +8,7 @@ import type { OrderOption } from '@/lib/queries';
 import { SelectSearch } from '@/components/ui/select-search';
 import { cn } from '@/components/ui/cn';
 import { useFeedback } from '@/components/ui/feedback-provider';
+import { isPoValidForDelivery } from '@ares/domain';
 
 const INPUT =
   'h-11 w-full rounded-2xl border border-line bg-surface px-4 text-[15px] outline-none transition-colors duration-200 focus:border-line-strong focus:bg-card';
@@ -17,13 +18,17 @@ function kosongkanJumlah(parts: OrderOption['parts']): Record<number, string> {
   return Object.fromEntries(parts.map((part) => [part.id, '0']));
 }
 
+/** PO bulan tanggal kirim (F-44) beserta sisanya; dihitung server, di sini hanya dijumlah. */
 function poTersedia(part: OrderOption['parts'][number], deliveryDate: string) {
-  return part.poWindows.reduce((total, po) => {
-    const berlaku =
-      (!po.validFrom || po.validFrom <= deliveryDate) &&
-      (!po.validTo || po.validTo >= deliveryDate);
-    return berlaku ? total + po.openQty : total;
-  }, 0);
+  // Aturan yang sama dengan API (pickPoItem): hanya PO bulanan yang bulannya = bulan kirim.
+  const berlaku = /^\d{4}-\d{2}-\d{2}$/.test(deliveryDate)
+    ? part.poWindows.filter((po) => isPoValidForDelivery(po, deliveryDate))
+    : [];
+  return {
+    sisa: berlaku.reduce((total, po) => total + po.remainingPcs, 0),
+    qtyPo: berlaku.reduce((total, po) => total + po.openQty, 0),
+    nomor: berlaku.map((po) => `PO ${po.sapPoNo}/${po.item}: sisa ${po.remainingPcs} dari ${po.openQty} pcs`).join('\n'),
+  };
 }
 
 /**
@@ -40,7 +45,6 @@ export function ManualOrderForm({
   defaultDeliveryDate: string;
 }) {
   const [vendorId, setVendorId] = useState<number | ''>(vendors[0]?.id ?? '');
-  const [cutoffId, setCutoffId] = useState<number | ''>('');
   const [deliveryDate, setDeliveryDate] = useState(defaultDeliveryDate);
   const [note, setNote] = useState('');
   const [boxesByPart, setBoxesByPart] = useState<Record<number, string>>(() =>
@@ -64,15 +68,14 @@ export function ManualOrderForm({
     !vendor?.cutoffs.length ? 'Jadwal cutoff supplier belum tersedia.' : null,
     !vendor?.parts.length ? 'Vendor part aktif belum tersedia.' : null,
   ].filter((item): item is string => Boolean(item));
-  const partTanpaPo = (vendor?.parts ?? []).filter((part) => poTersedia(part, deliveryDate) <= 0);
+  const partTanpaPo = (vendor?.parts ?? []).filter((part) => poTersedia(part, deliveryDate).sisa <= 0);
   const partDipilihBermasalah = (vendor?.parts ?? []).filter((part) => {
     const box = Math.max(0, Number(boxesByPart[part.id] ?? 0) || 0);
-    return box > 0 && box * part.qtyPerBox > poTersedia(part, deliveryDate);
+    return box > 0 && box * part.qtyPerBox > poTersedia(part, deliveryDate).sisa;
   });
 
   function gantiVendor(id: number | '') {
     setVendorId(id);
-    setCutoffId('');
     setBoxesByPart(kosongkanJumlah(vendors.find((item) => item.id === id)?.parts ?? []));
     setError(null);
   }
@@ -123,7 +126,6 @@ export function ManualOrderForm({
     const res = await issueManualAction({
       vendorId: Number(vendorId),
       deliveryDate,
-      cutoffId: cutoffId === '' ? undefined : Number(cutoffId),
       lines: isi,
       note: note.trim() || undefined,
     });
@@ -181,17 +183,14 @@ export function ManualOrderForm({
 
         <div>
           <label htmlFor="cutoff" className={LABEL}>
-            Cutoff / cycle
+            Jam datang
           </label>
-          <SelectSearch
+          {/* Cutoff tanpa jam: satu jadwal per supplier, jadi tidak ada yang dipilih. */}
+          <input
             id="cutoff"
-            value={cutoffId}
-            placeholder="Cutoff paling pagi"
-            onValueChange={(value) => setCutoffId(value === '' ? '' : Number(value))}
-            options={(vendor?.cutoffs ?? []).map((cutoff) => ({
-              value: cutoff.id,
-              label: `Cutoff ${cutoff.cutoffTime.slice(0, 5)} — datang ${cutoff.arrivalTime.slice(0, 5)}`,
-            }))}
+            readOnly
+            value={vendor?.cutoffs[0]?.arrivalTime.slice(0, 5) ?? '—'}
+            className={INPUT}
           />
         </div>
       </div>
@@ -216,14 +215,14 @@ export function ManualOrderForm({
             {masalahMaster.length > 0
               ? 'Supplier belum siap diorder'
               : partTanpaPo.length > 0
-                ? `${partTanpaPo.length} part belum memiliki PO aktif`
+                ? `${partTanpaPo.length} part tanpa sisa PO bulan ini`
                 : 'Supplier siap diorder'}
           </p>
           <p className="mt-0.5 opacity-85">
             {masalahMaster.length > 0
               ? masalahMaster.join(' ')
               : partTanpaPo.length > 0
-                ? `Tanggal ${deliveryDate}: part tersebut harus tetap diisi 0 sampai PO tersedia.`
+                ? `Tanggal kirim ${deliveryDate} memakai PO bulan ${deliveryDate.slice(0, 7)}. Part tanpa PO atau yang PO-nya habis tetap diisi 0.`
                 : 'Master supplier, cutoff, vendor part, dan PO sudah tersedia untuk tanggal kirim ini.'}
           </p>
         </div>
@@ -269,9 +268,9 @@ export function ManualOrderForm({
               <tbody className="divide-y divide-line">
                 {vendor.parts.map((part) => {
                   const dipilih = Number(boxesByPart[part.id] ?? 0) > 0;
-                  const openQty = poTersedia(part, deliveryDate);
+                  const po = poTersedia(part, deliveryDate);
                   const pcsDipilih = (Number(boxesByPart[part.id] ?? 0) || 0) * part.qtyPerBox;
-                  const poCukup = openQty > 0 && pcsDipilih <= openQty;
+                  const poCukup = po.sisa > 0 && pcsDipilih <= po.sisa;
                   return (
                     <tr
                       key={part.id}
@@ -291,6 +290,7 @@ export function ManualOrderForm({
                       </td>
                       <td className="px-4 py-3">
                         <span
+                          title={po.nomor || undefined}
                           className={cn(
                             'inline-flex whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] font-semibold',
                             poCukup
@@ -298,11 +298,13 @@ export function ManualOrderForm({
                               : 'border-warn/35 bg-warn/10 text-warn',
                           )}
                         >
-                          {openQty <= 0
-                            ? 'PO belum aktif'
-                            : pcsDipilih > openQty
-                              ? `PO kurang · ${openQty} pcs`
-                              : `PO siap · ${openQty} pcs`}
+                          {po.qtyPo <= 0
+                            ? 'PO belum ada'
+                            : po.sisa <= 0
+                              ? `PO habis · 0 / ${po.qtyPo} pcs`
+                              : pcsDipilih > po.sisa
+                                ? `PO kurang · sisa ${po.sisa} pcs`
+                                : `Sisa PO · ${po.sisa} / ${po.qtyPo} pcs`}
                         </span>
                       </td>
                       <td className="px-5 py-3 text-right">

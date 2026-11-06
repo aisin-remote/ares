@@ -1,4 +1,5 @@
 import { requirePermission } from '@/lib/session';
+import { cn } from '@/components/ui/cn';
 
 /**
  * Layout untuk layar stasiun di lantai produksi.
@@ -13,7 +14,16 @@ import { requirePermission } from '@/lib/session';
  * ke halaman lain saat tidak sengaja menyenggol layar sentuh.
  */
 export default async function StationLayout({ children }: { children: React.ReactNode }) {
-  await requirePermission('receipt.read');
+  const user = await requirePermission('receipt.read');
 
-  return <div className="min-h-screen bg-surface">{children}</div>;
+  return (
+    <div
+      className={cn(
+        '@container min-h-screen bg-surface',
+        user.role === 'warehouse' && 'mx-auto w-full max-w-[560px] border-x border-line',
+      )}
+    >
+      {children}
+    </div>
+  );
 }

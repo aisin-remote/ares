@@ -168,6 +168,9 @@ export default async function PortalPage({
                         >
                           {nomor}
                         </Link>
+                        {p.revision > 0 ? (
+                          <span className="text-[12px] font-normal text-ink-muted">Recovery</span>
+                        ) : null}
                         {p.downloadedAt === null ? (
                           <span className="mt-1.5 inline-flex rounded-full border border-accent/40 bg-accent/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-accent">
                             Order baru
@@ -248,6 +251,9 @@ export default async function PortalPage({
                         <Link href={`/portal/${p.publicId}`} className="hover:underline">
                           {orderSheetDisplayNo(p.picklistNo, p.revision)}
                         </Link>
+                        {p.revision > 0 ? (
+                          <span className="ml-2 text-[12px] font-normal text-ink-muted">Recovery</span>
+                        ) : null}
                         {p.downloadedAt === null ? (
                           <span className="ml-2 rounded-full border border-accent/40 bg-accent/10 px-2 py-0.5 text-[11px] font-semibold text-accent">
                             baru

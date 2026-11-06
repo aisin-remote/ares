@@ -7,6 +7,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Reveal } from '@/components/motion/reveal';
 import { getSessionUser } from '@/lib/session';
 import { MasterTable } from './master-table';
+import { CutoffSearch } from './cutoff-search';
 
 type View = { path?: string; section?: string; title?: string; description?: string; listFields?: string[]; intro?: React.ReactNode };
 
@@ -38,24 +39,40 @@ export async function MasterEntityPage({ rawEntity, searchParams, view = {} }: {
   for (const field of def.fields) {
     if (field.kind !== 'reference' || !field.refEntity) continue;
     const index = refEntities.indexOf(field.refEntity);
-    refLabels[field.name] = Object.fromEntries((labelLists[index] ?? []).map((option) => [String(option.value), option.short ?? option.label]));
+    refLabels[field.name] = Object.fromEntries((labelLists[index] ?? []).map((option) => [String(option.value),
+      entity === 'vendorCutoffs' && field.name === 'vendorId' ? option.label : option.short ?? option.label]));
   }
   const path = view.path ?? `/master/${entity}`;
   const title = view.title ?? def.label;
+  const isCutoff = entity === 'vendorCutoffs';
+  const searchForm = isCutoff ? <CutoffSearch query={search ?? ''} /> : <form action={path} className="flex flex-wrap items-center gap-2">
+    <div className="relative min-w-0 flex-1">
+      <Search className="pointer-events-none absolute left-4 top-1/2 size-[18px] -translate-y-1/2 text-ink-muted" strokeWidth={1.8} aria-hidden />
+      <input type="search" name="q" defaultValue={search ?? ''} key={search ?? ''}
+        placeholder={`Cari ${def.label.toLowerCase()}`}
+        aria-label={`Cari ${def.label}`}
+        className="h-11 w-full min-w-0 rounded-full border border-line bg-card pl-11 pr-4 text-[14px] outline-none transition-colors duration-200 placeholder:text-ink-muted focus:border-line-strong sm:w-72" />
+    </div>
+  </form>;
 
   return <>
     <PageHeader
       crumbs={[{ label: view.section ?? 'Master Data' }, { label: title }]}
       title={title}
       description={view.description ?? `${meta.total} ${def.label.toLowerCase()} terdaftar — ${def.description.toLowerCase()}`}
-      actions={<form action={path} className="relative">
-        <Search className="pointer-events-none absolute left-4 top-1/2 size-[18px] -translate-y-1/2 text-ink-muted" strokeWidth={1.8} aria-hidden />
-        <input type="search" name="q" defaultValue={search ?? ''} placeholder={`Cari ${def.label.toLowerCase()}`}
-          aria-label={`Cari ${def.label}`} className="h-11 w-72 rounded-full border border-line bg-card pl-11 pr-4 text-[14px] outline-none transition-colors duration-200 placeholder:text-ink-muted focus:border-line-strong" />
-      </form>}
+      actions={isCutoff ? <Link href="#cutoff-settings" className="inline-flex h-11 items-center gap-2 rounded-full border border-line px-5 text-sm font-semibold hover:border-ink">
+        <Search className="size-4" aria-hidden />Cari / ubah jadwal
+      </Link> : searchForm}
     />
     {view.intro}
-    <Reveal><MasterTable def={def} entity={entity} rows={data} options={options} refLabels={refLabels} listFieldNames={view.listFields} /></Reveal>
+    <Reveal><section id={isCutoff ? 'cutoff-settings' : undefined} className="scroll-mt-6">
+      <MasterTable def={def} entity={entity} rows={data} options={options} refLabels={refLabels} listFieldNames={view.listFields}
+        toolbarHeading={isCutoff ? <>
+          <h2 className="text-lg font-bold">Pengaturan cutoff supplier</h2>
+          <p className="mt-1 text-sm text-ink-muted">{meta.total} jadwal{search ? ` untuk pencarian “${search}”` : ''} · klik Ubah untuk mengedit lewat drawer.</p>
+        </> : undefined}
+        toolbar={isCutoff ? searchForm : undefined} />
+    </section></Reveal>
     {meta.totalPages > 1 ? <nav className="mt-5 flex items-center justify-between text-[14px]">
       <span className="text-ink-muted">Halaman {meta.page} dari {meta.totalPages}</span>
       <div className="flex gap-2">

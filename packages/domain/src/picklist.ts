@@ -12,15 +12,20 @@ export interface PoCandidate {
   sapPoItem: string;
   partId: number;
   openQty: number;
-  /** YYYY-MM-DD; null = tidak dibatasi. */
+  /** Periode PO bulanan; null atau rentang lintas bulan tidak boleh dipakai. */
   validFrom: string | null;
   validTo: string | null;
 }
 
 export interface PoOpenQtyInput {
+  /** Qty PO item hasil tarik bulanan dari SAP (F-44). */
   openQty: number;
-  /** Total pcs aktif pada PO item dikurangi pcs yang sudah diterima. */
-  outstandingPcs: number;
+  /**
+   * Pcs yang sudah dipesan ARES pada PO item: semua Order Sheet yang tidak
+   * batal, termasuk yang sudah diterima. Kekurangan kirim dihitung di Order
+   * Sheet recovery-nya, bukan di order asal (keputusan 2026-11-03).
+   */
+  orderedPcs: number;
   /** Pcs yang hendak diterbitkan sekarang. */
   newPcs: number;
 }
@@ -35,16 +40,27 @@ export function checkPoOpenQty(input: PoOpenQtyInput): {
   for (const [name, value] of Object.entries(input)) {
     if (!Number.isInteger(value) || value < 0) throw new Error(`${name} harus bilangan bulat ≥ 0`);
   }
-  const availablePcs = Math.max(0, input.openQty - input.outstandingPcs);
-  const projectedPcs = input.outstandingPcs + input.newPcs;
+  const availablePcs = Math.max(0, input.openQty - input.orderedPcs);
+  const projectedPcs = input.orderedPcs + input.newPcs;
   const allowed = projectedPcs <= input.openQty;
   return { allowed, reason: allowed ? null : 'PO_OPEN_QTY', availablePcs, projectedPcs };
 }
 
-function isValidOn(c: PoCandidate, date: string): boolean {
-  if (c.validFrom && date < c.validFrom) return false;
-  if (c.validTo && date > c.validTo) return false;
-  return c.openQty > 0;
+/** Periode bisnis PO, bukan tanggal sinkronisasi atau tanggal GR. */
+export function poPeriodForDate(date: string): { validFrom: string; validTo: string } {
+  const parsed = new Date(`${date}T00:00:00Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
+    throw new Error('Tanggal periode PO tidak valid');
+  }
+  return {
+    validFrom: `${date.slice(0, 7)}-01`,
+    validTo: new Date(Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth() + 1, 0)).toISOString().slice(0, 10),
+  };
+}
+
+export function isPoValidForDelivery(period: { validFrom: string | null; validTo: string | null }, date: string): boolean {
+  const month = poPeriodForDate(date);
+  return period.validFrom === month.validFrom && period.validTo === month.validTo;
 }
 
 /**
@@ -59,7 +75,7 @@ export function pickPoItem(
   deliveryDate: string,
   preferredPoLineId?: number | null,
 ): PoCandidate | null {
-  const valid = candidates.filter((c) => c.partId === partId && isValidOn(c, deliveryDate));
+  const valid = candidates.filter((c) => c.partId === partId && c.openQty > 0 && isPoValidForDelivery(c, deliveryDate));
   const preferred =
     preferredPoLineId != null ? valid.find((c) => c.poLineId === preferredPoLineId) : undefined;
   if (preferred) return preferred;
@@ -69,6 +85,15 @@ export function pickPoItem(
       a.sapPoNo.localeCompare(b.sapPoNo),
   );
   return byExpiry[0] ?? null;
+}
+
+/** Recovery mempertahankan PO asal bila masih satu periode; lintas bulan pilih PO baru. */
+export function pickRecoveryPoItem(
+  candidates: readonly PoCandidate[], partId: number, deliveryDate: string,
+  source: { sapPoNo: string; sapPoItem: string },
+): PoCandidate | null {
+  const original = candidates.find((po) => po.sapPoNo === source.sapPoNo && po.sapPoItem === source.sapPoItem);
+  return pickPoItem(candidates, partId, deliveryDate, original?.poLineId);
 }
 
 // ─── §3 Transisi status ─────────────────────────────────────────────────────
@@ -118,41 +143,4 @@ export function assertTransition<E extends Entity>(
   to: StatusOf<E>,
 ): void {
   if (!canTransition(entity, from, to)) throw new InvalidTransitionError(entity, from, to);
-}
-
-// ─── Cycle: kedatangan ke-n dalam satu hari (§14) ───────────────────────────
-
-/** Satu baris TM_VENDOR_CUTOFF aktif milik supplier; jam pabrik 'HH:MM:SS'. */
-export interface CutoffSlot {
-  id: number;
-  cutoffTime: string;
-  /** Jam truk tiba di gudang - inilah yang menentukan urutan cycle. */
-  arrivalTime: string;
-}
-
-/**
- * Cycle = kedatangan ke-n dalam satu hari (§14), jadi yang diurutkan adalah
- * jam kedatangan, bukan jam cutoff.
- *
- * Keduanya sering berlawanan: cutoff sore biasanya dikirim semalam dan tiba
- * paling pagi keesokan harinya, sedangkan cutoff pagi baru tiba siang.
- * Mengurutkan jam cutoff membuat truk pertama membawa kartu "cycle 2".
- *
- * LEAD_DAYS sengaja tidak ikut mengurutkan: ia menentukan truk datang di hari
- * yang mana, bukan urutannya di dalam satu hari.
- *
- * Nilainya di-snapshot ke picklist saat terbit dan tidak pernah dihitung ulang
- * saat cetak ulang (F-26): PPIC boleh menambah atau menghapus jadwal cutoff,
- * tetapi kartu yang sudah beredar di supplier harus tetap menyebut cycle yang
- * sama. Mengembalikan null bila cutoff-nya tidak ada di daftar.
- */
-export function cycleOfCutoff(cutoffs: readonly CutoffSlot[], cutoffId: number): number | null {
-  const urut = [...cutoffs].sort(
-    (a, b) =>
-      a.arrivalTime.localeCompare(b.arrivalTime) ||
-      a.cutoffTime.localeCompare(b.cutoffTime) ||
-      a.id - b.id,
-  );
-  const i = urut.findIndex((c) => c.id === cutoffId);
-  return i < 0 ? null : i + 1;
 }

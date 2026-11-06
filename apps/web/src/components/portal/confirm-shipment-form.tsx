@@ -22,6 +22,32 @@ interface Line {
 }
 
 /**
+ * Delivery Sheet dirender worker sesudah konfirmasi, jadi beberapa detik
+ * pertama API menjawab 404 "belum selesai dibuat". Coba tiap detik sampai
+ * siap lalu unduh. Fungsi lepas, bukan state komponen: tetap jalan walau
+ * form hilang setelah halaman di-refresh.
+ * ponytail: maksimal 20 detik; lewat dari itu supplier memakai tombol unduh.
+ */
+async function unduhSetelahSiap(url: string, percobaan = 20): Promise<boolean> {
+  for (let i = 0; i < percobaan; i++) {
+    const res = await fetch(url, { cache: 'no-store' }).catch(() => null);
+    if (res?.ok) {
+      const nama = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? 'delivery-sheet.pdf';
+      const href = URL.createObjectURL(await res.blob());
+      const a = Object.assign(document.createElement('a'), { href, download: nama });
+      document.body.append(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(href), 10_000);
+      return true;
+    }
+    if (res && res.status !== 404) return false;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  return false;
+}
+
+/**
  * Konfirmasi kirim supplier (F-30, 6.3).
  *
  * Box dikirim per line diisi langsung di tabel muatan, bawaan = box diorder:
@@ -78,11 +104,15 @@ export function ConfirmShipmentForm({
     }
     feedback.success(
       'Konfirmasi pengiriman tersimpan',
-      res.short && res.revision
-        ? `Kekurangan dibuat menjadi Order Sheet recovery revisi ${res.revision.revision}.`
-        : 'Order sekarang menunggu proses Receiving.',
+      `${res.short && res.revision
+        ? `Kekurangan dibuat menjadi Order Sheet recovery revisi ${res.revision.revision}. `
+        : ''}Delivery Sheet diunduh otomatis begitu selesai dibuat.`,
     );
     startTransition(() => router.refresh());
+    // F-30: supplier tidak perlu ingat mengunduh lembar yang discan gudang (F-34).
+    void unduhSetelahSiap(`/api/picklist/${picklistId}/delivery`).then((ok) => {
+      if (!ok) feedback.info('Delivery Sheet belum siap', 'Unduh dari tombol Delivery Sheet PDF beberapa saat lagi.');
+    });
   }
 
   return (

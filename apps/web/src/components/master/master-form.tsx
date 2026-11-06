@@ -324,7 +324,7 @@ function Field({
                     ? 'password'
                     : 'text'
           }
-          step={field.kind === 'decimal' ? 'any' : undefined}
+          step={field.kind === 'decimal' ? 'any' : field.kind === 'time' ? 1 : undefined}
           inputMode={
             field.kind === 'number' ? 'numeric' : field.kind === 'decimal' ? 'decimal' : undefined
           }

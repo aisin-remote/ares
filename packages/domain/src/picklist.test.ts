@@ -1,16 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import {
   pickPoItem,
+  pickRecoveryPoItem,
+  poPeriodForDate,
   checkPoOpenQty,
   canTransition,
   assertTransition,
-  cycleOfCutoff,
   type PoCandidate,
 } from './picklist';
 
 describe('checkPoOpenQty (F-19)', () => {
   it('mengizinkan jumlah tepat sampai open qty', () => {
-    expect(checkPoOpenQty({ openQty: 1_000, outstandingPcs: 700, newPcs: 300 })).toEqual({
+    expect(checkPoOpenQty({ openQty: 1_000, orderedPcs: 700, newPcs: 300 })).toEqual({
       allowed: true,
       reason: null,
       availablePcs: 300,
@@ -18,8 +19,8 @@ describe('checkPoOpenQty (F-19)', () => {
     });
   });
 
-  it('memblokir jumlah yang membuat outstanding melebihi open qty', () => {
-    expect(checkPoOpenQty({ openQty: 1_000, outstandingPcs: 700, newPcs: 301 })).toEqual({
+  it('memblokir jumlah yang membuat total pesanan melebihi qty PO', () => {
+    expect(checkPoOpenQty({ openQty: 1_000, orderedPcs: 700, newPcs: 301 })).toEqual({
       allowed: false,
       reason: 'PO_OPEN_QTY',
       availablePcs: 300,
@@ -27,8 +28,10 @@ describe('checkPoOpenQty (F-19)', () => {
     });
   });
 
-  it('qty yang sudah diterima tidak lagi menjadi outstanding', () => {
-    expect(checkPoOpenQty({ openQty: 1_000, outstandingPcs: 300, newPcs: 700 }).allowed).toBe(true);
+  it('sisa PO tidak pernah negatif walau pesanan lama melebihi qty PO hasil tarik ulang', () => {
+    expect(checkPoOpenQty({ openQty: 1_000, orderedPcs: 1_200, newPcs: 0 })).toMatchObject({
+      allowed: false, availablePcs: 0,
+    });
   });
 });
 
@@ -39,8 +42,8 @@ describe('pickPoItem (6.6.1, F-18)', () => {
     sapPoItem: '00010',
     partId: 7,
     openQty: 1000,
-    validFrom: '2026-01-01',
-    validTo: '2026-12-31',
+    validFrom: '2026-09-01',
+    validTo: '2026-09-30',
     ...over,
   });
 
@@ -62,8 +65,12 @@ describe('pickPoItem (6.6.1, F-18)', () => {
     expect(pickPoItem(c, 7, '2026-11-01')).toBeNull();
   });
 
-  it('validFrom/validTo kosong berarti tidak dibatasi', () => {
-    expect(pickPoItem([po({ validFrom: null, validTo: null })], 7, '2099-01-01')?.poLineId).toBe(1);
+  it('periode kosong atau lintas bulan ditolak, bukan PO tanpa kedaluwarsa', () => {
+    for (const period of [
+      { validFrom: null, validTo: null },
+      { validFrom: '2026-01-01', validTo: '2026-12-31' },
+      { validFrom: '2026-09-01', validTo: null },
+    ]) expect(pickPoItem([po(period)], 7, '2026-09-20')).toBeNull();
   });
 
   it('PO yang sudah habis (open qty 0) tidak dipakai (6.6.4)', () => {
@@ -80,13 +87,29 @@ describe('pickPoItem (6.6.1, F-18)', () => {
     expect(pickPoItem(c, 7, '2026-09-20', 2)?.poLineId).toBe(1);
   });
 
-  it('tanpa default: yang paling cepat berakhir dipakai dulu, lalu urut nomor PO', () => {
+  it('tanpa default: hanya PO bulan pengiriman, lalu urut nomor PO', () => {
     const c = [
       po({ poLineId: 1, sapPoNo: '4500000009', validTo: null }),
-      po({ poLineId: 2, sapPoNo: '4500000002', validTo: '2026-10-31' }),
-      po({ poLineId: 3, sapPoNo: '4500000001', validTo: '2026-10-31' }),
+      po({ poLineId: 2, sapPoNo: '4500000002' }),
+      po({ poLineId: 3, sapPoNo: '4500000001' }),
     ];
     expect(pickPoItem(c, 7, '2026-09-20')?.poLineId).toBe(3);
+  });
+
+  it('recovery mempertahankan PO bulan yang sama, lalu menggantinya saat lintas bulan/tahun', () => {
+    const old = po({ validFrom: '2026-12-01', validTo: '2026-12-31' });
+    const next = po({ poLineId: 2, sapPoNo: '4500000002', validFrom: '2027-01-01', validTo: '2027-01-31' });
+    expect(pickRecoveryPoItem([old, next], 7, '2026-12-31', old)).toEqual(old);
+    expect(pickRecoveryPoItem([old, next], 7, '2027-01-01', old)).toEqual(next);
+    expect(pickRecoveryPoItem([old], 7, '2027-01-01', old)).toBeNull();
+    expect(pickRecoveryPoItem([old, { ...next, openQty: 0 }], 7, '2027-01-01', old)).toBeNull();
+  });
+
+  it('periode bulanan mencakup akhir Februari, tahun kabisat, dan pergantian tahun', () => {
+    expect(poPeriodForDate('2028-02-29')).toEqual({ validFrom: '2028-02-01', validTo: '2028-02-29' });
+    expect(poPeriodForDate('2026-02-01').validTo).toBe('2026-02-28');
+    expect(poPeriodForDate('2026-12-31').validTo).toBe('2026-12-31');
+    expect(() => poPeriodForDate('2026-02-29')).toThrow();
   });
 });
 
@@ -118,45 +141,5 @@ describe('transisi status picklist & kanban (PRD §3)', () => {
   it('assertTransition melempar dengan pesan yang bisa ditampilkan', () => {
     expect(() => assertTransition('picklist', 'SHIPPED', 'CANCELLED')).toThrow(/SHIPPED/);
     expect(() => assertTransition('picklist', 'ISSUED', 'CANCELLED')).not.toThrow();
-  });
-});
-
-describe('cycleOfCutoff (§14)', () => {
-  const jadwal = [
-    { id: 8, cutoffTime: '15:00:00', arrivalTime: '08:00:00' },
-    { id: 3, cutoffTime: '10:00:00', arrivalTime: '14:00:00' },
-    { id: 5, cutoffTime: '21:30:00', arrivalTime: '20:00:00' },
-  ];
-
-  it('truk yang datang paling pagi adalah cycle 1', () => {
-    expect(cycleOfCutoff(jadwal, 8)).toBe(1);
-    expect(cycleOfCutoff(jadwal, 3)).toBe(2);
-    expect(cycleOfCutoff(jadwal, 5)).toBe(3);
-  });
-
-  it('urutan kedatangan menang atas urutan cutoff, bukan sebaliknya', () => {
-    // Data seed repo ini persis kasusnya: cutoff 10:00 tiba 14:00, cutoff
-    // 15:00 tiba 08:00 keesokan harinya. Mengurutkan jam cutoff membuat truk
-    // pertama hari itu membawa kartu bertuliskan cycle 2.
-    const terbalik = [
-      { id: 1, cutoffTime: '10:00:00', arrivalTime: '14:00:00' },
-      { id: 2, cutoffTime: '15:00:00', arrivalTime: '08:00:00' },
-    ];
-    expect(cycleOfCutoff(terbalik, 2)).toBe(1);
-    expect(cycleOfCutoff(terbalik, 1)).toBe(2);
-  });
-
-  it('jam kedatangan sama diurutkan dengan cutoff lalu id, supaya stabil', () => {
-    const kembar = [
-      { id: 9, cutoffTime: '11:00:00', arrivalTime: '10:00:00' },
-      { id: 4, cutoffTime: '06:00:00', arrivalTime: '10:00:00' },
-    ];
-    expect(cycleOfCutoff(kembar, 4)).toBe(1);
-    expect(cycleOfCutoff(kembar, 9)).toBe(2);
-  });
-
-  it('cutoff di luar daftar → null, bukan menebak cycle 1', () => {
-    expect(cycleOfCutoff(jadwal, 99)).toBeNull();
-    expect(cycleOfCutoff([], 3)).toBeNull();
   });
 });

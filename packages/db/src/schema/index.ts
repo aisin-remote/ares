@@ -22,3 +22,4 @@ export * from './audit';
 export * from './consumption';
 export * from './delivery';
 export * from './auth';
+export * from './notification';

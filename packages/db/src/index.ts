@@ -1,6 +1,7 @@
 export * as schema from './schema/index';
 export * from './schema/index';
 export * from './master-tables';
+export { poItemUsage } from './po-usage';
 export { getDb, getReadDb, getPool, closeDb, type Database, type Transaction } from './client';
 
 // Helper query Drizzle yang sering dipakai, di-reexport supaya app tidak perlu

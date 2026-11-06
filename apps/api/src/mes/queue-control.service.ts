@@ -7,10 +7,12 @@ import {
   queueAdjustments,
   sql,
   stockMutations,
+  parts,
   vendorParts,
+  vendors,
   type Database,
 } from '@ares/db';
-import type { QueueAdjustmentInput, QueueHoldInput } from '@ares/contracts';
+import type { QueueAddPartInput, QueueAdjustmentInput, QueueHoldInput } from '@ares/contracts';
 import {
   applyQueueAdjustment,
   planConsumptionReversal,
@@ -19,6 +21,7 @@ import {
 } from '@ares/domain';
 import { writeAudit } from '../common/audit';
 import { InjectDb } from '../db/db.module';
+import { closedCutoffs } from '../common/closed-cutoffs';
 
 export interface QueueActor { userId: number; plantId: number }
 
@@ -73,6 +76,88 @@ export class QueueControlService {
           reason: input.reason,
           adjustmentId,
         });
+      return { id, ...plan, adjustmentId };
+    });
+  }
+
+  /**
+   * F-13: tambah part lain milik supplier yang sama ke antrean cutoff yang sedang
+   * disiapkan. Hanya cutoff yang masih punya antrean OPEN dan belum terbit —
+   * part baru ikut satu Order Sheet supplier itu (6.1.5).
+   */
+  async addPart(input: QueueAddPartInput, actor: QueueActor) {
+    const cutoffAt = new Date(input.cutoffAt);
+    return this.db.transaction(async (tx) => {
+      const [vendorPart] = await tx
+        .select({
+          id: vendorParts.id,
+          vendorId: vendorParts.vendorId,
+          qtyPerBox: vendorParts.qtyPerBox,
+          active: vendorParts.isActive,
+          partActive: parts.isActive,
+          plantId: vendors.plantId,
+        })
+        .from(vendorParts)
+        .innerJoin(parts, eq(vendorParts.partId, parts.id))
+        .innerJoin(vendors, eq(vendorParts.vendorId, vendors.id))
+        .where(eq(vendorParts.id, input.vendorPartId))
+        .limit(1);
+      if (!vendorPart || vendorPart.plantId !== actor.plantId) throw new NotFoundException('Part supplier tidak ditemukan');
+      if (!vendorPart.active || !vendorPart.partActive) throw new ConflictException('Part supplier tidak aktif');
+
+      // Kunci supplier: penerbitan Order Sheet mengunci baris yang sama.
+      const closed = await closedCutoffs(tx, vendorPart.vendorId, cutoffAt);
+      if (closed.has(cutoffAt.getTime())) throw new ConflictException('Order Sheet cutoff ini sudah terbit');
+      const [open] = await tx
+        .select({ id: orderQueues.id })
+        .from(orderQueues)
+        .innerJoin(vendorParts, eq(orderQueues.vendorPartId, vendorParts.id))
+        .where(and(
+          eq(vendorParts.vendorId, vendorPart.vendorId),
+          eq(orderQueues.cutoffAt, cutoffAt),
+          eq(orderQueues.status, 'OPEN'),
+        ))
+        .limit(1);
+      if (!open) throw new NotFoundException('Antrean supplier pada cutoff ini tidak ditemukan');
+      const [existing] = await tx
+        .select({ id: orderQueues.id })
+        .from(orderQueues)
+        .where(and(eq(orderQueues.vendorPartId, vendorPart.id), eq(orderQueues.cutoffAt, cutoffAt)))
+        .limit(1);
+      if (existing) throw new ConflictException('Part sudah ada di antrean cutoff ini; ubah jumlah kanbannya');
+
+      let plan: ReturnType<typeof setQueueKanbanQuantity>;
+      try {
+        plan = setQueueKanbanQuantity({
+          queuePcs: 0,
+          carryOverPcs: 0,
+          qtyPerKanban: vendorPart.qtyPerBox,
+          kanban: input.kanban,
+        });
+      } catch (error) {
+        if (error instanceof QueueControlError) throw new UnprocessableEntityException(error.message);
+        throw error;
+      }
+      const id = (await tx.insert(orderQueues).values({
+        vendorPartId: vendorPart.id,
+        cutoffAt,
+        pcs: plan.pcs,
+      }).$returningId())[0]!.id;
+      const adjustmentId = (await tx.insert(queueAdjustments).values({
+        queueId: id,
+        deltaPcs: plan.deltaPcs,
+        reason: `TAMBAH: ${input.reason}`.slice(0, 255),
+        userId: actor.userId,
+      }).$returningId())[0]!.id;
+      await writeAudit(tx, 'TT_ORDER_QUEUE', id, 'ADD_PART', actor.userId, null, {
+        vendorPartId: vendorPart.id,
+        cutoffAt,
+        pcs: plan.pcs,
+        kanban: plan.kanban,
+        qtyPerKanban: vendorPart.qtyPerBox,
+        reason: input.reason,
+        adjustmentId,
+      });
       return { id, ...plan, adjustmentId };
     });
   }

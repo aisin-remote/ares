@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -23,7 +24,7 @@ import { StatCard } from '@/components/ui/stat-card';
 import { Card, CardDivider, CardHeader } from '@/components/ui/card';
 import { Table, Th, Td, Tr, EmptyState } from '@/components/ui/table';
 import { Stagger, StaggerItem, Reveal } from '@/components/motion/reveal';
-import { STATUS_LABEL, STATUS_TONE, waktuRelatif } from '@/components/picklist/status';
+import { STATUS_LABEL, STATUS_TONE, hariCutoff } from '@/components/picklist/status';
 import { cn } from '@/components/ui/cn';
 import { DeliveryGantt } from '@/components/dashboard/delivery-gantt';
 import { requirePermission } from '@/lib/session';
@@ -37,6 +38,7 @@ export default async function DashboardPage({
   searchParams: Promise<{ start_date?: string; end_date?: string; plant?: string }>;
 }) {
   const user = await requirePermission('picklist.read');
+  if (user.role === 'warehouse') redirect('/receiving');
   const params = await searchParams;
   const { startDate, endDate } = getDeliveryDateRange(params);
   const now = new Date();
@@ -56,14 +58,10 @@ export default async function DashboardPage({
   });
   const belumUnduh = summary.supplierTertinggal.reduce((n, row) => n + row.belumUnduh, 0);
   const belumKonfirmasi = summary.supplierTertinggal.reduce((n, row) => n + row.belumKonfirmasi, 0);
+  // Cutoff tanpa jam: cutoff berikutnya yang sudah tercapai berarti hari ini.
   const cutoffDekat = cutoffPreviews
-    .filter(
-      (item) =>
-        item.cutoffAt &&
-        item.cutoffAt.getTime() >= now.getTime() &&
-        item.cutoffAt.getTime() <= now.getTime() + 60 * 60_000,
-    )
-    .sort((a, b) => a.cutoffAt!.getTime() - b.cutoffAt!.getTime());
+    .filter((item) => item.cutoffAt && item.cutoffAt.getTime() <= now.getTime())
+    .sort((a, b) => a.vendorName.localeCompare(b.vendorName));
   const tindakan = [
     {
       key: 'download',
@@ -103,9 +101,9 @@ export default async function DashboardPage({
     },
     {
       key: 'cutoff',
-      title: `${cutoffDekat.length} cutoff dalam satu jam`,
-      detail: cutoffDekat[0]?.cutoffAt
-        ? `${cutoffDekat[0].vendorName} paling dekat, ${waktuRelatif(cutoffDekat[0].cutoffAt, now).durasi} lagi.`
+      title: `${cutoffDekat.length} supplier cutoff hari ini`,
+      detail: cutoffDekat[0]
+        ? `${cutoffDekat[0].vendorName}${cutoffDekat.length > 1 ? ` dan ${cutoffDekat.length - 1} lainnya` : ''} — Order Sheet bisa diterbitkan.`
         : '',
       href: '/queue',
       icon: Clock3,
@@ -337,11 +335,7 @@ export default async function DashboardPage({
                       {row.pcs}
                     </Td>
                     <Td className="tabular whitespace-nowrap">
-                      {new Intl.DateTimeFormat('id-ID', {
-                        timeZone: 'Asia/Jakarta',
-                        dateStyle: 'medium',
-                        timeStyle: 'short',
-                      }).format(row.cutoffAt)}
+                      {hariCutoff(row.cutoffAt)}
                     </Td>
                     <Td className="max-w-xl text-[12px] text-ng">{row.reason}</Td>
                   </Tr>

@@ -20,6 +20,7 @@ import {
   plants,
   poLines,
   poHeaders,
+  poItemUsage,
 } from '@ares/db';
 import {
   sapOutbox,
@@ -43,7 +44,7 @@ import {
 } from '@ares/db';
 import type { PicklistStatus, ReceiptStatus } from '@ares/contracts';
 import { getEntityDef, type MasterEntity } from '@ares/contracts';
-import { nextCutoff, orderSheetDisplayNo } from '@ares/domain';
+import { checkPoOpenQty, deliveryForCutoff, nextCutoff, orderSheetDisplayNo, pickPoItem } from '@ares/domain';
 import type { GlobalSearchResult, NavNotification } from './shell-types';
 
 const getDb = getReadDb;
@@ -75,6 +76,10 @@ export async function listMaster(
   const filters = q
     ? def.searchFields.filter((name) => table[name]).map((name) => like(table[name], `%${q}%`))
     : [];
+  if (q && entity === 'vendorCutoffs') {
+    filters.push(inArray(vendorCutoffs.vendorId, db.select({ id: vendors.id }).from(vendors)
+      .where(or(like(vendors.name, `%${q}%`), like(vendors.sapVendorNo, `%${q}%`)))));
+  }
   const where = filters.length ? or(...filters) : undefined;
   const [rows, totals] = await Promise.all([
     db
@@ -194,7 +199,6 @@ export async function getNextCutoffPreviews(now = new Date(), plantId?: number) 
       .select({
         vendorId: vendors.id,
         vendorName: vendors.name,
-        cutoffTime: vendorCutoffs.cutoffTime,
         workdays: vendorCutoffs.workdays,
         leadDays: vendorCutoffs.leadDays,
         arrivalTime: vendorCutoffs.arrivalTime,
@@ -209,17 +213,19 @@ export async function getNextCutoffPreviews(now = new Date(), plantId?: number) 
           plantId ? eq(vendors.plantId, plantId) : undefined,
         ),
       )
-      .orderBy(asc(vendors.name), asc(vendorCutoffs.cutoffTime)),
+      .orderBy(asc(vendors.name)),
     db.select({ date: holidays.date }).from(holidays).where(eq(holidays.isActive, true)),
     db
-      .select({ id: vendors.id, name: vendors.name })
+      .select({ id: vendors.id, name: vendors.name, code: vendors.sapVendorNo })
       .from(vendors)
       .where(and(eq(vendors.isActive, true), plantId ? eq(vendors.plantId, plantId) : undefined))
       .orderBy(asc(vendors.name)),
   ]);
   const dates = holidayRows.map((row) => row.date);
   type Preview = {
+    vendorId: number;
     vendorName: string;
+    vendorCode: string | null;
     cutoffAt: Date | null;
     deliveryDate: string | null;
     arrivalAt: Date | null;
@@ -229,7 +235,9 @@ export async function getNextCutoffPreviews(now = new Date(), plantId?: number) 
     vendorRows.map((vendor) => [
       vendor.id,
       {
+        vendorId: vendor.id,
         vendorName: vendor.name,
+        vendorCode: vendor.code,
         cutoffAt: null,
         deliveryDate: null,
         arrivalAt: null,
@@ -242,7 +250,6 @@ export async function getNextCutoffPreviews(now = new Date(), plantId?: number) 
     try {
       result = nextCutoff({
         now,
-        cutoffTime: row.cutoffTime,
         workdays: row.workdays,
         leadDays: row.leadDays,
         arrivalTime: row.arrivalTime,
@@ -257,7 +264,8 @@ export async function getNextCutoffPreviews(now = new Date(), plantId?: number) 
     if (!result) continue;
     const current = byVendor.get(row.vendorId);
     if (!current?.cutoffAt || result.cutoffAt < current.cutoffAt)
-      byVendor.set(row.vendorId, { vendorName: row.vendorName, ...result, warning: null });
+      byVendor.set(row.vendorId, { vendorId: row.vendorId, vendorName: row.vendorName,
+        vendorCode: current?.vendorCode ?? null, ...result, warning: null });
   }
   return [...byVendor.values()].sort((a, b) => a.vendorName.localeCompare(b.vendorName));
 }
@@ -1091,12 +1099,10 @@ export async function getOrderOptions() {
       .select({
         id: vendorCutoffs.id,
         vendorId: vendorCutoffs.vendorId,
-        cutoffTime: vendorCutoffs.cutoffTime,
         arrivalTime: vendorCutoffs.arrivalTime,
       })
       .from(vendorCutoffs)
-      .where(eq(vendorCutoffs.isActive, true))
-      .orderBy(asc(vendorCutoffs.cutoffTime)),
+      .where(eq(vendorCutoffs.isActive, true)),
     db
       .select({
         id: vendorParts.id,
@@ -1115,14 +1121,23 @@ export async function getOrderOptions() {
       .select({
         vendorId: poHeaders.vendorId,
         partId: poLines.partId,
+        sapPoNo: poHeaders.sapPoNo,
+        item: poLines.item,
         validFrom: poHeaders.validFrom,
         validTo: poHeaders.validTo,
         openQty: poLines.openQty,
       })
       .from(poLines)
       .innerJoin(poHeaders, eq(poLines.poId, poHeaders.id))
-      .where(gte(poLines.openQty, 1)),
+      // Sama dengan syarat validasi API (F-19): hanya PO aktif yang saldonya dipakai.
+      .where(and(gte(poLines.openQty, 1), eq(poLines.balanceVerified, true), eq(poLines.isActive, true))),
   ]);
+  // F-19: sisa per PO item = qty PO − pesanan ARES, angka yang sama dengan validasi API.
+  const usage = await poItemUsage(db, [...new Set(poRows.map((po) => po.sapPoNo))]);
+  const poWindows = poRows.map((po) => {
+    const orderedPcs = usage.get(`${po.sapPoNo}:${po.item}`) ?? 0;
+    return { ...po, orderedPcs, remainingPcs: checkPoOpenQty({ openQty: po.openQty, orderedPcs, newPcs: 0 }).availablePcs };
+  });
 
   return vendorRows.map((v) => ({
     ...v,
@@ -1131,7 +1146,7 @@ export async function getOrderOptions() {
       .filter((p) => p.vendorId === v.id)
       .map((part) => ({
         ...part,
-        poWindows: poRows.filter((po) => po.vendorId === v.id && po.partId === part.partId),
+        poWindows: poWindows.filter((po) => po.vendorId === v.id && po.partId === part.partId),
       })),
   }));
 }
@@ -1276,7 +1291,7 @@ export async function listReceipts(opts: {
       .innerJoin(picklistHeaders, eq(receiptHeaders.picklistId, picklistHeaders.id))
       .innerJoin(vendors, eq(picklistHeaders.vendorId, vendors.id))
       .where(where)
-      .orderBy(desc(receiptHeaders.id))
+      .orderBy(desc(eq(receiptHeaders.status, 'OPEN')), desc(receiptHeaders.id))
       .limit(opts.perPage)
       .offset((opts.page - 1) * opts.perPage),
     db.select({ value: count() }).from(receiptHeaders).where(where),
@@ -1406,6 +1421,7 @@ export async function listConsumptions(opts: {
       componentPartNo: parts.partNo,
       componentName: parts.name,
       qty: consumptions.qty,
+      qtyPerBox: vendorParts.qtyPerBox,
       line: consumptions.line,
       occurredAt: consumptions.occurredAt,
       vendorName: vendors.name,
@@ -1554,6 +1570,7 @@ export async function getOpenOrderQueueVendorDetail(vendorId: number, plantId: n
     db
       .select({
         id: orderQueues.id,
+        vendorPartId: vendorParts.id,
         partNo: parts.partNo,
         partName: parts.name,
         backNo: vendorParts.backNo,
@@ -1585,7 +1602,7 @@ export async function getOpenOrderQueueVendorDetail(vendorId: number, plantId: n
       )
       .orderBy(asc(orderQueues.cutoffAt), asc(parts.partNo)),
     db
-      .select({ cutoffTime: vendorCutoffs.cutoffTime, rounding: vendorCutoffs.rounding })
+      .select({ rounding: vendorCutoffs.rounding })
       .from(vendorCutoffs)
       .where(and(eq(vendorCutoffs.vendorId, vendorId), eq(vendorCutoffs.isActive, true))),
   ]);
@@ -1598,6 +1615,113 @@ export async function getOpenOrderQueueVendorDetail(vendorId: number, plantId: n
       boxes: Math.round(((row.pcs + row.carryOverPcs) / row.qtyPerBox) * 100) / 100,
     })),
   };
+}
+
+/**
+ * Semua PO yang berlaku pada satu bulan (F-44) beserta supplier aktif yang
+ * belum punya PO. Sisa per item memakai poItemUsage, sama dengan validasi API.
+ */
+export async function getPoOverview(month: string, vendorId?: number) {
+  const db = getDb();
+  const [vendorRows, lineRows] = await Promise.all([
+    db.select({ id: vendors.id, name: vendors.name, sapVendorNo: vendors.sapVendorNo })
+      .from(vendors).where(and(eq(vendors.isActive, true), vendorId ? eq(vendors.id, vendorId) : undefined))
+      .orderBy(asc(vendors.name)),
+    db.select({
+      vendorId: poHeaders.vendorId, sapPoNo: poHeaders.sapPoNo, source: poHeaders.source,
+      item: poLines.item, partNo: parts.partNo, partName: parts.name, uom: parts.uom,
+      openQty: poLines.openQty, isActive: poLines.isActive, syncedAt: poLines.syncedAt,
+    })
+      .from(poLines)
+      .innerJoin(poHeaders, eq(poLines.poId, poHeaders.id))
+      .innerJoin(parts, eq(poLines.partId, parts.id))
+      .where(and(eq(poHeaders.validFrom, `${month}-01`), vendorId ? eq(poHeaders.vendorId, vendorId) : undefined))
+      .orderBy(asc(poHeaders.sapPoNo), asc(poLines.item)),
+  ]);
+  const usage = await poItemUsage(db, [...new Set(lineRows.map((row) => row.sapPoNo))]);
+  const items = lineRows.map((row) => {
+    const orderedPcs = usage.get(`${row.sapPoNo}:${row.item}`) ?? 0;
+    const capacity = row.isActive ? row.openQty : 0;
+    return { ...row, orderedPcs, remainingPcs: checkPoOpenQty({ openQty: capacity, orderedPcs, newPcs: 0 }).availablePcs };
+  });
+  const suppliers = vendorRows.map((vendor) => {
+    const own = items.filter((row) => row.vendorId === vendor.id);
+    return {
+      ...vendor,
+      poNos: [...new Set(own.map((row) => row.sapPoNo))],
+      itemCount: own.length,
+      openQty: own.reduce((n, row) => n + (row.isActive ? row.openQty : 0), 0),
+      orderedPcs: own.reduce((n, row) => n + row.orderedPcs, 0),
+      remainingPcs: own.reduce((n, row) => n + row.remainingPcs, 0),
+      syncedAt: own.reduce<Date | null>((latest, row) => (!latest || row.syncedAt > latest ? row.syncedAt : latest), null),
+    };
+  });
+  return { suppliers, items };
+}
+
+export type CutoffPo = { sapPoNo: string; item: string; openQty: number; remainingPcs: number } | null;
+
+/**
+ * Tanggal kirim satu cutoff dan PO yang akan dipakai tiap vendor part beserta
+ * sisanya (F-19, F-44). Aturannya sama dengan penerbitan cutoff di API:
+ * deliveryForCutoff + pickPoItem + poItemUsage dari paket bersama.
+ */
+export async function getCutoffPoPreview(vendorId: number, cutoffAt: Date) {
+  const db = getDb();
+  const [[cutoff], holidayRows, [vendor], vpRows, poRows] = await Promise.all([
+    db.select().from(vendorCutoffs)
+      .where(and(eq(vendorCutoffs.vendorId, vendorId), eq(vendorCutoffs.isActive, true))).limit(1),
+    db.select({ date: holidays.date }).from(holidays).where(eq(holidays.isActive, true)),
+    db.select({ deliveryDays: vendors.deliveryDays }).from(vendors).where(eq(vendors.id, vendorId)).limit(1),
+    db.select({ id: vendorParts.id, partId: vendorParts.partId, poItemDefaultId: vendorParts.poItemDefaultId })
+      .from(vendorParts).where(eq(vendorParts.vendorId, vendorId)),
+    db.select({
+      poLineId: poLines.id, sapPoNo: poHeaders.sapPoNo, sapPoItem: poLines.item, partId: poLines.partId,
+      openQty: poLines.openQty, validFrom: poHeaders.validFrom, validTo: poHeaders.validTo,
+    })
+      .from(poLines)
+      .innerJoin(poHeaders, eq(poLines.poId, poHeaders.id))
+      .where(and(eq(poHeaders.vendorId, vendorId), eq(poLines.balanceVerified, true), eq(poLines.isActive, true))),
+  ]);
+  const po: Record<number, CutoffPo> = {};
+  if (!cutoff) return { delivery: { error: 'Supplier belum punya jadwal cutoff aktif (F-04)' }, po };
+  const delivery = deliveryForCutoff({
+    cutoffAt, workdays: cutoff.workdays, leadDays: cutoff.leadDays, arrivalTime: cutoff.arrivalTime,
+    holidayShift: cutoff.holidayShift, holidays: holidayRows.map((row) => row.date), deliveryDays: vendor?.deliveryDays,
+  });
+  if ('error' in delivery) return { delivery, po };
+  const usage = await poItemUsage(db, [...new Set(poRows.map((row) => row.sapPoNo))]);
+  for (const vp of vpRows) {
+    const picked = pickPoItem(poRows, vp.partId, delivery.deliveryDate, vp.poItemDefaultId);
+    po[vp.id] = picked && {
+      sapPoNo: picked.sapPoNo, item: picked.sapPoItem, openQty: picked.openQty,
+      remainingPcs: checkPoOpenQty({
+        openQty: picked.openQty, orderedPcs: usage.get(`${picked.sapPoNo}:${picked.sapPoItem}`) ?? 0, newPcs: 0,
+      }).availablePcs,
+    };
+  }
+  return { delivery, po };
+}
+
+/** F-13: part aktif supplier yang bisa ditambahkan ke antrean cutoff saat menyiapkan Order Sheet. */
+export async function listVendorPartsForOrder(vendorId: number) {
+  return getDb()
+    .select({
+      vendorPartId: vendorParts.id,
+      partNo: parts.partNo,
+      partName: parts.name,
+      backNo: vendorParts.backNo,
+      qtyPerBox: vendorParts.qtyPerBox,
+      standardKanban: orderStandards.standardKanban,
+    })
+    .from(vendorParts)
+    .innerJoin(parts, eq(vendorParts.partId, parts.id))
+    .leftJoin(
+      orderStandards,
+      and(eq(orderStandards.vendorPartId, vendorParts.id), eq(orderStandards.isActive, true)),
+    )
+    .where(and(eq(vendorParts.vendorId, vendorId), eq(vendorParts.isActive, true), eq(parts.isActive, true)))
+    .orderBy(asc(parts.partNo));
 }
 
 // ─── Stok WH (F-41) ─────────────────────────────────────────────────────────

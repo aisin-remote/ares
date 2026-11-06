@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -15,28 +15,29 @@ import { iconFor } from '../ui/icon-map';
 import { springSnappy, durations, easeSoft } from '../motion/transitions';
 import { cn } from '../ui/cn';
 
-/** Lebar sidebar mode ikon; tooltip menempel di tepi kanannya. */
 const RAIL_WIDTH = 76;
+const GROUP_ICONS: Record<string, string> = {
+  Operasional: 'LayoutDashboard',
+  Order: 'ClipboardList',
+  Data: 'PackageSearch',
+  Laporan: 'BarChart3',
+  Setting: 'SlidersHorizontal',
+  Logistik: 'Truck',
+  Integrasi: 'Share2',
+  'Master Data': 'Database',
+};
 
 interface Tooltip {
   top: number;
   label: string;
 }
 
-/**
- * Navigasi utama.
- *
- * Pil hitam penanda menu aktif memakai `layoutId`, sehingga saat berpindah
- * halaman ia MELUNCUR dari posisi lama ke posisi baru alih-alih berkedip
- * hilang-muncul.
- *
- * Lipat/buka mengikuti pola Sentra: satu tombol di kepala sidebar
- * (PanelLeftClose/Open) yang mengubah preferensi `sidebar` — sama dengan
- * pilihan di panel pengaturan, jadi keduanya selalu sepakat dan diingat per
- * perangkat. Saat terlipat, tombolnya bersembunyi di balik huruf "A" dan
- * muncul ketika kepala sidebar disapu kursor; nama menu tampil sebagai
- * tooltip di tepi kanan rel.
- */
+interface RailMenu {
+  top: number;
+  maxHeight: number;
+  group: NavGroup;
+}
+
 export function Sidebar({
   userName,
   role,
@@ -61,19 +62,36 @@ export function Sidebar({
   const pathname = usePathname();
   const { set } = usePreferences();
   const [tooltip, setTooltip] = useState<Tooltip | null>(null);
+  const [railMenu, setRailMenu] = useState<RailMenu | null>(null);
   const tooltipId = useId();
-
-  /*
-   * Mode ikon hanya berlaku saat sidebar menjadi bagian tetap tata letak.
-   * Sebagai panel geser ia sudah menutupi halaman, jadi menyusutkannya tidak
-   * memberi ruang apa pun — yang ada isinya malah jadi lebih sulit dikenali.
-   */
+  const railMenuId = useId();
   const ringkas = mode === 'ikon' && !open;
+  const menuGroups = visibleGroups(
+    groups === NAV_GROUPS && role !== 'admin' && role !== 'ppic'
+      ? groups.filter((group) => group.title !== 'Setting' && group.title !== 'Master Data')
+      : groups,
+  );
+  const activeHref = menuGroups
+    .flatMap((group) => group.items)
+    .filter((item) => pathname === item.href || pathname.startsWith(`${item.href}/`))
+    .sort((a, b) => b.href.length - a.href.length)[0]?.href;
+
+  useEffect(() => {
+    setRailMenu(null);
+    setTooltip(null);
+  }, [pathname, ringkas]);
+
+  useEffect(() => {
+    if (!railMenu) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setRailMenu(null);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [railMenu]);
 
   const toggle = (e: React.MouseEvent<HTMLButtonElement>) => {
     setTooltip(null);
-    // Lepas fokus: kalau tetap di tombol, logo yang bersembunyi di baliknya
-    // (mode ikon) tidak pernah muncul lagi sampai pengguna mengklik tempat lain.
     e.currentTarget.blur();
     set('sidebar', mode === 'ikon' ? 'penuh' : 'ikon');
   };
@@ -82,38 +100,33 @@ export function Sidebar({
 
   const showTooltip = (el: HTMLElement, label: string) => {
     if (!ringkas) return;
-    const r = el.getBoundingClientRect();
-    setTooltip({ top: r.top + r.height / 2, label });
+    const rect = el.getBoundingClientRect();
+    const zoom = Number(getComputedStyle(document.documentElement).zoom) || 1;
+    setTooltip({ top: (rect.top + rect.height / 2) / zoom, label });
+  };
+
+  const showRailMenu = (el: HTMLElement, group: NavGroup) => {
+    if (!ringkas) return;
+    const rect = el.getBoundingClientRect();
+    // Portal ke body ikut zoom halaman; koordinat viewport perlu dikembalikan ke ukuran CSS.
+    const zoom = Number(getComputedStyle(document.documentElement).zoom) || 1;
+    const top = Math.max(12, rect.top / zoom);
+    setTooltip(null);
+    setRailMenu({ top, maxHeight: window.innerHeight / zoom - top - 12, group });
   };
 
   return (
     <aside
-      /*
-       * Di bawah lg: panel geser di atas isi halaman. Mulai lg: kembali
-       * menjadi kolom biasa di dalam flex.
-       *
-       * Saat tertutup dipakai `invisible`, bukan sekadar digeser keluar layar.
-       * Panel yang hanya digeser tetap ada di urutan Tab: menekan Tab dari
-       * halaman akan memindahkan fokus ke menu yang tidak terlihat, dan
-       * pengguna keyboard kehilangan jejak di mana fokusnya berada.
-       * `visibility` ikut ditransisikan supaya animasi menutupnya tetap
-       * terlihat — tanpa itu panel langsung lenyap alih-alih meluncur.
-       */
       className={cn(
-        'fixed inset-y-0 left-0 z-50 flex shrink-0 flex-col border-r border-line bg-shell',
+        'fixed inset-y-0 left-0 z-50 flex w-[264px] shrink-0 flex-col border-r border-line bg-shell',
         'transition-[transform,visibility,width] duration-300 ease-[var(--ease-out-soft)] motion-reduce:transition-none',
-        // Lebar dasar selalu ada: mode ikon hanya berlaku mulai lg, karena di
-        // bawah itu sidebar berperan sebagai panel geser.
-        'w-[264px]',
         ringkas && 'lg:w-[76px]',
         'lg:visible lg:static lg:z-auto lg:translate-x-0 lg:shadow-none',
         open ? 'visible translate-x-0 shadow-shell' : 'invisible -translate-x-full',
       )}
     >
-      {/* ── Kepala: wordmark + tombol lipat ─────────────────────────────── */}
       <div
         className={cn(
-          // Setinggi topbar (76px) supaya garis bawah keduanya sejajar.
           'group/kepala relative flex h-[76px] shrink-0 items-center',
           ringkas ? 'justify-center px-0' : 'gap-2 pl-5 pr-3',
         )}
@@ -123,8 +136,6 @@ export function Sidebar({
           title="ARES"
           className={cn(
             'block min-w-0 flex-1',
-            // Terlipat: logo minggir saat kepala disapu kursor atau tombolnya
-            // difokus lewat keyboard — bukan setiap kali tombol punya fokus.
             ringkas &&
               'flex-none transition-[visibility] group-hover/kepala:invisible group-has-[button:focus-visible]/kepala:invisible',
           )}
@@ -132,11 +143,6 @@ export function Sidebar({
           <BrandMark compact={ringkas} tagline={subtitle} />
         </Link>
 
-        {/*
-         * Hanya di layar lebar: di bawah lg sidebar adalah panel geser dan
-         * tombol tutupnya ada di topbar. Saat terlipat tombol ini menumpang
-         * di tempat huruf "A" — tampak begitu kepala disapu atau difokus.
-         */}
         <button
           type="button"
           onClick={toggle}
@@ -153,30 +159,27 @@ export function Sidebar({
         </button>
       </div>
 
-      {/* Scrollbar-nya baru tampak saat sidebar disapu kursor (batang saja, tanpa panah). */}
       <nav className={cn('scroll-hover flex-1 overflow-y-auto pb-4', ringkas ? 'px-3' : 'px-4')}>
-        {visibleGroups(
-          groups === NAV_GROUPS && role !== 'admin' && role !== 'ppic'
-            ? groups.filter((group) => group.title !== 'Setting' && group.title !== 'Master Data')
-            : groups,
-        ).map((group) => (
-          <Group
-            key={group.title}
-            group={group}
-            pathname={pathname}
-            ringkas={ringkas}
-            tooltipId={tooltip ? tooltipId : undefined}
-            onEnter={showTooltip}
-            onLeave={() => setTooltip(null)}
-          />
-        ))}
+        {menuGroups.length === 0 ? (
+          <p className={cn('text-[13px] text-ink-muted', ringkas ? 'px-1 text-center' : 'px-3')}>
+            {ringkas ? '—' : 'Belum ada menu untuk role Anda. Hubungi administrator.'}
+          </p>
+        ) : (
+          menuGroups.map((group) => (
+            <Group
+              key={group.title}
+              group={group}
+              activeHref={activeHref}
+              ringkas={ringkas}
+              railMenuId={railMenuId}
+              railOpen={railMenu?.group.title === group.title}
+              onOpenRail={showRailMenu}
+              onCloseRail={() => setRailMenu(null)}
+            />
+          ))
+        )}
       </nav>
 
-      {/*
-       * Identitas pengguna — jangkar bawah sidebar, ada di kedua mode supaya
-       * rel ikon tidak terlihat mengambang. Tombol Keluar ada di menu topbar.
-       * Di mode ikon tinggal avatarnya; nama dan peran muncul sebagai tooltip.
-       */}
       <div
         className={cn(
           'flex shrink-0 items-center gap-3 border-t border-line py-4',
@@ -199,19 +202,13 @@ export function Sidebar({
         {ringkas ? null : (
           <span className="min-w-0">
             <span className="block truncate text-[14px] font-bold leading-tight">{userName}</span>
-            <span className="mt-0.5 block text-[12px] capitalize text-ink-muted">
+            <span className="mt-0.5 block truncate text-[12px] text-ink-muted">
               {role ?? 'tanpa role'}
             </span>
           </span>
         )}
       </div>
 
-      {/*
-       * Tooltip mode ikon dirender ke body: nav menggulir (overflow), jadi
-       * apa pun yang dilebarkan ke kanan dari dalamnya akan terpotong.
-       * `pl-3` menjembatani celah antara rel dan gelembung supaya kursor
-       * yang menyeberang tidak membuatnya lenyap.
-       */}
       {ringkas && tooltip
         ? createPortal(
             <div
@@ -229,127 +226,208 @@ export function Sidebar({
             document.body,
           )
         : null}
+
+      {ringkas && railMenu
+        ? createPortal(
+            <AnimatePresence>
+              <motion.div
+                id={railMenuId}
+                key={railMenu.group.title}
+                role="menu"
+                data-nav-flyout
+                initial={{ opacity: 0, x: -10, scale: 0.98 }}
+                animate={{ opacity: 1, x: 0, scale: 1 }}
+                exit={{ opacity: 0, x: -8, scale: 0.98 }}
+                transition={{ duration: durations.fast, ease: easeSoft }}
+                className="fixed z-[60] hidden min-w-[220px] origin-left pl-3 lg:block"
+                style={{ top: railMenu.top, left: RAIL_WIDTH - 12, maxHeight: railMenu.maxHeight }}
+                onPointerLeave={(e) => {
+                  if (!isNavOverlay(e.relatedTarget)) setRailMenu(null);
+                }}
+                onBlur={(e) => {
+                  if (!isNavOverlay(e.relatedTarget)) setRailMenu(null);
+                }}
+              >
+                <div
+                  className="scroll-hover overflow-y-auto rounded-2xl border border-line bg-shell p-2 shadow-lift"
+                  style={{ maxHeight: railMenu.maxHeight }}
+                >
+                  <div className="px-3 pb-2 pt-1.5 text-[14px] font-bold text-ink">
+                    {railMenu.group.title}
+                  </div>
+                  <ul className="relative ml-3 py-0.5 pl-4">
+                    {railMenu.group.items.map((item) => {
+                      const active = activeHref === item.href;
+                      return (
+                        <li
+                          key={item.href}
+                          className="relative before:pointer-events-none before:absolute before:-left-4 before:top-0 before:h-1/2 before:w-4 before:rounded-bl-lg before:border-b before:border-l before:border-line before:content-[''] after:pointer-events-none after:absolute after:-left-4 after:bottom-0 after:top-1/2 after:border-l after:border-line after:content-[''] last:after:hidden"
+                        >
+                          <Link
+                            href={item.href}
+                            role="menuitem"
+                            aria-current={active ? 'page' : undefined}
+                            onClick={() => setRailMenu(null)}
+                            className={cn(
+                              'relative block rounded-lg px-3 py-2.5 text-[13px] outline-none transition-colors',
+                              'focus-visible:ring-2 focus-visible:ring-ink/20',
+                              active
+                                ? 'bg-surface font-bold text-ink'
+                                : 'font-medium text-ink-soft hover:bg-surface hover:text-ink',
+                            )}
+                          >
+                            {item.label}
+                          </Link>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              </motion.div>
+            </AnimatePresence>,
+            document.body,
+          )
+        : null}
     </aside>
   );
 }
 
 function Group({
   group,
-  pathname,
+  activeHref,
   ringkas,
-  tooltipId,
-  onEnter,
-  onLeave,
+  railMenuId,
+  railOpen,
+  onOpenRail,
+  onCloseRail,
 }: {
   group: NavGroup;
-  pathname: string;
+  activeHref?: string;
   ringkas: boolean;
-  tooltipId?: string;
-  onEnter: (el: HTMLElement, label: string) => void;
-  onLeave: () => void;
+  railMenuId: string;
+  railOpen: boolean;
+  onOpenRail: (el: HTMLElement, group: NavGroup) => void;
+  onCloseRail: () => void;
 }) {
-  const hasActive = group.items.some((i) => isActive(pathname, i.href));
-  // Grup yang dilipat tetap terbuka kalau salah satu isinya sedang aktif —
-  // pengguna tidak boleh kehilangan jejak posisinya setelah berpindah halaman.
+  const hasActive = group.items.some((item) => activeHref === item.href);
   const [open, setOpen] = useState(!group.collapsible || hasActive);
+  const groupId = useId();
 
-  /*
-   * Dalam mode ikon, grup yang bisa dilipat ditampilkan terbuka begitu saja.
-   * Judul grupnya tidak muat, dan tombol lipat tanpa judul hanya menyisakan
-   * anak panah yang tidak menjelaskan apa pun. Pemisah tipis sudah cukup
-   * menandai bahwa kelompoknya berganti.
-   */
-  const terbuka = ringkas ? true : open;
+  useEffect(() => {
+    if (hasActive) setOpen(true);
+  }, [hasActive]);
+  const GroupIcon = iconFor(GROUP_ICONS[group.title] ?? 'Database');
+
+  const closeRailIfOutside = (target: EventTarget | null) => {
+    if (!isNavOverlay(target)) onCloseRail();
+  };
 
   return (
-    <div
-      className={cn('mb-5', ringkas && 'mb-3 border-t border-line pt-3 first:border-0 first:pt-0')}
-    >
-      {ringkas ? null : group.collapsible ? (
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-          className="flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-[12px] font-semibold text-ink-muted transition-colors hover:text-ink"
-        >
-          {group.title}
+    <div className={cn('mb-1.5', ringkas && 'mb-1')}>
+      <button
+        type="button"
+        data-nav-link
+        data-nav-rail-trigger={ringkas ? '' : undefined}
+        onClick={(e) => {
+          if (ringkas) {
+            onOpenRail(e.currentTarget, group);
+          } else if (group.collapsible) {
+            setOpen((value) => !value);
+          }
+        }}
+        onPointerEnter={(e) => {
+          if (ringkas && e.pointerType !== 'touch') onOpenRail(e.currentTarget, group);
+        }}
+        onPointerLeave={(e) => closeRailIfOutside(e.relatedTarget)}
+        onFocus={(e) => {
+          if (ringkas) onOpenRail(e.currentTarget, group);
+        }}
+        onBlur={(e) => closeRailIfOutside(e.relatedTarget)}
+        aria-label={ringkas ? group.title : undefined}
+        aria-controls={ringkas ? railMenuId : groupId}
+        aria-expanded={ringkas ? railOpen : open}
+        className={cn(
+          'group relative flex w-full items-center rounded-xl outline-none transition-colors',
+          'focus-visible:ring-2 focus-visible:ring-ink/20',
+          ringkas ? 'size-[52px] justify-center' : 'justify-between px-3.5 py-2.5',
+          ringkas && hasActive
+            ? 'bg-accent text-white shadow-lift'
+            : (ringkas && railOpen) || (!ringkas && (open || hasActive))
+              ? 'bg-surface text-ink'
+              : 'text-ink-soft hover:bg-surface hover:text-ink',
+        )}
+      >
+        <span className={cn('relative flex items-center', ringkas ? 'justify-center' : 'gap-3')}>
+          <GroupIcon
+            className="sidebar-nav-icon size-[18px] shrink-0"
+            strokeWidth={hasActive ? 2 : 1.7}
+            aria-hidden
+          />
+          {ringkas ? null : <span className="text-[14px] font-bold">{group.title}</span>}
+        </span>
+        {ringkas || !group.collapsible ? null : (
           <motion.span
             animate={{ rotate: open ? 0 : -90 }}
             transition={{ duration: durations.base, ease: easeSoft }}
           >
             <ChevronDown className="size-3.5" strokeWidth={2.2} aria-hidden />
           </motion.span>
-        </button>
-      ) : (
-        <div className="px-3 pb-2 text-[12px] font-semibold text-ink-muted">{group.title}</div>
-      )}
+        )}
+      </button>
 
       <AnimatePresence initial={false}>
-        {terbuka ? (
-          <motion.ul
-            initial={group.collapsible && !ringkas ? { height: 0, opacity: 0 } : false}
+        {!ringkas && open ? (
+          <motion.div
+            id={groupId}
+            initial={group.collapsible ? { height: 0, opacity: 0 } : false}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: durations.base, ease: easeSoft }}
-            className="space-y-0.5 overflow-hidden pt-1"
+            className="overflow-hidden"
           >
-            {group.items.map((item) => {
-              const active = isActive(pathname, item.href);
-              const Icon = iconFor(item.icon);
-              return (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    aria-current={active ? 'page' : undefined}
-                    // Tanpa teks, nama menu harus tetap sampai ke pembaca layar.
-                    aria-label={ringkas ? item.label : undefined}
-                    aria-describedby={ringkas ? tooltipId : undefined}
-                    onClick={onLeave}
-                    onPointerEnter={(e) => {
-                      if (e.pointerType !== 'touch') onEnter(e.currentTarget, item.label);
-                    }}
-                    onPointerLeave={(e) => {
-                      // Menyeberang ke gelembungnya sendiri bukan alasan menutup.
-                      const ke = e.relatedTarget;
-                      if (!(ke instanceof Element) || !ke.closest('[data-nav-tooltip]')) onLeave();
-                    }}
-                    onFocus={(e) => onEnter(e.currentTarget, item.label)}
-                    onBlur={onLeave}
-                    data-nav-link
-                    className={cn(
-                      'group relative flex items-center rounded-lg py-2.5',
-                      'text-[14px] font-semibold outline-none',
-                      'focus-visible:ring-2 focus-visible:ring-ink/20',
-                      ringkas ? 'justify-center px-0' : 'gap-3 px-3.5',
-                      active ? 'text-white' : 'text-ink-soft hover:text-ink',
-                    )}
+            <ul className="relative mb-2 ml-[22px] mt-1 py-0.5 pl-5">
+              {group.items.map((item) => {
+                const active = activeHref === item.href;
+                return (
+                  <li
+                    key={item.href}
+                    className="relative before:pointer-events-none before:absolute before:-left-5 before:top-0 before:h-1/2 before:w-5 before:rounded-bl-lg before:border-b before:border-l before:border-line before:content-[''] after:pointer-events-none after:absolute after:-left-5 after:bottom-0 after:top-1/2 after:border-l after:border-line after:content-[''] last:after:hidden"
                   >
-                    {active ? (
-                      <motion.span
-                        layoutId="nav-pill"
-                        transition={springSnappy}
-                        className="absolute inset-0 rounded-lg bg-accent"
-                      />
-                    ) : (
-                      <span className="absolute inset-0 rounded-lg bg-transparent transition-colors duration-200 group-hover:bg-surface" />
-                    )}
-                    <Icon
-                      className="sidebar-nav-icon relative size-[18px] shrink-0"
-                      strokeWidth={active ? 2 : 1.7}
-                      aria-hidden
-                    />
-                    {ringkas ? null : <span className="relative">{item.label}</span>}
-                  </Link>
-                </li>
-              );
-            })}
-          </motion.ul>
+                    <Link
+                      href={item.href}
+                      aria-current={active ? 'page' : undefined}
+                      data-nav-link
+                      className={cn(
+                        'group relative block rounded-lg px-3 py-2 text-[13px] outline-none',
+                        'focus-visible:ring-2 focus-visible:ring-ink/20',
+                        active ? 'font-bold text-ink' : 'font-medium text-ink-soft hover:text-ink',
+                      )}
+                    >
+                      {active ? (
+                        <motion.span
+                          layoutId="nav-pill"
+                          transition={springSnappy}
+                          className="absolute inset-0 rounded-lg bg-surface"
+                        />
+                      ) : (
+                        <span className="absolute inset-0 rounded-lg bg-transparent transition-colors duration-200 group-hover:bg-surface" />
+                      )}
+                      <span className="relative">{item.label}</span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </motion.div>
         ) : null}
       </AnimatePresence>
     </div>
   );
 }
 
-function isActive(pathname: string, href: string): boolean {
-  return pathname === href || pathname.startsWith(`${href}/`);
+function isNavOverlay(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    Boolean(target.closest('[data-nav-flyout],[data-nav-rail-trigger]'))
+  );
 }

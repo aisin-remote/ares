@@ -14,6 +14,7 @@ import { STATUS_LABEL, STATUS_TONE, waktu } from '@/components/picklist/status';
 import { cn } from '@/components/ui/cn';
 import { CancelReceipt } from '@/components/scan/cancel-receipt';
 import { requirePermission } from '@/lib/session';
+import { WarehouseReceiving } from '@/components/scan/warehouse-receiving';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,12 +39,14 @@ export default async function ReceivingPage({
   searchParams: Promise<{ page?: string; status?: string }>;
 }) {
   const [sp, user] = await Promise.all([searchParams, requirePermission('receipt.read')]);
+  if (user.plantId == null) notFound();
+  if (user.role === 'warehouse') return <WarehouseReceiving />;
+
   const page = Math.max(1, Math.floor(Number(sp.page ?? 1)) || 1);
   const status = sp.status ?? 'ALL';
   const saring = (RECEIPT_STATUSES as readonly string[]).includes(status)
     ? (status as ReceiptStatus)
     : undefined;
-  if (user.plantId == null) notFound();
 
   const [hitungan, { data, meta }] = await Promise.all([
     getReceiptCounts(user.plantId),
@@ -51,7 +54,7 @@ export default async function ReceivingPage({
   ]);
 
   const tautanHalaman = (p: number) =>
-    saring ? `/receiving?status=${saring}&page=${p}` : `/receiving?page=${p}`;
+    `/receiving?status=${saring ?? 'ALL'}&page=${p}`;
 
   return (
     <>
@@ -94,7 +97,7 @@ export default async function ReceivingPage({
             <CardHeader
               icon={ScanLine}
               title="Buka sesi scan"
-              subtitle="Scan barcode Order Sheet di lembar order supplier untuk mulai menerima"
+              subtitle="Scan barcode Delivery Sheet yang dibawa supplier untuk mulai menerima"
             />
             <CardDivider />
             <CardBody>
@@ -114,7 +117,7 @@ export default async function ReceivingPage({
                   {['ALL', ...RECEIPT_STATUSES].map((s) => (
                     <Link
                       key={s}
-                      href={s === 'ALL' ? '/receiving' : `/receiving?status=${s}`}
+                      href={`/receiving?status=${s}`}
                       className={cn(
                         'rounded-full border px-3 py-1 text-[12px] font-semibold transition-colors',
                         status === s
@@ -144,7 +147,7 @@ export default async function ReceivingPage({
               <tbody>
                 {data.length === 0 ? (
                   <EmptyState colSpan={8}>
-                    Belum ada sesi scan pada saringan ini. Scan barcode Order Sheet di atas untuk
+                    Belum ada sesi scan pada saringan ini. Scan barcode Delivery Sheet di atas untuk
                     membuka sesi pertama.
                   </EmptyState>
                 ) : (
@@ -193,13 +196,17 @@ export default async function ReceivingPage({
                         </span>
                       </Td>
                       <Td>
-                        {r.status !== 'CANCELLED'
-                        && (user?.role === 'admin' || user?.role === 'ppic') ? (
+                        {r.status !== 'CANCELLED' &&
+                        (user?.role === 'admin' || user?.role === 'ppic') ? (
                           <CancelReceipt
                             id={r.publicId}
-                            reversal={Boolean(r.grStatus && ['PROCESSING', 'STAGED', 'POSTED'].includes(r.grStatus))}
+                            reversal={Boolean(
+                              r.grStatus && ['PROCESSING', 'STAGED', 'POSTED'].includes(r.grStatus),
+                            )}
                           />
-                        ) : '—'}
+                        ) : (
+                          '—'
+                        )}
                       </Td>
                     </Tr>
                   ))

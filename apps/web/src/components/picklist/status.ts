@@ -37,6 +37,17 @@ export function tanggal(iso: string): string {
   });
 }
 
+/** Hari cutoff (F-04): cutoff tanpa jam, jadi yang tampil hanya tanggal pabrik. */
+export function hariCutoff(at: Date | string): string {
+  return new Date(at).toLocaleDateString('id-ID', {
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'Asia/Jakarta',
+  });
+}
+
 /** Waktu tersimpan UTC, ditampilkan jam pabrik (aturan repo 6). */
 export function waktu(at: Date | string): string {
   return new Date(at).toLocaleString('id-ID', {

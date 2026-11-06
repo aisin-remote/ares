@@ -29,20 +29,18 @@ export function ArrivalIndicator({
   );
 }
 
+/** `at` = 00:00 WIB hari cutoff (F-04): sepanjang hari itu Order Sheet siap diterbitkan. */
 export function CutoffIndicator({ at, now }: { at: Date | string; now?: Date }) {
   const relative = waktuRelatif(at, now);
+  const hariIni = relative.lewat && relative.selisihMs > -24 * 60 * 60_000;
   return (
     <span
       className={cn(
         'mt-1 block text-[11px] font-semibold',
-        relative.lewat
-          ? 'text-ng'
-          : relative.selisihMs <= 60 * 60_000
-            ? 'text-warn'
-            : 'text-ink-muted',
+        hariIni ? 'text-warn' : relative.lewat ? 'text-ng' : 'text-ink-muted',
       )}
     >
-      {relative.lewat ? `Lewat ${relative.durasi}` : `Cutoff ${relative.durasi} lagi`}
+      {hariIni ? 'Cutoff hari ini' : relative.lewat ? `Lewat ${relative.durasi}` : `Cutoff ${relative.durasi} lagi`}
     </span>
   );
 }

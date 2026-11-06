@@ -1,8 +1,12 @@
-/** PRD 6.2: kalender cutoff pabrik Asia/Jakarta (UTC+7). */
+/**
+ * PRD 6.2: kalender cutoff pabrik Asia/Jakarta (UTC+7).
+ *
+ * Cutoff hanya punya hari, tanpa jam: `cutoffAt` adalah 00:00 WIB hari cutoff,
+ * sehingga PPIC boleh menerbitkan Order Sheet sejak pagi hari itu.
+ */
 export interface NextCutoffInput {
   now: Date;
-  cutoffTime: string;
-  /** Hari kerja ISO, dipisahkan koma: 1=Senin sampai 7=Minggu. */
+  /** Hari cutoff ISO, dipisahkan koma: 1=Senin sampai 7=Minggu. */
   workdays: string;
   leadDays: number;
   arrivalTime: string;
@@ -55,11 +59,11 @@ function dateText(day: number): string {
 }
 
 /**
- * Cutoff berikutnya setelah `now` (eksklusif). Pergeseran libur mengikuti
- * kebijakan supplier, lalu lead time dihitung dalam hari kerja.
+ * Hari cutoff pertama yang tanggalnya tidak sebelum tanggal `now` — hari ini
+ * ikut dihitung. Pergeseran libur mengikuti kebijakan supplier, lalu lead time
+ * dihitung dalam hari kerja.
  */
 export function nextCutoff(input: NextCutoffInput): NextCutoffResult | null {
-  const cutoffMs = timeMs(input.cutoffTime);
   const arrivalMs = timeMs(input.arrivalTime);
   const workdays = new Set(input.workdays.split(',').map((day) => Number(day.trim())));
   if (workdays.size === 0 || [...workdays].some((day) => !Number.isInteger(day) || day < 1 || day > 7)) {
@@ -87,8 +91,8 @@ export function nextCutoff(input: NextCutoffInput): NextCutoffResult | null {
       do effective += direction * DAY;
       while (!isWorkday(effective));
     }
-    const cutoffAt = effective + cutoffMs - JAKARTA_OFFSET;
-    if (cutoffAt > input.now.getTime() && (next === null || cutoffAt < next)) next = cutoffAt;
+    const cutoffAt = effective - JAKARTA_OFFSET;
+    if (effective >= start && (next === null || cutoffAt < next)) next = cutoffAt;
   }
   if (next === null) return null;
 
@@ -148,4 +152,30 @@ export function nextScheduledDelivery(input: NextScheduledDeliveryInput): Schedu
     if (selected) return selected;
   }
   return null;
+}
+
+/**
+ * Tanggal kirim Order Sheet untuk satu cutoff antrean (6.2): lead time dari
+ * hari cutoff, lalu digeser ke hari kirim rutin supplier bila diatur. Dipakai
+ * penerbitan cutoff dan layar persiapan, supaya PO bulan kirim yang tampil
+ * sama dengan yang dipakai saat terbit (F-44).
+ */
+export function deliveryForCutoff(
+  input: Omit<NextCutoffInput, 'now'> & { cutoffAt: Date; deliveryDays: string | null | undefined },
+): { deliveryDate: string; arrivalTime: string } | { error: string } {
+  const timing = nextCutoff({ ...input, now: input.cutoffAt });
+  if (!timing || timing.cutoffAt.getTime() !== input.cutoffAt.getTime()) {
+    return { error: 'Tanggal cutoff tidak sesuai dengan kalender supplier yang aktif' };
+  }
+  const days = input.deliveryDays?.trim();
+  if (!days) return { deliveryDate: timing.deliveryDate, arrivalTime: input.arrivalTime };
+  const scheduled = nextScheduledDelivery({
+    notBeforeDate: timing.deliveryDate,
+    slots: days.split(',').map((day) => ({ dayOfWeek: Number(day.trim()), arrivalTime: input.arrivalTime })),
+    workdays: days,
+    holidayShift: input.holidayShift,
+    holidays: input.holidays,
+  });
+  if (!scheduled) return { error: 'Periode pengiriman supplier tidak menghasilkan tanggal delivery berikutnya' };
+  return { deliveryDate: scheduled.deliveryDate, arrivalTime: scheduled.arrivalTime };
 }

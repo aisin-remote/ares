@@ -35,20 +35,20 @@ import {
   queueAdjustments,
   type Database,
   type Transaction,
+  poItemUsage,
 } from '@ares/db';
 import {
   pickPoItem,
+  pickRecoveryPoItem,
   checkPoOpenQty,
   assertTransition,
   confirmShipment,
   overrideShippedBoxes,
-  cycleOfCutoff,
   InvalidTransitionError,
   PICKLIST_TRANSITIONS,
   ShipmentError,
   assignCutoff,
-  nextCutoff,
-  nextScheduledDelivery,
+  deliveryForCutoff,
   planPicklist,
   type PoCandidate,
   type ShipmentLineInput,
@@ -61,6 +61,8 @@ import type {
   ShortShipPolicy,
 } from '@ares/contracts';
 import type { PicklistNoticeKind } from '../notify/notify.service';
+import { NotifyService } from '../notify/notify.service';
+import { closedCutoffs } from '../common/closed-cutoffs';
 import { InjectDb } from '../db/db.module';
 import { SequenceService } from '../common/sequence.service';
 import { writeAudit } from '../common/audit';
@@ -106,6 +108,7 @@ export class PicklistService {
     @InjectDb() private readonly db: Database,
     private readonly sequence: SequenceService,
     private readonly queue: QueueService,
+    private readonly notify: NotifyService,
   ) {}
 
   /** F-17: upload template Excel diterjemahkan ke jalur order manual yang sama. */
@@ -148,29 +151,10 @@ export class PicklistService {
       );
     }
 
-    let cutoffId: number | undefined;
-    if (workbook.cutoffTime) {
-      const [cutoff] = await this.db
-        .select({ id: vendorCutoffs.id })
-        .from(vendorCutoffs)
-        .where(and(
-          eq(vendorCutoffs.vendorId, vendor.id),
-          eq(vendorCutoffs.cutoffTime, workbook.cutoffTime),
-          eq(vendorCutoffs.isActive, true),
-        ))
-        .limit(1);
-      if (!cutoff) {
-        throw new UnprocessableEntityException(
-          `Cutoff ${workbook.cutoffTime.slice(0, 5)} tidak aktif untuk supplier ini`,
-        );
-      }
-      cutoffId = cutoff.id;
-    }
 
     return this.issueManual({
       vendorId: vendor.id,
       deliveryDate: workbook.deliveryDate,
-      cutoffId,
       note: workbook.note,
       lines: workbook.lines.map((line) => ({
         vendorPartId: mappingByMaterial.get(line.sapMaterialNo)!,
@@ -246,6 +230,8 @@ export class PicklistService {
         .where(
           and(
             eq(poHeaders.vendorId, input.vendorId),
+            eq(poLines.balanceVerified, true),
+            eq(poLines.isActive, true),
             inArray(
               poLines.partId,
               vps.map((v) => v.partId),
@@ -457,43 +443,24 @@ export class PicklistService {
         tx
           .select()
           .from(vendorCutoffs)
-          .where(and(eq(vendorCutoffs.vendorId, vendorId), eq(vendorCutoffs.isActive, true)))
-          .orderBy(asc(vendorCutoffs.cutoffTime)),
+          .where(and(eq(vendorCutoffs.vendorId, vendorId), eq(vendorCutoffs.isActive, true))),
         tx.select({ date: holidays.date }).from(holidays).where(eq(holidays.isActive, true)),
       ]);
-      const cutoff = cutoffs.find((row) => row.cutoffTime === jakartaTime(cutoffAt));
-      if (!cutoff) return block(`Jadwal cutoff aktif ${jakartaTime(cutoffAt)} tidak ditemukan`);
+      const cutoff = cutoffs[0];
+      if (!cutoff) return block('Supplier belum punya jadwal cutoff aktif (F-04)');
 
       const holidayDates = holidayRows.map((row) => row.date);
-      const timing = nextCutoff({
-        now: new Date(cutoffAt.getTime() - 1_000),
-        cutoffTime: cutoff.cutoffTime,
+      // Cutoff tanpa jam: hari cutoff dihitung dari 00:00 WIB-nya sendiri.
+      const delivery = deliveryForCutoff({
+        cutoffAt,
         workdays: cutoff.workdays,
         leadDays: cutoff.leadDays,
         arrivalTime: cutoff.arrivalTime,
         holidayShift: cutoff.holidayShift,
         holidays: holidayDates,
+        deliveryDays: rows[0]?.vendorDeliveryDays,
       });
-      if (!timing || timing.cutoffAt.getTime() !== cutoffAt.getTime()) {
-        return block('Tanggal cutoff tidak sesuai dengan kalender supplier yang aktif');
-      }
-      let delivery = { deliveryDate: timing.deliveryDate, arrivalTime: cutoff.arrivalTime };
-      const deliveryDays = rows[0]?.vendorDeliveryDays?.trim();
-      if (deliveryDays) {
-        const slots = deliveryDays.split(',').map((day) => ({
-          dayOfWeek: Number(day.trim()),
-          arrivalTime: cutoff.arrivalTime,
-        }));
-        const scheduled = nextScheduledDelivery({
-          notBeforeDate: timing.deliveryDate,
-          slots,
-          workdays: deliveryDays,
-          holidayShift: cutoff.holidayShift,
-          holidays: holidayDates,
-        });
-        if (!scheduled) return block('Periode pengiriman supplier tidak menghasilkan tanggal delivery berikutnya');
-        delivery = { deliveryDate: scheduled.deliveryDate, arrivalTime: scheduled.arrivalTime };
-      }
+      if ('error' in delivery) return block(delivery.error);
 
       const plans = planPicklist(
         rows.map((row) => ({
@@ -530,13 +497,14 @@ export class PicklistService {
             cutoffAt,
             cutoffs.map((row) => ({
               id: row.id,
-              cutoffTime: row.cutoffTime,
               workdays: row.workdays,
               leadDays: row.leadDays,
               arrivalTime: row.arrivalTime,
               holidayShift: row.holidayShift,
             })),
             holidayDates,
+            // Hari ini sedang ditutup; sisa dibawa ke hari cutoff berikutnya.
+            new Set([cutoffAt.getTime()]),
           )
         : null;
       if (needsNextQueue && !next) return block('Cutoff berikutnya untuk carry-over tidak ditemukan');
@@ -558,6 +526,8 @@ export class PicklistService {
           .where(
             and(
               eq(poHeaders.vendorId, vendorId),
+              eq(poLines.balanceVerified, true),
+              eq(poLines.isActive, true),
               inArray(
                 poLines.partId,
                 plannedRows.map((row) => row.partId),
@@ -607,7 +577,7 @@ export class PicklistService {
               cutoffAt,
               deliveryDate: delivery.deliveryDate,
               arrivalTime: delivery.arrivalTime,
-              cycle: cycleOfCutoff(cutoffs, cutoff.id) ?? 1,
+              cycle: 1,
               status: 'ISSUED',
               note:
                 anomalies.length > 0
@@ -751,11 +721,19 @@ export class PicklistService {
   /** F-31: email ke akun vendor lewat worker; gagal mengantre hanya dicatat, order tetap terbit. */
   private async enqueueNotice(kind: PicklistNoticeKind, picklistId: number): Promise<void> {
     try {
-      await this.queue.add(QUEUES.NOTIFICATION, JOBS.SEND_NOTIFICATION, { kind, picklistId });
+      await this.notify.enqueuePicklistNotice(kind, picklistId);
     } catch (err) {
       const pesan = err instanceof Error ? err.message : String(err);
       this.logger.error(`picklist ${picklistId}: email ${kind} gagal diantre: ${pesan}`);
     }
+  }
+
+  /** F-31: izin picklist.issue diperiksa controller; pabrik tetap disaring di DB. */
+  async resendNotice(id: number, actor: Actor) {
+    const [pl] = await this.db.select({ revision: picklistHeaders.revision }).from(picklistHeaders)
+      .where(and(eq(picklistHeaders.id, id), eq(picklistHeaders.plantId, actor.plantId)));
+    if (!pl) throw new NotFoundException('Order Sheet tidak ditemukan');
+    return this.notify.enqueuePicklistNotice(pl.revision > 0 ? 'PICKLIST_REVISED' : 'PICKLIST_ISSUED', id, actor);
   }
 
   /**
@@ -766,12 +744,15 @@ export class PicklistService {
    * (6.6.2) — membatalkan order yang sudah sempurna hanya karena Redis mati
    * jauh lebih merugikan daripada PDF yang terlambat. Job bisa diulang.
    */
-  private async enqueueRender(picklistId: number): Promise<void> {
+  private async enqueueRender(
+    picklistId: number,
+    job: typeof JOBS.RENDER_PDF | typeof JOBS.RENDER_DELIVERY_SHEET = JOBS.RENDER_PDF,
+  ): Promise<void> {
     try {
-      await this.queue.add(QUEUES.DOCUMENT, JOBS.RENDER_PDF, { picklistId });
+      await this.queue.add(QUEUES.DOCUMENT, job, { picklistId });
     } catch (err) {
       const pesan = err instanceof Error ? err.message : String(err);
-      this.logger.error(`picklist ${picklistId} terbit tapi render PDF gagal diantre: ${pesan}`);
+      this.logger.error(`picklist ${picklistId}: ${job} gagal diantre: ${pesan}`);
     }
   }
 
@@ -821,12 +802,11 @@ export class PicklistService {
         ]);
         const next = assignCutoff(now, cutoffs.map((row) => ({
           id: row.id,
-          cutoffTime: row.cutoffTime,
           workdays: row.workdays,
           leadDays: row.leadDays,
           arrivalTime: row.arrivalTime,
           holidayShift: row.holidayShift,
-        })), holidayRows.map((row) => row.date));
+        })), holidayRows.map((row) => row.date), await closedCutoffs(tx, pl.vendorId, now));
         if (!next) {
           throw new UnprocessableEntityException(
             'Cutoff berikutnya tidak ditemukan; Order Sheet AUTO belum bisa dibatalkan',
@@ -926,15 +906,13 @@ export class PicklistService {
         .for('update');
       if (!pl) throw new NotFoundException('Order Sheet tidak ditemukan');
 
-      // Status yang dilalui: ISSUED → DOWNLOADED → SHIPPED atau DOWNLOADED → SHIPPED.
-      const path: Array<'DOWNLOADED' | 'SHIPPED'> =
-        pl.status === 'ISSUED' ? ['DOWNLOADED', 'SHIPPED'] : ['SHIPPED'];
+      // F-29: supplier wajib mengunduh Order Sheet dan kanban sebelum
+      // konfirmasi kirim — kanban yang ditempel di box berasal dari unduhan itu.
+      if (pl.status === 'ISSUED') {
+        throw new ConflictException('Unduh Order Sheet dan kanban dulu sebelum konfirmasi kirim');
+      }
       try {
-        let cur = pl.status;
-        for (const next of path) {
-          assertTransition('picklist', cur, next);
-          cur = next;
-        }
+        assertTransition('picklist', pl.status, 'SHIPPED');
       } catch (e) {
         if (e instanceof InvalidTransitionError) {
           throw new ConflictException(
@@ -1054,6 +1032,9 @@ export class PicklistService {
       let revision: { id: number; publicId: string; revision: number; lineCount: number } | null = null;
       if (result.revisionLines.length > 0) {
         const lineById = new Map(lines.map((l) => [l.id, l]));
+        const deliveryDate = tambahHari(pl.deliveryDate, 1);
+        const recoveryPos = await this.resolveRecoveryPos(tx, pl.vendorId, deliveryDate,
+          result.revisionLines.map((r) => ({ ...lineById.get(r.picklistLineId)!, boxes: r.boxes })));
         const revNo = pl.revision + 1;
         const revisionPublicId = randomUUID();
         const revId = (
@@ -1067,7 +1048,7 @@ export class PicklistService {
               type: pl.type,
               vendorId: pl.vendorId,
               cutoffAt: pl.cutoffAt,
-              deliveryDate: tambahHari(pl.deliveryDate, 1),
+              deliveryDate,
               arrivalTime: pl.arrivalTime,
               cycle: pl.cycle,
               status: 'ISSUED',
@@ -1087,9 +1068,8 @@ export class PicklistService {
                 boxOrdered: r.boxes,
                 qtyPerBox: src.qtyPerBox,
                 pcs: r.boxes * src.qtyPerBox,
-                // 6.6.4: revisi mewarisi nomor PO.
-                sapPoNo: src.sapPoNo,
-                sapPoItem: src.sapPoItem,
+                sapPoNo: recoveryPos.get(src.id)!.sapPoNo,
+                sapPoItem: recoveryPos.get(src.id)!.sapPoItem,
               })
               .$returningId()
           )[0]!.id;
@@ -1134,6 +1114,8 @@ export class PicklistService {
       };
     });
 
+    // F-30: Delivery Sheet terbit setelah konfirmasi; barcode-nya membuka sesi scan (F-34).
+    await this.enqueueRender(hasil.id, JOBS.RENDER_DELIVERY_SHEET);
     if (hasil.revision) {
       await this.enqueueRender(hasil.revision.id);
       await this.enqueueNotice('PICKLIST_REVISED', hasil.revision.id);
@@ -1234,6 +1216,9 @@ export class PicklistService {
       let revision: { id: number; publicId: string; revision: number; lineCount: number } | null = null;
       const short = result.filter((row) => row.boxShort > 0);
       if (policy === 'REVISION' && short.length > 0) {
+        const deliveryDate = tambahHari(pl.deliveryDate, 1);
+        const recoveryPos = await this.resolveRecoveryPos(tx, pl.vendorId, deliveryDate,
+          short.map((r) => ({ ...lineById.get(r.picklistLineId)!, boxes: r.boxShort })));
         const revNo = pl.revision + 1;
         const revisionPublicId = randomUUID();
         const revId = (await tx.insert(picklistHeaders).values({
@@ -1244,7 +1229,7 @@ export class PicklistService {
           type: pl.type,
           vendorId: pl.vendorId,
           cutoffAt: pl.cutoffAt,
-          deliveryDate: tambahHari(pl.deliveryDate, 1),
+          deliveryDate,
           arrivalTime: pl.arrivalTime,
           cycle: pl.cycle,
           status: 'ISSUED',
@@ -1259,8 +1244,8 @@ export class PicklistService {
             boxOrdered: row.boxShort,
             qtyPerBox: source.qtyPerBox,
             pcs: row.boxShort * source.qtyPerBox,
-            sapPoNo: source.sapPoNo,
-            sapPoItem: source.sapPoItem,
+            sapPoNo: recoveryPos.get(source.id)!.sapPoNo,
+            sapPoItem: recoveryPos.get(source.id)!.sapPoItem,
           }).$returningId())[0]!.id;
           const move = kanbanRows
             .filter((kanban) => kanban.picklistLineId === source.id)
@@ -1281,6 +1266,8 @@ export class PicklistService {
         { status: pl.status, reason: input.reason, lines: result, revision });
       return { id: pl.id, publicId: pl.publicId, status: pl.status, lines: result, revision };
     });
+    // Qty kirim berubah → Delivery Sheet dicetak ulang dengan angka koreksi.
+    await this.enqueueRender(hasil.id, JOBS.RENDER_DELIVERY_SHEET);
     if (hasil.revision) {
       await this.enqueueRender(hasil.revision.id);
       await this.enqueueNotice('PICKLIST_REVISED', hasil.revision.id);
@@ -1288,8 +1275,37 @@ export class PicklistService {
     return hasil;
   }
 
+  /** PO dikunci dan kapasitas diperiksa sebelum recovery diterbitkan, dalam transaksi asal. */
+  private async resolveRecoveryPos(tx: Transaction, vendorId: number, deliveryDate: string,
+    lines: Array<{ id: number; vendorPartId: number; qtyPerBox: number; boxes: number; sapPoNo: string; sapPoItem: string }>,
+  ): Promise<Map<number, PoCandidate>> {
+    const vps = await tx.select({ id: vendorParts.id, partId: vendorParts.partId, partNo: parts.partNo })
+      .from(vendorParts).innerJoin(parts, eq(parts.id, vendorParts.partId))
+      .where(and(eq(vendorParts.vendorId, vendorId), inArray(vendorParts.id, lines.map((line) => line.vendorPartId))));
+    const candidates = vps.length ? await tx.select({
+      poLineId: poLines.id, sapPoNo: poHeaders.sapPoNo, sapPoItem: poLines.item,
+      partId: poLines.partId, openQty: poLines.openQty, validFrom: poHeaders.validFrom, validTo: poHeaders.validTo,
+    }).from(poLines).innerJoin(poHeaders, eq(poHeaders.id, poLines.poId))
+      .where(and(eq(poHeaders.vendorId, vendorId), eq(poLines.balanceVerified, true), eq(poLines.isActive, true), inArray(poLines.partId, vps.map((vp) => vp.partId))))
+      .orderBy(asc(poLines.id)).for('update') : [];
+    const resolved = lines.map((line) => {
+      const vp = vps.find((row) => row.id === line.vendorPartId);
+      const po = vp && pickRecoveryPoItem(candidates, vp.partId, deliveryDate, line);
+      if (!po) throw new UnprocessableEntityException(
+        `PO bulan ${deliveryDate.slice(0, 7)} belum tersedia untuk part ${vp?.partNo ?? line.vendorPartId}. Recovery belum diterbitkan; lengkapi PO bulan pengiriman.`,
+      );
+      return { line, po, partNo: vp!.partNo };
+    });
+    const problems = await this.poCapacityProblems(tx, resolved.map(({ line, po, partNo }) => ({
+      po, partNo, newPcs: line.boxes * line.qtyPerBox, vendorPartId: line.vendorPartId,
+    })));
+    if (problems.length) throw new UnprocessableEntityException(problems.map((problem) => problem.reason).join('; '));
+    return new Map(resolved.map(({ line, po }) => [line.id, po]));
+  }
+
   /**
-   * F-19: outstanding aktif per PO item + pcs baru tidak boleh melewati OPEN_QTY.
+   * F-19: pcs yang sudah dipesan ARES per PO item + pcs baru tidak boleh melewati
+   * qty PO (OPEN_QTY hasil tarik bulanan).
    * Baris PO sudah dikunci pemanggil, jadi penerbitan manual dan cutoff yang
    * berjalan bersamaan tidak dapat sama-sama memakai sisa kapasitas terakhir.
    */
@@ -1303,37 +1319,21 @@ export class PicklistService {
     }>,
   ): Promise<Array<{ reason: string; vendorPartId?: number }>> {
     if (requested.length === 0) return [];
-    const poNos = [...new Set(requested.map((row) => row.po.sapPoNo))];
-    const active = await tx
-      .select({
-        sapPoNo: picklistLines.sapPoNo,
-        sapPoItem: picklistLines.sapPoItem,
-        outstandingPcs: sql<number>`coalesce(sum(greatest(${picklistLines.pcs} - (${picklistLines.boxReceived} * ${picklistLines.qtyPerBox}), 0)), 0)`,
-      })
-      .from(picklistLines)
-      .innerJoin(picklistHeaders, eq(picklistLines.picklistId, picklistHeaders.id))
-      .where(and(
-        inArray(picklistHeaders.status, ['ISSUED', 'DOWNLOADED', 'SHIPPED', 'PARTIAL']),
-        inArray(picklistLines.sapPoNo, poNos),
-      ))
-      .groupBy(picklistLines.sapPoNo, picklistLines.sapPoItem);
-    const outstanding = new Map(
-      active.map((row) => [`${row.sapPoNo}:${row.sapPoItem}`, Number(row.outstandingPcs)]),
-    );
+    const outstanding = await poItemUsage(tx, [...new Set(requested.map((row) => row.po.sapPoNo))]);
     const problems: Array<{ reason: string; vendorPartId?: number }> = [];
     for (const row of requested) {
       const key = `${row.po.sapPoNo}:${row.po.sapPoItem}`;
       const current = outstanding.get(key) ?? 0;
       const decision = checkPoOpenQty({
         openQty: row.po.openQty,
-        outstandingPcs: current,
+        orderedPcs: current,
         newPcs: row.newPcs,
       });
       if (!decision.allowed) {
         problems.push({
           vendorPartId: row.vendorPartId,
           reason: `PO_OPEN_QTY · ${row.partNo} · PO ${row.po.sapPoNo}/${row.po.sapPoItem}: ` +
-            `outstanding ${current} + baru ${row.newPcs} > open qty ${row.po.openQty}`,
+            `sudah dipesan ${current} + baru ${row.newPcs} > qty PO ${row.po.openQty} (sisa ${decision.availablePcs})`,
         });
       } else {
         outstanding.set(key, decision.projectedPcs);
@@ -1494,54 +1494,47 @@ export class PicklistService {
   /**
    * F-29: unduhan pertama oleh supplier menandai picklist DOWNLOADED.
    *
-   * UPDATE bersyarat, bukan baca-lalu-tulis. PDF picklist dan PDF kanban
-   * hampir selalu diunduh beruntun dalam hitungan detik; dua request yang
-   * sama-sama membaca status ISSUED akan menimpa DOWNLOADED_AT dengan waktu
-   * yang lebih baru. Nol baris terpengaruh berarti sudah pernah diunduh —
-   * keadaan normal, bukan galat.
+   * Header dikunci agar unduhan PDF dan kanban bersamaan hanya mencatat
+   * satu timestamp dan satu audit DOWNLOAD dalam transaksi yang sama.
    *
    * Status asal diambil dari tabel transisi di domain, bukan ditulis ulang di
    * sini (aturan repo 3).
    */
-  async markDownloaded(id: number, vendorId: number, plantId?: number): Promise<void> {
+  async markDownloaded(id: number, vendorId: number, plantId?: number, userId?: number): Promise<void> {
     const dariMana = (
       Object.keys(PICKLIST_TRANSITIONS) as Array<keyof typeof PICKLIST_TRANSITIONS>
     ).filter((dari) => PICKLIST_TRANSITIONS[dari].includes('DOWNLOADED'));
     if (dariMana.length === 0) return;
 
-    await this.db
-      .update(picklistHeaders)
-      .set({ status: 'DOWNLOADED', downloadedAt: new Date() })
-      .where(
-        and(
-          eq(picklistHeaders.id, id),
-          eq(picklistHeaders.vendorId, vendorId),
-          plantId ? eq(picklistHeaders.plantId, plantId) : undefined,
-          inArray(picklistHeaders.status, dariMana),
-        ),
-      );
+    await this.db.transaction(async (tx) => {
+      const [pl] = await tx.select().from(picklistHeaders).where(and(
+        eq(picklistHeaders.id, id), eq(picklistHeaders.vendorId, vendorId),
+        plantId ? eq(picklistHeaders.plantId, plantId) : undefined,
+        inArray(picklistHeaders.status, dariMana),
+      )).for('update');
+      if (!pl) return;
+      const downloadedAt = new Date();
+      await tx.update(picklistHeaders).set({ status: 'DOWNLOADED', downloadedAt })
+        .where(eq(picklistHeaders.id, id));
+      if (userId) await writeAudit(tx, 'TT_PICKLIST_H', id, 'DOWNLOAD', userId,
+        { status: pl.status }, { status: 'DOWNLOADED', downloadedAt });
+    });
   }
 
   /**
-   * Cutoff pilihan PPIC, atau cutoff aktif paling pagi bila tidak dipilih.
-   *
-   * Seluruh jadwal supplier ikut dibaca, bukan hanya baris terpilih, karena
-   * cycle adalah urutan kedatangan di antara jadwal itu (§14) dan ikut
-   * tercetak di picklist maupun kanban (F-23, F-24).
+   * Jadwal cutoff supplier untuk order manual. Cutoff tanpa jam berarti satu
+   * jadwal per supplier, jadi cycle selalu 1 (kedatangan pertama hari itu).
    */
   private async resolveCutoff(tx: Transaction, vendorId: number, cutoffId?: number) {
-    const rows = await tx
-      .select({
-        id: vendorCutoffs.id,
-        cutoffTime: vendorCutoffs.cutoffTime,
-        arrivalTime: vendorCutoffs.arrivalTime,
-      })
+    const [dipilih] = await tx
+      .select({ id: vendorCutoffs.id, arrivalTime: vendorCutoffs.arrivalTime })
       .from(vendorCutoffs)
-      .where(and(eq(vendorCutoffs.vendorId, vendorId), eq(vendorCutoffs.isActive, true)))
-      .orderBy(asc(vendorCutoffs.cutoffTime));
-
-    const dipilih = cutoffId ? rows.find((r) => r.id === cutoffId) : rows[0];
-    // rows sudah memuat arrivalTime; cycleOfCutoff yang memutuskan urutannya.
+      .where(and(
+        eq(vendorCutoffs.vendorId, vendorId),
+        eq(vendorCutoffs.isActive, true),
+        cutoffId ? eq(vendorCutoffs.id, cutoffId) : undefined,
+      ))
+      .limit(1);
     if (!dipilih) {
       throw new BadRequestException(
         cutoffId
@@ -1549,7 +1542,7 @@ export class PicklistService {
           : 'Supplier belum punya setting cutoff aktif (F-04)',
       );
     }
-    return { ...dipilih, cycle: cycleOfCutoff(rows, dipilih.id) ?? 1 };
+    return { ...dipilih, cycle: 1 };
   }
 }
 
@@ -1558,18 +1551,4 @@ function tambahHari(ymd: string, n: number): string {
   const d = new Date(`${ymd}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
-}
-
-/** HH:MM:SS pada zona pabrik; dipakai mencocokkan antrean UTC ke slot master. */
-function jakartaTime(value: Date): string {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Jakarta',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(value);
-  const get = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((part) => part.type === type)?.value ?? '00';
-  return `${get('hour')}:${get('minute')}:${get('second')}`;
 }

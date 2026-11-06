@@ -20,7 +20,6 @@ describe('parseManualOrderWorkbook', () => {
       .resolves.toEqual({
         sapVendorNo: '00001234',
         deliveryDate: '2026-09-25',
-        cutoffTime: '09:30:00',
         note: 'Order tambahan',
         lines: [
           { row: 9, sapMaterialNo: 'MAT-01', boxes: 2 },

@@ -1,0 +1,27 @@
+{
+  "source": {
+    "path": "C:/Users/fabian/Downloads/Presentation1.pptx",
+    "sha256": "1d5eab8b4a845b67ff572068bf7c24e4a60b7bab2148ae472ca7155ffcf887b3",
+    "slideSizeEmu": {
+      "cx": 12192000,
+      "cy": 6858000
+    }
+  },
+  "design": {
+    "basis": "reference",
+    "families": [
+      "Aptos"
+    ],
+    "palette": {
+      "paper": "#F7F8F5",
+      "ink": "#10272F",
+      "muted": "#5D6C70",
+      "teal": "#1E6786",
+      "tealDeep": "#124B62",
+      "tealPale": "#DCEBF0",
+      "line": "#D6E0DE",
+      "white": "#FFFFFF",
+      "screen": "#11140F"
+    }
+  }
+}

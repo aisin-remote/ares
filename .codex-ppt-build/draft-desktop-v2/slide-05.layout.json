@@ -1,0 +1,554 @@
+{
+  "schema": "openai.presentation.layout/v5",
+  "unit": "px",
+  "slide": {
+    "id": "sl/377tqa",
+    "index": 4,
+    "layout": {
+      "id": "ly/07uhkfuh",
+      "name": "Blank"
+    },
+    "masterLayoutId": "ly/50ralgjm",
+    "masterLayoutName": "Master",
+    "backgroundColor": "rgba(247,248,245,1)",
+    "position": {
+      "left": 0,
+      "top": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "inheritedLayers": [
+    {
+      "scope": "layout",
+      "id": "ly/07uhkfuh",
+      "name": "Blank",
+      "type": "blank",
+      "parentLayoutId": "ly/50ralgjm",
+      "elements": []
+    },
+    {
+      "scope": "master",
+      "id": "ly/50ralgjm",
+      "name": "Master",
+      "type": "master",
+      "elements": []
+    }
+  ],
+  "elements": [
+    {
+      "order": 1,
+      "kind": "shape",
+      "scope": "slide",
+      "id": "sh/jad8vy9s",
+      "editable": true,
+      "name": "top-accent-5",
+      "position": {
+        "left": 0,
+        "top": 0,
+        "width": 1280,
+        "height": 14
+      },
+      "geometry": "rect",
+      "fillColor": "#1E6786",
+      "lineColor": "#1E6786",
+      "lineWidth": 0
+    },
+    {
+      "order": 2,
+      "kind": "shape",
+      "scope": "slide",
+      "id": "sh/4bm943qx",
+      "editable": true,
+      "name": "flow-badge-5",
+      "position": {
+        "left": 64,
+        "top": 55,
+        "width": 105,
+        "height": 34
+      },
+      "geometry": "roundRect",
+      "fillColor": "#1E6786",
+      "lineColor": "#1E6786",
+      "lineWidth": 0
+    },
+    {
+      "order": 3,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/5cfqx8ri",
+      "editable": true,
+      "name": "flow-label-5",
+      "position": {
+        "left": 77,
+        "top": 62,
+        "width": 82,
+        "height": 21
+      },
+      "geometry": "rect",
+      "lineWidth": 0,
+      "text": "FLOW 05",
+      "style": {
+        "fontSize": 13,
+        "typeface": "Aptos",
+        "color": "#FFFFFF",
+        "bold": true,
+        "italic": false,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "FLOW 05",
+          "style": {
+            "fontSize": 13,
+            "color": "#FFFFFF",
+            "bold": true
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "FLOW 05",
+              "fontSize": 13,
+              "color": "#FFFFFF",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 4,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/al4ryt8v",
+      "editable": true,
+      "name": "role-5",
+      "position": {
+        "left": 188,
+        "top": 62,
+        "width": 320,
+        "height": 22
+      },
+      "geometry": "rect",
+      "lineWidth": 0,
+      "text": "SUPPLIER",
+      "style": {
+        "fontSize": 13,
+        "typeface": "Aptos",
+        "color": "#124B62",
+        "bold": true,
+        "italic": false,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "SUPPLIER",
+          "style": {
+            "fontSize": 13,
+            "color": "#124B62",
+            "bold": true
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "SUPPLIER",
+              "fontSize": 13,
+              "color": "#124B62",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 5,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/vmd8ry9g",
+      "editable": true,
+      "name": "title-5",
+      "position": {
+        "left": 64,
+        "top": 118,
+        "width": 330,
+        "height": 170
+      },
+      "geometry": "rect",
+      "lineWidth": 0,
+      "text": "Supplier melihat order baru",
+      "style": {
+        "fontSize": 34,
+        "typeface": "Aptos",
+        "color": "#10272F",
+        "bold": true,
+        "italic": false,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Supplier melihat order baru",
+          "style": {
+            "fontSize": 34,
+            "color": "#10272F",
+            "bold": true
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Supplier melihat order baru",
+              "fontSize": 34,
+              "color": "#10272F",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 6,
+      "kind": "shape",
+      "scope": "slide",
+      "id": "sh/wnm903q1",
+      "editable": true,
+      "name": "title-rule-5",
+      "position": {
+        "left": 64,
+        "top": 300,
+        "width": 72,
+        "height": 5
+      },
+      "geometry": "rect",
+      "fillColor": "#1E6786",
+      "lineColor": "#1E6786",
+      "lineWidth": 0
+    },
+    {
+      "order": 7,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/hovqtorm",
+      "editable": true,
+      "name": "body-5",
+      "position": {
+        "left": 64,
+        "top": 329,
+        "width": 326,
+        "height": 164
+      },
+      "geometry": "rect",
+      "lineWidth": 0,
+      "text": "Supplier membuka Order aktif, memilih order, lalu mengunduh Order Sheet, kartu Kanban, dan CSV dari halaman detail.",
+      "style": {
+        "fontSize": 18,
+        "typeface": "Aptos",
+        "color": "#5D6C70",
+        "bold": false,
+        "italic": false,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Supplier membuka Order aktif, memilih order, lalu mengunduh Order Sheet, kartu Kanban, dan CSV dari halaman detail.",
+          "style": {
+            "fontSize": 18,
+            "color": "#5D6C70"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Supplier membuka Order aktif, memilih order, lalu mengunduh Order Sheet, kartu Kanban, dan CSV dari halaman detail.",
+              "fontSize": 18,
+              "color": "#5D6C70"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 8,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/mhkru98z",
+      "editable": true,
+      "name": "output-label-5",
+      "position": {
+        "left": 64,
+        "top": 516,
+        "width": 170,
+        "height": 22
+      },
+      "geometry": "rect",
+      "lineWidth": 0,
+      "text": "OUTPUT PROSES",
+      "style": {
+        "fontSize": 12,
+        "typeface": "Aptos",
+        "color": "#1E6786",
+        "bold": true,
+        "italic": false,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "OUTPUT PROSES",
+          "style": {
+            "fontSize": 12,
+            "color": "#1E6786",
+            "bold": true
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "OUTPUT PROSES",
+              "fontSize": 12,
+              "color": "#1E6786",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 9,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/nit8ne9k",
+      "editable": true,
+      "name": "output-5",
+      "position": {
+        "left": 64,
+        "top": 546,
+        "width": 326,
+        "height": 72
+      },
+      "geometry": "rect",
+      "lineWidth": 0,
+      "text": "Dokumen order siap diunduh",
+      "style": {
+        "fontSize": 21,
+        "typeface": "Aptos",
+        "color": "#10272F",
+        "bold": true,
+        "italic": false,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Dokumen order siap diunduh",
+          "style": {
+            "fontSize": 21,
+            "color": "#10272F",
+            "bold": true
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Dokumen order siap diunduh",
+              "fontSize": 21,
+              "color": "#10272F",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 10,
+      "kind": "shape",
+      "scope": "slide",
+      "id": "sh/z65o3ilk",
+      "editable": true,
+      "name": "screen-frame-5",
+      "position": {
+        "left": 412,
+        "top": 52,
+        "width": 828,
+        "height": 526
+      },
+      "geometry": "roundRect",
+      "fillColor": "#11140F",
+      "lineColor": "#124B62",
+      "lineWidth": 2
+    },
+    {
+      "order": 11,
+      "kind": "image",
+      "scope": "slide",
+      "id": "im/h8n2t4by",
+      "editable": true,
+      "position": {
+        "left": 428,
+        "top": 66,
+        "width": 796,
+        "height": 498
+      },
+      "geometry": "roundRect",
+      "alt": "Portal supplier ARES yang menampilkan daftar Order aktif dari Aisin.",
+      "contentType": "image/jpeg",
+      "fit": "contain",
+      "mask": {
+        "geometry": "roundRect",
+        "adjustmentList": [
+          {
+            "name": "adj",
+            "formula": "val 2410"
+          }
+        ]
+      },
+      "asset": {
+        "contentType": "image/jpeg",
+        "byteLength": 98093
+      }
+    },
+    {
+      "order": 12,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/l8n6583a",
+      "editable": true,
+      "name": "footer-brand-5",
+      "position": {
+        "left": 64,
+        "top": 657,
+        "width": 280,
+        "height": 20
+      },
+      "geometry": "rect",
+      "lineWidth": 0,
+      "text": "ARES · e-Kanban supplier",
+      "style": {
+        "fontSize": 11,
+        "typeface": "Aptos",
+        "color": "#5D6C70",
+        "bold": false,
+        "italic": false,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "ARES · e-Kanban supplier",
+          "style": {
+            "fontSize": 11,
+            "color": "#5D6C70"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "ARES · e-Kanban supplier",
+              "fontSize": 11,
+              "color": "#5D6C70"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 13,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/k7epcnm5",
+      "editable": true,
+      "name": "footer-page-5",
+      "position": {
+        "left": 520,
+        "top": 655,
+        "width": 58,
+        "height": 22
+      },
+      "geometry": "rect",
+      "lineWidth": 0,
+      "text": "05 / 08",
+      "style": {
+        "fontSize": 12,
+        "typeface": "Aptos",
+        "color": "#124B62",
+        "bold": true,
+        "italic": false,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "05 / 08",
+          "style": {
+            "fontSize": 12,
+            "color": "#124B62",
+            "bold": true
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "05 / 08",
+              "fontSize": 12,
+              "color": "#124B62",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    }
+  ]
+}

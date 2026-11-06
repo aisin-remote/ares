@@ -154,6 +154,9 @@ export default async function PicklistPage({
                       {p.type === 'MANUAL' ? (
                         <span className="ml-2 text-[12px] font-normal text-ink-muted">manual</span>
                       ) : null}
+                      {p.revision > 0 ? (
+                        <span className="ml-2 text-[12px] font-normal text-ink-muted">Recovery</span>
+                      ) : null}
                     </Td>
                     <Td>{p.vendorName}</Td>
                     <Td className="tabular whitespace-nowrap">

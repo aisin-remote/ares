@@ -18,6 +18,7 @@ const JALUR: Record<string, string> = {
   pdf: 'pdf',
   kanban: 'kanban.pdf',
   csv: 'order-sheet.csv',
+  delivery: 'delivery-sheet.pdf',
   semua: 'dokumen.zip',
 };
 

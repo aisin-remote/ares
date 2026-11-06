@@ -474,14 +474,8 @@ export class MasterService {
           throw new BadRequestException('Isi nomor vendor SAP sebelum supplier diaktifkan');
         }
         if (candidate.isActive === true && entity === 'vendorCutoffs') {
-          if (
-            candidate.sourceKey &&
-            candidate.cutoffTime === '00:00:00' &&
-            candidate.arrivalTime === '00:00:00'
-          ) {
-            throw new BadRequestException(
-              'Isi jam cutoff dan jam datang sebelum jadwal diaktifkan',
-            );
+          if (candidate.sourceKey && candidate.arrivalTime === '00:00:00') {
+            throw new BadRequestException('Isi jam datang sebelum jadwal diaktifkan');
           }
           const [vendor] = await tx
             .select({ active: vendors.isActive, sapNo: vendors.sapVendorNo })

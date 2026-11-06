@@ -127,12 +127,11 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
   },
   vendorCutoffs: {
     key: 'vendorCutoffs', label: 'Cutoff Supplier', singular: 'Jadwal Cutoff', icon: 'Clock',
-    description: 'Jam cutoff, hari kerja, kedatangan, dan pembulatan box', searchFields: ['cutoffTime', 'workdays'],
-    defaultSort: 'cutoffTime', fields: [
+    description: 'Hari cutoff, lead time, kedatangan, dan pembulatan box — satu jadwal per supplier', searchFields: ['workdays'],
+    defaultSort: 'vendorId', fields: [
       { name: 'vendorId', label: 'Supplier', kind: 'reference', refEntity: 'vendors', required: true, inList: true },
-      { name: 'cutoffTime', label: 'Jam cutoff', kind: 'time', required: true, inList: true },
       { name: 'workdays', label: 'Hari cutoff', kind: 'text', required: true, max: 16, defaultValue: '1,2,3,4,5', inList: true,
-        hint: 'Diimpor dari periode pengiriman. 1=Senin sampai 7=Minggu, pisahkan dengan koma.' },
+        hint: 'Order Sheet bisa diterbitkan sejak 00:00 hari cutoff. 1=Senin sampai 7=Minggu, pisahkan dengan koma.' },
       { name: 'leadDays', label: 'Lead time (hari kerja)', kind: 'number', required: true, min: 0, numeric: true, defaultValue: 1, inList: true },
       { name: 'arrivalTime', label: 'Jam datang', kind: 'time', required: true, inList: true },
       { name: 'holidayShift', label: 'Geser saat libur', kind: 'select', options: HOLIDAY_SHIFTS, defaultValue: 'BEFORE', inList: true },

@@ -45,7 +45,7 @@ export async function loginAction(prev: LoginState, formData: FormData): Promise
     } catch (error) {
       return { ...prev, error: loginError(error) };
     }
-    redirect('/dashboard');
+    redirect('/');
   }
 
   const parsed = loginSchema.safeParse({
@@ -76,7 +76,7 @@ export async function loginAction(prev: LoginState, formData: FormData): Promise
     return { error: loginError(err) };
   }
 
-  redirect('/dashboard');
+  redirect('/');
 }
 
 function loginError(error: unknown): string {

@@ -1,0 +1,564 @@
+{
+  "schema": "openai.presentation.layout/v5",
+  "unit": "px",
+  "slide": {
+    "id": "sl/hwbqtkby",
+    "index": 1,
+    "layout": {
+      "id": "ly/14ra9krq",
+      "name": "Blank"
+    },
+    "masterLayoutId": "ly/atofqts7",
+    "masterLayoutName": "Master",
+    "backgroundColor": "rgba(247,248,245,1)",
+    "position": {
+      "left": 0,
+      "top": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "inheritedLayers": [
+    {
+      "scope": "layout",
+      "id": "ly/14ra9krq",
+      "name": "Blank",
+      "type": "blank",
+      "parentLayoutId": "ly/atofqts7",
+      "elements": []
+    },
+    {
+      "scope": "master",
+      "id": "ly/atofqts7",
+      "name": "Master",
+      "type": "master",
+      "elements": []
+    }
+  ],
+  "elements": [
+    {
+      "order": 1,
+      "kind": "shape",
+      "scope": "slide",
+      "id": "sh/wjy9sry9",
+      "editable": true,
+      "name": "top-accent-2",
+      "position": {
+        "left": 0,
+        "top": 0,
+        "width": 1280,
+        "height": 14
+      },
+      "geometry": "rect",
+      "fillColor": "#1E6786",
+      "lineColor": "#1E6786",
+      "lineWidth": 0
+    },
+    {
+      "order": 2,
+      "kind": "shape",
+      "scope": "slide",
+      "id": "sh/9072xkry",
+      "editable": true,
+      "name": "flow-badge-2",
+      "position": {
+        "left": 64,
+        "top": 55,
+        "width": 105,
+        "height": 34
+      },
+      "geometry": "roundRect",
+      "fillColor": "#1E6786",
+      "lineColor": "#1E6786",
+      "lineWidth": 0
+    },
+    {
+      "order": 3,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/ozy1ofad",
+      "editable": true,
+      "name": "flow-label-2",
+      "position": {
+        "left": 77,
+        "top": 62,
+        "width": 82,
+        "height": 21
+      },
+      "geometry": "rect",
+      "lineWidth": 0,
+      "text": "FLOW 02",
+      "style": {
+        "fontSize": 13,
+        "typeface": "Aptos",
+        "color": "#FFFFFF",
+        "bold": true,
+        "italic": false,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "FLOW 02",
+          "style": {
+            "fontSize": 13,
+            "color": "#FFFFFF",
+            "bold": true
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "FLOW 02",
+              "fontSize": 13,
+              "color": "#FFFFFF",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 4,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/b29kza94",
+      "editable": true,
+      "name": "role-2",
+      "position": {
+        "left": 188,
+        "top": 62,
+        "width": 320,
+        "height": 22
+      },
+      "geometry": "rect",
+      "lineWidth": 0,
+      "text": "INTEGRASI OTOMATIS",
+      "style": {
+        "fontSize": 13,
+        "typeface": "Aptos",
+        "color": "#124B62",
+        "bold": true,
+        "italic": false,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "INTEGRASI OTOMATIS",
+          "style": {
+            "fontSize": 13,
+            "color": "#124B62",
+            "bold": true
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "INTEGRASI OTOMATIS",
+              "fontSize": 13,
+              "color": "#124B62",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 5,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/a10jqpsj",
+      "editable": true,
+      "name": "title-2",
+      "position": {
+        "left": 64,
+        "top": 118,
+        "width": 330,
+        "height": 170
+      },
+      "geometry": "rect",
+      "lineWidth": 0,
+      "text": "Konsumsi masuk ke antrean ARES",
+      "style": {
+        "fontSize": 34,
+        "typeface": "Aptos",
+        "color": "#10272F",
+        "bold": true,
+        "italic": false,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Konsumsi masuk ke antrean ARES",
+          "style": {
+            "fontSize": 34,
+            "color": "#10272F",
+            "bold": true
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Konsumsi masuk ke antrean ARES",
+              "fontSize": 34,
+              "color": "#10272F",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 6,
+      "kind": "shape",
+      "scope": "slide",
+      "id": "sh/x4r21kru",
+      "editable": true,
+      "name": "title-rule-2",
+      "position": {
+        "left": 64,
+        "top": 300,
+        "width": 72,
+        "height": 5
+      },
+      "geometry": "rect",
+      "fillColor": "#1E6786",
+      "lineColor": "#1E6786",
+      "lineWidth": 0
+    },
+    {
+      "order": 7,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/w3i1sfa9",
+      "editable": true,
+      "name": "body-2",
+      "position": {
+        "left": 64,
+        "top": 329,
+        "width": 326,
+        "height": 164
+      },
+      "geometry": "rect",
+      "lineWidth": 0,
+      "text": "ARES mengonversi konsumsi komponen menjadi kebutuhan order dan mengelompokkannya ke jadwal cutoff supplier.",
+      "style": {
+        "fontSize": 18,
+        "typeface": "Aptos",
+        "color": "#5D6C70",
+        "bold": false,
+        "italic": false,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "ARES mengonversi konsumsi komponen menjadi kebutuhan order dan mengelompokkannya ke jadwal cutoff supplier.",
+          "style": {
+            "fontSize": 18,
+            "color": "#5D6C70"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "ARES mengonversi konsumsi komponen menjadi kebutuhan order dan mengelompokkannya ke jadwal cutoff supplier.",
+              "fontSize": 18,
+              "color": "#5D6C70"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 8,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/r65knqtk",
+      "editable": true,
+      "name": "output-label-2",
+      "position": {
+        "left": 64,
+        "top": 516,
+        "width": 170,
+        "height": 22
+      },
+      "geometry": "rect",
+      "lineWidth": 0,
+      "text": "OUTPUT PROSES",
+      "style": {
+        "fontSize": 12,
+        "typeface": "Aptos",
+        "color": "#1E6786",
+        "bold": true,
+        "italic": false,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "OUTPUT PROSES",
+          "style": {
+            "fontSize": 12,
+            "color": "#1E6786",
+            "bold": true
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "OUTPUT PROSES",
+              "fontSize": 12,
+              "color": "#1E6786",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 9,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/q5wjelsz",
+      "editable": true,
+      "name": "output-2",
+      "position": {
+        "left": 64,
+        "top": 546,
+        "width": 326,
+        "height": 72
+      },
+      "geometry": "rect",
+      "lineWidth": 0,
+      "text": "Kebutuhan terkumpul per cutoff",
+      "style": {
+        "fontSize": 21,
+        "typeface": "Aptos",
+        "color": "#10272F",
+        "bold": true,
+        "italic": false,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Kebutuhan terkumpul per cutoff",
+          "style": {
+            "fontSize": 21,
+            "color": "#10272F",
+            "bold": true
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Kebutuhan terkumpul per cutoff",
+              "fontSize": 21,
+              "color": "#10272F",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 10,
+      "kind": "shape",
+      "scope": "slide",
+      "id": "sh/ove9o7yd",
+      "editable": true,
+      "name": "screen-frame-2",
+      "position": {
+        "left": 412,
+        "top": 52,
+        "width": 828,
+        "height": 526
+      },
+      "geometry": "roundRect",
+      "fillColor": "#11140F",
+      "lineColor": "#124B62",
+      "lineWidth": 2
+    },
+    {
+      "order": 11,
+      "kind": "image",
+      "scope": "slide",
+      "id": "im/ixwfa50j",
+      "editable": true,
+      "position": {
+        "left": 428,
+        "top": 66.25,
+        "width": 796,
+        "height": 497.5
+      },
+      "geometry": "roundRect",
+      "contentType": "image/jpeg",
+      "mask": {
+        "geometry": "roundRect",
+        "adjustmentList": [
+          {
+            "name": "adj",
+            "formula": "val 2410"
+          }
+        ]
+      },
+      "asset": {
+        "contentType": "image/jpeg",
+        "byteLength": 54122
+      },
+      "fillImage": {
+        "contentType": "image/jpeg",
+        "byteLength": 54122
+      }
+    },
+    {
+      "order": 12,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/mtwrmxg7",
+      "editable": true,
+      "name": "footer-brand-2",
+      "position": {
+        "left": 64,
+        "top": 657,
+        "width": 280,
+        "height": 20
+      },
+      "geometry": "rect",
+      "lineWidth": 0,
+      "text": "ARES · e-Kanban supplier",
+      "style": {
+        "fontSize": 11,
+        "typeface": "Aptos",
+        "color": "#5D6C70",
+        "bold": false,
+        "italic": false,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "ARES · e-Kanban supplier",
+          "style": {
+            "fontSize": 11,
+            "color": "#5D6C70"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "ARES · e-Kanban supplier",
+              "fontSize": 11,
+              "color": "#5D6C70"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 13,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/nu58f2hs",
+      "editable": true,
+      "name": "footer-page-2",
+      "position": {
+        "left": 520,
+        "top": 655,
+        "width": 58,
+        "height": 22
+      },
+      "geometry": "rect",
+      "lineWidth": 0,
+      "text": "02 / 11",
+      "style": {
+        "fontSize": 12,
+        "typeface": "Aptos",
+        "color": "#124B62",
+        "bold": true,
+        "italic": false,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "02 / 11",
+          "style": {
+            "fontSize": 12,
+            "color": "#124B62",
+            "bold": true
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "02 / 11",
+              "fontSize": 12,
+              "color": "#124B62",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ]
+    }
+  ]
+}

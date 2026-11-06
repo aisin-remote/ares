@@ -17,6 +17,10 @@ import { Reveal } from '@/components/motion/reveal';
 import { OutboxActions } from '@/components/sap/outbox-actions';
 import { cn } from '@/components/ui/cn';
 import { requirePermission } from '@/lib/session';
+import { PoSync } from '@/components/sap/po-sync';
+import { MasterSync } from '@/components/sap/master-sync';
+import { apiFetch } from '@/lib/api';
+import type { PoSyncStatus } from '@ares/contracts';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,7 +55,7 @@ export default async function SapPage({
     to?: string;
   }>;
 }) {
-  await requirePermission('outbox.read');
+  const user = await requirePermission('outbox.read');
   const sp = await searchParams;
   const page = Math.max(1, Number(sp.page ?? 1) || 1);
   const status = sp.status ?? 'ALL';
@@ -74,9 +78,10 @@ export default async function SapPage({
     return query ? `/sap?${query}` : '/sap';
   };
 
-  const [ringkas, { data, meta }] = await Promise.all([
+  const [ringkas, { data, meta }, poStatus] = await Promise.all([
     getSapSummary(),
     listSapOutbox({ page, perPage: 25, status, docType, from, to }),
+    apiFetch<PoSyncStatus>('/sap/po/status'),
   ]);
 
   const idGagal = data.filter((d) => d.status === 'FAILED').map((d) => d.id);
@@ -96,10 +101,8 @@ export default async function SapPage({
         <p className="mb-5 flex items-start gap-2 rounded-card border border-warn/40 bg-warn/10 px-4 py-3 text-[14px] text-warn">
           <PauseCircle className="mt-0.5 size-4 shrink-0" strokeWidth={2} aria-hidden />
           <span>
-            Gateway <strong>{ringkas.gateway}</strong> belum aktif. Untuk mode mssql, aktifkan{' '}
-            <code>SAP_MSSQL_ENABLED</code> setelah staging siap.
-            Dokumen tetap dikumpulkan dan menunggu — tidak ada yang hilang. Begitu bentuk tabel
-            tujuan dan movement type disepakati tim SAP, seluruh tunggakan terkirim apa adanya.
+            Pengiriman ke SAP belum aktif. Dokumen tetap tersimpan dalam antrean.
+            Pengiriman dapat diaktifkan setelah koneksi dan pemetaan data SAP selesai diuji.
           </span>
         </p>
       ) : ringkas.gateway === 'fake' ? (
@@ -109,6 +112,12 @@ export default async function SapPage({
         </p>
       ) : null}
 
+      <PoSync
+        status={poStatus}
+        canSync={user.permissions.includes('sap.po.sync')}
+        canSchedule={user.permissions.includes('setting.write')}
+      />
+      <MasterSync enabled={poStatus.enabled} canSync={user.permissions.includes('sap.master.sync')} />
       <Reveal>
         <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
           <Kartu icon={Clock} label="Menunggu kirim" nilai={ringkas.pending} tone="accent" />

@@ -57,6 +57,11 @@ cutoff, akun uji untuk setiap role, dan satu akun untuk setiap vendor di master.
 Hapus atau ubah kembali menjadi `off` setelah seed; seed produksi tanpa flag ini
 hanya membuat pabrik, peran, permission, dan admin.
 
+Nomor Order Sheet dummy mengikuti format `PYYMMDDNNNRR` dan penghitung yang
+sama dengan order biasa. Recovery memakai nomor dasar order asal; hanya RR
+yang bertambah. UUID dokumen tetap, sehingga seed ulang menemukan dokumen
+yang sama dan mempertahankan nomor serta tanggal delivery yang sudah terbit.
+
 `DISPLAY_DEVICE_TOKEN` hanya dibaca saat seed pertama kali membuat perangkat.
 Setelah seed berhasil, hapus nilai token dari `.env`; ARES menyimpan hash-nya di
 database. Buka `http://<ip-server>:3000/display/setup` di PC monitor, masukkan
@@ -82,7 +87,7 @@ aktif. Nomor dokumen hasil uji harus berbentuk `FAKE-<id>`.
 |---|---|---|---|
 | Administrator | `ADMIN` / nilai `ADMIN_INITIAL_PASSWORD` | admin | Ganti password segera setelah setup. |
 | PPIC pilot | `PPIC01` / nilai `DEMO_INTERNAL_PASSWORD` | ppic | Dibuat seed demo. |
-| Gudang pilot | `GUDANG01` / nilai `DEMO_INTERNAL_PASSWORD` | warehouse | Dibuat seed demo. |
+| Gudang pilot | `GUDANG01` / nilai `DEMO_INTERNAL_PASSWORD` | warehouse | Dibuat seed demo. Setelah login langsung ke Receiving dengan tampilan handheld, termasuk pada komputer. Sesi scan dan hasil penerimaan tetap satu kolom. |
 | Produksi pilot | `PRODUKSI01` / nilai `DEMO_INTERNAL_PASSWORD` | produksi | Dibuat seed demo. |
 | Setiap supplier | `<kode_vendor>@aiia.co.id` / nilai `DEMO_SUPPLIER_PASSWORD` | supplier | Dibuat seed demo dan terikat ke satu vendor. Spasi/tanda baca kode menjadi `_`, misalnya `FUJI SEIKI` → `fuji_seiki@aiia.co.id`. |
 | Monitor receiving | `RECEIVING-TV-01` / token dari `.env` | device | Pairing sekali di `/display/setup`; bukan akun user/guest. |

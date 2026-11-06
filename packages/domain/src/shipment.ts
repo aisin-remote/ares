@@ -138,3 +138,38 @@ export function confirmShipment(
         : [],
   };
 }
+
+// ─── Delivery Sheet (F-30) ──────────────────────────────────────────────────
+
+export interface DeliveryLineInput {
+  boxOrdered: number;
+  /** BOX_SHIPPED hasil konfirmasi supplier (atau koreksi PPIC, 6.3.4). */
+  boxShipped: number;
+  qtyPerBox: number;
+  sapPoNo: string;
+}
+
+export interface DeliverySummary {
+  lines: Array<{ boxShipped: number; orderPcs: number; shippedPcs: number; undeliveredPcs: number }>;
+  totalBoxShipped: number;
+  /** PO# di kepala Delivery Sheet: nomor PO SAP unik, urut kemunculan. */
+  poNumbers: string[];
+}
+
+/**
+ * Angka Delivery Sheet yang terbit setelah supplier mengonfirmasi kirim.
+ * Undelivered = order − kirim; sisanya sudah pindah ke Order Sheet recovery
+ * (RR + 1), jadi tidak ikut discan dengan Delivery Sheet ini.
+ */
+export function summarizeDelivery(lines: readonly DeliveryLineInput[]): DeliverySummary {
+  const rows = lines.map((line) => {
+    const orderPcs = line.boxOrdered * line.qtyPerBox;
+    const shippedPcs = line.boxShipped * line.qtyPerBox;
+    return { boxShipped: line.boxShipped, orderPcs, shippedPcs, undeliveredPcs: orderPcs - shippedPcs };
+  });
+  return {
+    lines: rows,
+    totalBoxShipped: rows.reduce((n, row) => n + row.boxShipped, 0),
+    poNumbers: [...new Set(lines.map((line) => line.sapPoNo.trim()).filter(Boolean))],
+  };
+}

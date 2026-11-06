@@ -60,12 +60,17 @@ export default async function RiwayatPage({
               {data.map((p) => (
                 <article key={p.id} className="p-4">
                   <div className="flex items-start justify-between gap-3">
-                    <Link
-                      href={`/portal/${p.publicId}`}
-                      className="min-w-0 truncate font-mono text-[16px] font-bold text-ink"
-                    >
-                      {orderSheetDisplayNo(p.picklistNo, p.revision)}
-                    </Link>
+                    <div className="min-w-0">
+                      <Link
+                        href={`/portal/${p.publicId}`}
+                        className="block truncate font-mono text-[16px] font-bold text-ink"
+                      >
+                        {orderSheetDisplayNo(p.picklistNo, p.revision)}
+                      </Link>
+                      {p.revision > 0 ? (
+                        <span className="text-[12px] font-normal text-ink-muted">Recovery</span>
+                      ) : null}
+                    </div>
                     <span
                       className={cn(
                         'inline-flex shrink-0 items-center whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] font-semibold',
@@ -99,6 +104,7 @@ export default async function RiwayatPage({
                       <UnduhDokumen
                         picklistId={p.publicId}
                         siap={p.pdfReadyAt !== null}
+                        deliverySheet={p.shippedAt !== null}
                         ukuran="sm"
                       />
                     ) : null}
@@ -137,6 +143,9 @@ export default async function RiwayatPage({
                         <Link href={`/portal/${p.publicId}`} className="hover:underline">
                           {orderSheetDisplayNo(p.picklistNo, p.revision)}
                         </Link>
+                        {p.revision > 0 ? (
+                          <span className="ml-2 text-[12px] font-normal text-ink-muted">Recovery</span>
+                        ) : null}
                       </Td>
                       <Td className="tabular whitespace-nowrap">{tanggal(p.deliveryDate)}</Td>
                       <Td className="tabular">{jam(p.arrivalTime)}</Td>
@@ -161,6 +170,7 @@ export default async function RiwayatPage({
                           <UnduhDokumen
                             picklistId={p.publicId}
                             siap={p.pdfReadyAt !== null}
+                            deliverySheet={p.shippedAt !== null}
                             ukuran="sm"
                           />
                         ) : (

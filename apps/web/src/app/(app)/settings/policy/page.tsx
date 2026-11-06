@@ -8,6 +8,6 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ p
   return <MasterEntityPage rawEntity="vendorCutoffs" searchParams={searchParams} view={{
     path: '/settings/policy', section: 'Setting', title: 'Kebijakan Pembulatan',
     description: 'Aturan pembulatan box per jadwal cutoff. Kekurangan kirim otomatis menjadi Order Sheet recovery.',
-    listFields: ['vendorId', 'cutoffTime', 'rounding', 'isActive'],
+    listFields: ['vendorId', 'rounding', 'isActive'],
   }} />;
 }

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { stagingEnvSchema } from '../sap/staging.config';
 
 /**
  * Boolean dari environment variable.
@@ -64,6 +65,7 @@ const envSchema = z.object({
   SAP_SLOC: z.string().default('WH00'),
   /** Implementasi tujuan sap-writer. Fake dipakai di development/pilot tanpa SAP. */
   SAP_GATEWAY: z.enum(['fake', 'mssql']).default('fake'),
+  ...stagingEnvSchema.shape,
 
   /** Tempat PDF picklist & kanban disimpan worker (F-27); relatif ke cwd proses. */
   STORAGE_DIR: z.string().default('./storage'),

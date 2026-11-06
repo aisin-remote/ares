@@ -11,31 +11,9 @@ export function picklistDocument(
   qr: Buffer,
   dicetakPada: Date,
 ): React.ReactElement<ReactPdf.DocumentProps> {
-  const { Document, Page, View, Text, Image, StyleSheet } = pdf;
+  const { Document, Page, View, Text, Image } = pdf;
   const no = nomorRevisi(data.picklistNo, data.revision);
-  const s = StyleSheet.create({
-    page: { padding: 22, paddingBottom: 35, fontSize: 7.5, fontFamily: 'Helvetica', color: '#111' },
-    row: { flexDirection: 'row' },
-    badge: { backgroundColor: '#111', color: '#fff', paddingVertical: 5, paddingHorizontal: 12,
-      fontFamily: 'Helvetica-Bold', fontSize: 9, alignSelf: 'flex-start' },
-    title: { fontSize: 15, fontFamily: 'Helvetica-Bold', textAlign: 'center', marginTop: 2 },
-    subtitle: { fontSize: 7, textAlign: 'center', marginTop: 3 },
-    qr: { width: 66, height: 66 },
-    meta: { borderWidth: 0.7, borderColor: '#222', marginTop: 7 },
-    cell: { padding: 4, borderRightWidth: 0.5, borderBottomWidth: 0.5, borderColor: '#777' },
-    label: { fontSize: 6, color: '#555', marginBottom: 2 },
-    value: { fontFamily: 'Helvetica-Bold', fontSize: 8 },
-    table: { marginTop: 8, borderWidth: 0.7, borderColor: '#222' },
-    th: { paddingVertical: 4, paddingHorizontal: 2, fontSize: 5.8, fontFamily: 'Helvetica-Bold',
-      textAlign: 'center', borderRightWidth: 0.4, borderColor: '#777' },
-    td: { paddingVertical: 5, paddingHorizontal: 2, borderRightWidth: 0.4,
-      borderTopWidth: 0.4, borderColor: '#aaa', fontSize: 6.5 },
-    right: { textAlign: 'right' },
-    center: { textAlign: 'center' },
-    instructions: { borderWidth: 0.7, borderColor: '#222', padding: 6, marginTop: 9, minHeight: 42 },
-    barcode: { width: 225, height: 38, alignSelf: 'center', marginTop: 10 },
-    footer: { position: 'absolute', left: 22, right: 22, bottom: 14, fontSize: 6, color: '#555' },
-  });
+  const s = orderSheetStyles(pdf);
   const w = [4, 8, 21, 9, 7, 7, 8, 7, 10, 9, 10] as const;
   const heads = ['No', 'Dock Code', 'AISIN Part # / Supplier Part #', 'Back number', 'Box qty',
     'Order unit', 'Order qty', '# of Box', 'Confirmed qty', 'Shipping completed', 'PO / item'];
@@ -91,4 +69,31 @@ export function picklistDocument(
       </Page>
     </Document>
   );
+}
+
+/** Gaya bersama Order Sheet dan Delivery Sheet, supaya kedua lembar tetap sama formatnya. */
+export function orderSheetStyles(pdf: typeof ReactPdf) {
+  return pdf.StyleSheet.create({
+    page: { padding: 22, paddingBottom: 35, fontSize: 7.5, fontFamily: 'Helvetica', color: '#111' },
+    row: { flexDirection: 'row' },
+    badge: { backgroundColor: '#111', color: '#fff', paddingVertical: 5, paddingHorizontal: 12,
+      fontFamily: 'Helvetica-Bold', fontSize: 9, alignSelf: 'flex-start' },
+    title: { fontSize: 15, fontFamily: 'Helvetica-Bold', textAlign: 'center', marginTop: 2 },
+    subtitle: { fontSize: 7, textAlign: 'center', marginTop: 3 },
+    qr: { width: 66, height: 66 },
+    meta: { borderWidth: 0.7, borderColor: '#222', marginTop: 7 },
+    cell: { padding: 4, borderRightWidth: 0.5, borderBottomWidth: 0.5, borderColor: '#777' },
+    label: { fontSize: 6, color: '#555', marginBottom: 2 },
+    value: { fontFamily: 'Helvetica-Bold', fontSize: 8 },
+    table: { marginTop: 8, borderWidth: 0.7, borderColor: '#222' },
+    th: { paddingVertical: 4, paddingHorizontal: 2, fontSize: 5.8, fontFamily: 'Helvetica-Bold',
+      textAlign: 'center', borderRightWidth: 0.4, borderColor: '#777' },
+    td: { paddingVertical: 5, paddingHorizontal: 2, borderRightWidth: 0.4,
+      borderTopWidth: 0.4, borderColor: '#aaa', fontSize: 6.5 },
+    right: { textAlign: 'right' },
+    center: { textAlign: 'center' },
+    instructions: { borderWidth: 0.7, borderColor: '#222', padding: 6, marginTop: 9, minHeight: 42 },
+    barcode: { width: 225, height: 38, alignSelf: 'center', marginTop: 10 },
+    footer: { position: 'absolute', left: 22, right: 22, bottom: 14, fontSize: 6, color: '#555' },
+  });
 }

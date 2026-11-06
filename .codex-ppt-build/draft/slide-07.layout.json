@@ -1,0 +1,554 @@
+{
+  "schema": "openai.presentation.layout/v5",
+  "unit": "px",
+  "slide": {
+    "id": "sl/98125r",
+    "index": 6,
+    "layout": {
+      "id": "ly/x07qxgj2",
+      "name": "Blank"
+    },
+    "masterLayoutId": "ly/v618vy94",
+    "masterLayoutName": "Master",
+    "backgroundColor": "rgba(247,248,245,1)",
+    "position": {
+      "left": 0,
+      "top": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "inheritedLayers": [
+    {
+      "scope": "layout",
+      "id": "ly/x07qxgj2",
+      "name": "Blank",
+      "type": "blank",
+      "parentLayoutId": "ly/v618vy94",
+      "elements": []
+    },
+    {
+      "scope": "master",
+      "id": "ly/v618vy94",
+      "name": "Master",
+      "type": "master",
+      "elements": []
+    }
+  ],
+  "elements": [
+    {
+      "order": 1,
+      "kind": "shape",
+      "scope": "slide",
+      "id": "sh/h03atkfm",
+      "editable": true,
+      "name": "top-accent-7",
+      "position": {
+        "left": 0,
+        "top": 0,
+        "width": 1280,
+        "height": 14
+      },
+      "geometry": "rect",
+      "fillColor": "#1E6786",
+      "lineColor": "#1E6786",
+      "lineWidth": 0
+    },
+    {
+      "order": 2,
+      "kind": "shape",
+      "scope": "slide",
+      "id": "sh/uxsri5wb",
+      "editable": true,
+      "name": "flow-badge-7",
+      "position": {
+        "left": 64,
+        "top": 55,
+        "width": 105,
+        "height": 34
+      },
+      "geometry": "roundRect",
+      "fillColor": "#1E6786",
+      "lineColor": "#1E6786",
+      "lineWidth": 0
+    },
+    {
+      "order": 3,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/fy1sraxw",
+      "editable": true,
+      "name": "flow-label-7",
+      "position": {
+        "left": 77,
+        "top": 62,
+        "width": 82,
+        "height": 21
+      },
+      "geometry": "rect",
+      "lineWidth": 0,
+      "text": "FLOW 07",
+      "style": {
+        "fontSize": 13,
+        "typeface": "Aptos",
+        "color": "#FFFFFF",
+        "bold": true,
+        "italic": false,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "FLOW 07",
+          "style": {
+            "fontSize": 13,
+            "color": "#FFFFFF",
+            "bold": true
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "FLOW 07",
+              "fontSize": 13,
+              "color": "#FFFFFF",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 4,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/sva9gve5",
+      "editable": true,
+      "name": "role-7",
+      "position": {
+        "left": 188,
+        "top": 62,
+        "width": 320,
+        "height": 22
+      },
+      "geometry": "rect",
+      "lineWidth": 0,
+      "text": "SUPPLIER",
+      "style": {
+        "fontSize": 13,
+        "typeface": "Aptos",
+        "color": "#124B62",
+        "bold": true,
+        "italic": false,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "SUPPLIER",
+          "style": {
+            "fontSize": 13,
+            "color": "#124B62",
+            "bold": true
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "SUPPLIER",
+              "fontSize": 13,
+              "color": "#124B62",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 5,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/twjap0fq",
+      "editable": true,
+      "name": "title-7",
+      "position": {
+        "left": 64,
+        "top": 118,
+        "width": 520,
+        "height": 145
+      },
+      "geometry": "rect",
+      "lineWidth": 0,
+      "text": "Barang dikirim ke Aisin",
+      "style": {
+        "fontSize": 38,
+        "typeface": "Aptos",
+        "color": "#10272F",
+        "bold": true,
+        "italic": false,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Barang dikirim ke Aisin",
+          "style": {
+            "fontSize": 38,
+            "color": "#10272F",
+            "bold": true
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Barang dikirim ke Aisin",
+              "fontSize": 38,
+              "color": "#10272F",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 6,
+      "kind": "shape",
+      "scope": "slide",
+      "id": "sh/6tsre5wz",
+      "editable": true,
+      "name": "title-rule-7",
+      "position": {
+        "left": 64,
+        "top": 278,
+        "width": 72,
+        "height": 5
+      },
+      "geometry": "rect",
+      "fillColor": "#1E6786",
+      "lineColor": "#1E6786",
+      "lineWidth": 0
+    },
+    {
+      "order": 7,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/7u1snaxk",
+      "editable": true,
+      "name": "body-7",
+      "position": {
+        "left": 64,
+        "top": 313,
+        "width": 512,
+        "height": 154
+      },
+      "geometry": "rect",
+      "lineWidth": 0,
+      "text": "Supplier membawa barang, kanban yang terpasang pada box, dan Delivery Sheet. Status order berubah menjadi Dikirim dan menunggu Receiving.",
+      "style": {
+        "fontSize": 20,
+        "typeface": "Aptos",
+        "color": "#5D6C70",
+        "bold": false,
+        "italic": false,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Supplier membawa barang, kanban yang terpasang pada box, dan Delivery Sheet. Status order berubah menjadi Dikirim dan menunggu Receiving.",
+          "style": {
+            "fontSize": 20,
+            "color": "#5D6C70"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Supplier membawa barang, kanban yang terpasang pada box, dan Delivery Sheet. Status order berubah menjadi Dikirim dan menunggu Receiving.",
+              "fontSize": 20,
+              "color": "#5D6C70"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 8,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/cre9sze9",
+      "editable": true,
+      "name": "output-label-7",
+      "position": {
+        "left": 64,
+        "top": 503,
+        "width": 170,
+        "height": 22
+      },
+      "geometry": "rect",
+      "lineWidth": 0,
+      "text": "OUTPUT PROSES",
+      "style": {
+        "fontSize": 12,
+        "typeface": "Aptos",
+        "color": "#1E6786",
+        "bold": true,
+        "italic": false,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "OUTPUT PROSES",
+          "style": {
+            "fontSize": 12,
+            "color": "#1E6786",
+            "bold": true
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "OUTPUT PROSES",
+              "fontSize": 12,
+              "color": "#1E6786",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 9,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/dsna14fu",
+      "editable": true,
+      "name": "output-7",
+      "position": {
+        "left": 64,
+        "top": 533,
+        "width": 500,
+        "height": 58
+      },
+      "geometry": "rect",
+      "lineWidth": 0,
+      "text": "Order menunggu proses receiving",
+      "style": {
+        "fontSize": 23,
+        "typeface": "Aptos",
+        "color": "#10272F",
+        "bold": true,
+        "italic": false,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Order menunggu proses receiving",
+          "style": {
+            "fontSize": 23,
+            "color": "#10272F",
+            "bold": true
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Order menunggu proses receiving",
+              "fontSize": 23,
+              "color": "#10272F",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 10,
+      "kind": "shape",
+      "scope": "slide",
+      "id": "sh/loruxkz6",
+      "editable": true,
+      "name": "screen-frame-7",
+      "position": {
+        "left": 626,
+        "top": 56,
+        "width": 606,
+        "height": 604
+      },
+      "geometry": "roundRect",
+      "fillColor": "#11140F",
+      "lineColor": "#124B62",
+      "lineWidth": 2
+    },
+    {
+      "order": 11,
+      "kind": "image",
+      "scope": "slide",
+      "id": "im/vq18jyho",
+      "editable": true,
+      "position": {
+        "left": 646,
+        "top": 74,
+        "width": 566,
+        "height": 568
+      },
+      "geometry": "roundRect",
+      "alt": "Detail order supplier dengan status Dikirim dan progress proses pengiriman.",
+      "contentType": "image/jpeg",
+      "fit": "contain",
+      "mask": {
+        "geometry": "roundRect",
+        "adjustmentList": [
+          {
+            "name": "adj",
+            "formula": "val 2120"
+          }
+        ]
+      },
+      "asset": {
+        "contentType": "image/jpeg",
+        "byteLength": 40308
+      }
+    },
+    {
+      "order": 12,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/z2pcvah0",
+      "editable": true,
+      "name": "footer-brand-7",
+      "position": {
+        "left": 64,
+        "top": 657,
+        "width": 280,
+        "height": 20
+      },
+      "geometry": "rect",
+      "lineWidth": 0,
+      "text": "ARES · e-Kanban supplier",
+      "style": {
+        "fontSize": 11,
+        "typeface": "Aptos",
+        "color": "#5D6C70",
+        "bold": false,
+        "italic": false,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "ARES · e-Kanban supplier",
+          "style": {
+            "fontSize": 11,
+            "color": "#5D6C70"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "ARES · e-Kanban supplier",
+              "fontSize": 11,
+              "color": "#5D6C70"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 13,
+      "kind": "textbox",
+      "scope": "slide",
+      "id": "sh/y1gbm50f",
+      "editable": true,
+      "name": "footer-page-7",
+      "position": {
+        "left": 520,
+        "top": 655,
+        "width": 58,
+        "height": 22
+      },
+      "geometry": "rect",
+      "lineWidth": 0,
+      "text": "07 / 08",
+      "style": {
+        "fontSize": 12,
+        "typeface": "Aptos",
+        "color": "#124B62",
+        "bold": true,
+        "italic": false,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "07 / 08",
+          "style": {
+            "fontSize": 12,
+            "color": "#124B62",
+            "bold": true
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "07 / 08",
+              "fontSize": 12,
+              "color": "#124B62",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    }
+  ]
+}

@@ -45,6 +45,7 @@ beforeAll(async () => {
   vendorId = (await db.insert(vendors).values({
     sapVendorNo: `MV${stamp}`,
     name: 'Supplier uji MES',
+    plantId: plant.id,
   }).$returningId())[0]!.id;
   const partRows = await db.insert(parts).values([
     { sapMaterialNo: `MP${stamp}`, partNo: `PARENT-${stamp}`, name: 'Part jadi uji' },
@@ -67,7 +68,6 @@ beforeAll(async () => {
   }))).$returningId().then((rows) => rows.map((row) => row.id));
   await db.insert(vendorCutoffs).values({
     vendorId,
-    cutoffTime: '10:00:00',
     workdays: '1,2,3,4,5',
     leadDays: 1,
     arrivalTime: '08:00:00',
@@ -130,6 +130,8 @@ describe('ConsumptionService.ingest (F-10–F-12)', () => {
       .where(inArray(orderQueues.vendorPartId, vendorPartIds));
     expect(queueRows).toHaveLength(2);
     expect(queueRows.map((row) => row.pcs).sort((a, b) => a - b)).toEqual([5, 10]);
+    // Senin 21 Sep 08:00 WIB → cutoff hari itu, 00:00 WIB.
+    expect(queueRows.every((row) => row.cutoffAt.toISOString() === '2026-09-20T17:00:00.000Z')).toBe(true);
 
     const replay = await service.ingest(input, actor);
     expect(replay.status).toBe('DUPLICATE');
@@ -201,5 +203,51 @@ describe('ConsumptionService.ingest (F-10–F-12)', () => {
       .where(eq(consumptions.sourceRecordKey, `MES:${closedSource}`));
     expect(closedRows).toHaveLength(2);
     expect(closedRows.every((row) => row.qty > 0)).toBe(true);
+  });
+
+  it('konsumsi setelah antrean hari cutoff ditutup masuk hari cutoff berikutnya (F-14)', async () => {
+    // Tes sebelumnya menutup antrean Selasa 22 Sep; record siang hari itu harus ke Rabu.
+    const lateSource = `${sourceId}-LATE`;
+    expect((await service.ingest({
+      id: lateSource,
+      partNo: `PARENT-${stamp}`,
+      qty: 1,
+      line: 'LINE-1',
+      producedAt: '2026-09-22T05:00:00.000Z',
+    }, actor)).status).toBe('CREATED');
+    const rows = await db.select({ cutoffAt: orderQueues.cutoffAt }).from(consumptions)
+      .innerJoin(orderQueues, eq(consumptions.queueId, orderQueues.id))
+      .where(eq(consumptions.sourceRecordKey, `MES:${lateSource}`));
+    expect(rows).toHaveLength(2);
+    expect(rows.every((row) => row.cutoffAt.toISOString() === '2026-09-22T17:00:00.000Z')).toBe(true);
+  });
+
+  it('PPIC menambah part lain supplier yang sama ke antrean cutoff yang belum terbit (F-13)', async () => {
+    const [extraPart] = await db.insert(parts).values({
+      sapMaterialNo: `MC3${stamp}`, partNo: `COMP-3-${stamp}`, name: 'Komponen uji 3',
+    }).$returningId();
+    componentIds.push(extraPart!.id);
+    const [extraVp] = await db.insert(vendorParts).values({
+      partId: extraPart!.id, vendorId, qtyPerBox: 25, backNo: 'M-3',
+    }).$returningId();
+    vendorPartIds.push(extraVp!.id);
+
+    // Senin 21 Sep masih punya antrean OPEN dari tes pertama.
+    const senin = '2026-09-20T17:00:00.000Z';
+    const added = await controls.addPart(
+      { vendorPartId: extraVp!.id, cutoffAt: senin, kanban: 2, reason: 'Tambahan safety stock' }, actor,
+    );
+    expect(added).toMatchObject({ pcs: 50, kanban: 2, deltaPcs: 50 });
+    const [row] = await db.select().from(orderQueues).where(eq(orderQueues.id, added.id));
+    expect(row).toMatchObject({ vendorPartId: extraVp!.id, pcs: 50, status: 'OPEN' });
+    expect(row!.cutoffAt.toISOString()).toBe(senin);
+
+    await expect(controls.addPart(
+      { vendorPartId: extraVp!.id, cutoffAt: senin, kanban: 1, reason: 'Dobel' }, actor,
+    )).rejects.toBeInstanceOf(ConflictException);
+    // Selasa 22 Sep sudah ditutup di tes kedua.
+    await expect(controls.addPart(
+      { vendorPartId: extraVp!.id, cutoffAt: '2026-09-21T17:00:00.000Z', kanban: 1, reason: 'Terlambat' }, actor,
+    )).rejects.toBeInstanceOf(ConflictException);
   });
 });

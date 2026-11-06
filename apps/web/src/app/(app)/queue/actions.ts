@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { unstable_rethrow } from 'next/navigation';
-import type { QueueAdjustmentInput, QueueHoldInput } from '@ares/contracts';
+import type { QueueAddPartInput, QueueAdjustmentInput, QueueHoldInput } from '@ares/contracts';
 import { apiFetch, ApiRequestError } from '@/lib/api';
 
 type Result = { ok: true } | { error: string };
@@ -13,6 +13,17 @@ export async function setQueueKanbanAction(id: number, input: QueueAdjustmentInp
     await apiFetch(`/order-queues/${id}/adjust`, { method: 'POST', body: JSON.stringify(input) });
     revalidatePath('/queue');
     return { ok: true };
+  } catch (error) {
+    unstable_rethrow(error);
+    return { error: message(error) };
+  }
+}
+
+export async function addQueuePartAction(input: QueueAddPartInput): Promise<{ id: number } | { error: string }> {
+  try {
+    const result = await apiFetch<{ id: number }>('/order-queues', { method: 'POST', body: JSON.stringify(input) });
+    revalidatePath('/queue');
+    return { id: result.id };
   } catch (error) {
     unstable_rethrow(error);
     return { error: message(error) };

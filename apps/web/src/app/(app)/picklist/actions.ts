@@ -34,6 +34,19 @@ export interface IssueResult {
   kanbanCount: number;
 }
 
+/** F-31: API memeriksa izin penerbitan, scope pabrik, dan jeda kirim ulang. */
+export async function resendOrderEmailAction(reference: string): Promise<{ deliveryId: number } | { error: string }> {
+  try {
+    const result = await apiFetch<{ deliveryId: number }>(`/picklists/${encodeURIComponent(reference)}/resend-email`,
+      { method: 'POST', body: '{}' });
+    revalidatePath(`/picklist/${reference}`);
+    return result;
+  } catch (err) {
+    unstable_rethrow(err);
+    return { error: toMessage(err) };
+  }
+}
+
 /** F-17 order manual. */
 export async function issueManualAction(
   input: IssueManualPicklistInput,

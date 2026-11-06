@@ -27,7 +27,8 @@ export class NotifyWorker implements OnModuleInit, OnModuleDestroy {
       QUEUES.NOTIFICATION,
       async (job: Job<NotificationJob | VendorPartNoticeJob | LoginOtpEmailJob>) => {
         if (job.name === JOBS.SEND_NOTIFICATION)
-          return this.notify.sendPicklistNotice(job.data as NotificationJob);
+          return this.notify.sendPicklistNotice(job.data as NotificationJob,
+            job.attemptsMade + 1 < (job.opts.attempts ?? 1));
         if (job.name === JOBS.NOTIFY_VENDOR_PART)
           return this.notify.sendVendorPartNotice(job.data as VendorPartNoticeJob);
         if (job.name === JOBS.SEND_LOGIN_OTP)

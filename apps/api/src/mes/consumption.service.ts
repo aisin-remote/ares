@@ -19,6 +19,7 @@ import {
 import type { ProductionResultInput } from '@ares/contracts';
 import { assignCutoff, consumeProduction } from '@ares/domain';
 import { InjectDb } from '../db/db.module';
+import { closedCutoffs } from '../common/closed-cutoffs';
 
 export type ConsumptionOutcome =
   | { status: 'CREATED'; consumptionIds: number[] }
@@ -70,25 +71,16 @@ export class ConsumptionService {
       if (components.length === 0) throw new Error(`BOM aktif untuk ${input.partNo} tidak ditemukan`);
 
       const vpById = new Map(vps.map((vp) => [vp.id, vp]));
-      const assigned = components.map((component) => {
-        const vp = vpById.get(component.vendorPartId)!;
-        const cutoff = assignCutoff(
-          occurredAt,
-          cutoffRows
-            .filter((row) => row.vendorId === vp.vendorId)
-            .map((row) => ({
-              id: row.id,
-              cutoffTime: row.cutoffTime,
-              workdays: row.workdays,
-              leadDays: row.leadDays,
-              arrivalTime: row.arrivalTime,
-              holidayShift: row.holidayShift,
-            })),
-          holidayRows.map((row) => row.date),
-        );
-        if (!cutoff) throw new Error(`Jadwal cutoff aktif untuk vendor part ${vp.id} tidak ditemukan`);
-        return { component, cutoff };
-      });
+      const holidayDates = holidayRows.map((row) => row.date);
+      const schedulesOf = (vendorId: number) => cutoffRows
+        .filter((row) => row.vendorId === vendorId)
+        .map((row) => ({
+          id: row.id,
+          workdays: row.workdays,
+          leadDays: row.leadDays,
+          arrivalTime: row.arrivalTime,
+          holidayShift: row.holidayShift,
+        }));
 
       const plantId = actor?.plantId ?? (await this.defaultPlantId());
       const ids = await this.db.transaction(async (tx) => {
@@ -96,6 +88,22 @@ export class ConsumptionService {
         const marker = await tx.select({ id: consumptions.id }).from(consumptions)
           .where(eq(consumptions.sourceKey, sourceKey)).limit(1);
         if (marker[0]) return [marker[0].id];
+
+        // Cutoff dipilih di dalam transaksi: hari yang Order Sheet-nya sudah
+        // terbit dilewati (F-14).
+        const closedByVendor = new Map<number, Set<number>>();
+        const assigned = [];
+        for (const component of components) {
+          const vp = vpById.get(component.vendorPartId)!;
+          let closed = closedByVendor.get(vp.vendorId);
+          if (!closed) {
+            closed = await closedCutoffs(tx, vp.vendorId, occurredAt);
+            closedByVendor.set(vp.vendorId, closed);
+          }
+          const cutoff = assignCutoff(occurredAt, schedulesOf(vp.vendorId), holidayDates, closed);
+          if (!cutoff) throw new Error(`Jadwal cutoff aktif untuk vendor part ${vp.id} tidak ditemukan`);
+          assigned.push({ component, cutoff });
+        }
 
         const consumptionIds: number[] = [];
         for (const { component, cutoff } of assigned) {

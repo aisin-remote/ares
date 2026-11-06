@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { confirmShipment, overrideShippedBoxes, ShipmentError, type ShipmentLineInput } from './shipment';
+import {
+  confirmShipment,
+  overrideShippedBoxes,
+  ShipmentError,
+  summarizeDelivery,
+  type ShipmentLineInput,
+} from './shipment';
 
 const k = (
   id: string,
@@ -192,5 +198,22 @@ describe('confirmShipment — kanban yang sudah diterima sebelum konfirmasi', ()
       'CARRY_OVER',
     );
     expect(out.lines[0]!.shippedKanbanIds).toEqual(['a1', 'a2']);
+  });
+});
+
+describe('summarizeDelivery (Delivery Sheet, F-30)', () => {
+  it('menghitung qty kirim, undelivered, total box, dan PO unik', () => {
+    const out = summarizeDelivery([
+      { boxOrdered: 16, boxShipped: 16, qtyPerBox: 100, sapPoNo: '4500001' },
+      { boxOrdered: 10, boxShipped: 7, qtyPerBox: 50, sapPoNo: '4500002' },
+      { boxOrdered: 2, boxShipped: 2, qtyPerBox: 10, sapPoNo: '4500001' },
+    ]);
+    expect(out.lines).toEqual([
+      { boxShipped: 16, orderPcs: 1600, shippedPcs: 1600, undeliveredPcs: 0 },
+      { boxShipped: 7, orderPcs: 500, shippedPcs: 350, undeliveredPcs: 150 },
+      { boxShipped: 2, orderPcs: 20, shippedPcs: 20, undeliveredPcs: 0 },
+    ]);
+    expect(out.totalBoxShipped).toBe(25);
+    expect(out.poNumbers).toEqual(['4500001', '4500002']);
   });
 });

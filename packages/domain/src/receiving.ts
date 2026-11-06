@@ -13,7 +13,9 @@ import { orderSheetBaseNo, orderSheetDisplayNo } from './order-number';
 
 export type ScanCode =
   | { kind: 'KANBAN'; id: string }
-  | { kind: 'PICKLIST'; no: string; revision: number };
+  | { kind: 'PICKLIST'; no: string; revision: number }
+  /** Delivery Sheet: terbit setelah konfirmasi kirim (F-30), membuka sesi scan (F-34). */
+  | { kind: 'DELIVERY'; no: string; revision: number };
 
 /** yymmdd pada zona pabrik (Asia/Jakarta) — kunci TM_SEQUENCE.DATE_KEY. */
 export function dateKey(d: Date): string {
@@ -35,20 +37,28 @@ export function formatDocNo(code: 'PL' | 'RCP', d: Date, n: number): string {
 /** Prefix `ARES:` membuat kode asing ditolak tanpa query (8.3). */
 export function parseScanCode(raw: string): ScanCode | null {
   const s = raw.trim().toUpperCase();
-  const k = /^ARES:K:([0-9A-Z]{26})$/.exec(s);
+  // Sesudah ID boleh ada part number dan qty (formatKanbanQr); ARES hanya
+  // memakai ID-nya, detail kartu tetap diambil dari DB.
+  const k = /^ARES:K:([0-9A-Z]{26})(?:[^0-9A-Z].*)?$/.exec(s);
   if (k) return { kind: 'KANBAN', id: k[1]! };
-  const order = /^ARES:P:([789]\d{11})$/.exec(s);
+  // P = Order Sheet, D = Delivery Sheet; nomornya sama (DO# = nomor Order Sheet + RR).
+  const order = /^ARES:([PD]):([789]\d{11})$/.exec(s);
   if (order) {
-    const parsed = orderSheetBaseNo(order[1]!);
-    if (parsed) return { kind: 'PICKLIST', no: parsed.baseNo, revision: parsed.revision };
+    const parsed = orderSheetBaseNo(order[2]!);
+    if (parsed) return { kind: docKind(order[1]!), no: parsed.baseNo, revision: parsed.revision };
   }
-  const p = /^ARES:P:([A-Z]+-\d{6}-\d+)-(\d+)$/.exec(s);
-  if (p) return { kind: 'PICKLIST', no: p[1]!, revision: Number(p[2]) };
+  const p = /^ARES:([PD]):([A-Z]+-\d{6}-\d+)-(\d+)$/.exec(s);
+  if (p) return { kind: docKind(p[1]!), no: p[2]!, revision: Number(p[3]) };
   return null;
 }
 
+function docKind(letter: string): 'PICKLIST' | 'DELIVERY' {
+  return letter === 'D' ? 'DELIVERY' : 'PICKLIST';
+}
+
 /**
- * Kebalikan parseScanCode: isi barcode picklist (Code128) dan QR kanban (8.3).
+ * Kebalikan parseScanCode: isi barcode Order Sheet / Delivery Sheet (Code128)
+ * dan QR kanban (8.3).
  *
  * Dokumen PDF tidak boleh merangkai string `ARES:...` sendiri — sekali meleset
  * dari regex di atas, kartu yang sudah tercetak ditolak scanner dan sesi scan
@@ -56,10 +66,19 @@ export function parseScanCode(raw: string): ScanCode | null {
  */
 export function formatScanCode(code: ScanCode): string {
   if (code.kind === 'KANBAN') return `ARES:K:${code.id}`;
+  const prefix = code.kind === 'DELIVERY' ? 'ARES:D:' : 'ARES:P:';
   const displayNo = orderSheetDisplayNo(code.no, code.revision);
   return /^[789]\d{11}$/.test(displayNo)
-    ? `ARES:P:${displayNo}`
-    : `ARES:P:${code.no}-${code.revision}`;
+    ? `${prefix}${displayNo}`
+    : `${prefix}${code.no}-${code.revision}`;
+}
+
+/**
+ * Isi QR kartu kanban (8.3): ID untuk ARES, lalu part number dan qty per
+ * kanban yang bisa dibaca scanner/sistem lain tanpa query ke ARES.
+ */
+export function formatKanbanQr(card: { id: string; partNo: string; qtyPerBox: number }): string {
+  return `${formatScanCode({ kind: 'KANBAN', id: card.id })}|${card.partNo}|${card.qtyPerBox}`;
 }
 
 // ─── 6.4 Validasi scan kanban ───────────────────────────────────────────────
@@ -228,4 +247,33 @@ export function picklistStatusPathOnClose(
     path.push(to);
   }
   return path;
+}
+
+// ─── Receipt Sheet ──────────────────────────────────────────────────────────
+
+export interface ReceiptSheetLineInput {
+  boxOrdered: number;
+  qtyPerBox: number;
+  /** TT_RECEIPT_L.BOX_RECEIVED sesi ini; 0 bila line tidak punya baris receipt. */
+  boxReceived: number;
+  sapPoNo: string;
+}
+
+/**
+ * Angka Receipt Sheet yang dicetak PPIC setelah sesi scan ditutup.
+ * Undelivered = order − diterima di receipt ini; kanban yang kurang sudah
+ * ditandai MISSING (6.5.2) dan menunggu Order Sheet recovery.
+ */
+export function summarizeReceiptSheet(lines: readonly ReceiptSheetLineInput[]) {
+  const rows = lines.map((line) => {
+    const orderPcs = line.boxOrdered * line.qtyPerBox;
+    const receivedPcs = line.boxReceived * line.qtyPerBox;
+    return { boxReceived: line.boxReceived, orderPcs, receivedPcs, undeliveredPcs: orderPcs - receivedPcs };
+  });
+  return {
+    lines: rows,
+    totalBoxReceived: rows.reduce((n, row) => n + row.boxReceived, 0),
+    /** PO# di kepala lembar: nomor PO SAP unik, urut kemunculan. */
+    poNumbers: [...new Set(lines.map((line) => line.sapPoNo.trim()).filter(Boolean))],
+  };
 }

@@ -3,6 +3,8 @@ import { notFound, redirect } from 'next/navigation';
 import { CalendarClock, ClipboardList, Download, FileText, Layers, Truck } from 'lucide-react';
 import { orderSheetDisplayNo } from '@ares/domain';
 import { getPicklistDetail, getPicklistNeighbors } from '@/lib/queries';
+import { getOrderHistory } from '@/lib/order-history';
+import { OrderActivityCard } from '@/components/picklist/order-activity';
 import { getSessionUser } from '@/lib/session';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardHeader, CardDivider, CardBody } from '@/components/ui/card';
@@ -41,13 +43,15 @@ export default async function PortalDetailPage({ params }: { params: Promise<{ i
   const picklist = await getPicklistDetail(sesi.vendorId, id, sesi.plantId);
   if (!picklist) notFound();
   const neighbors = await getPicklistNeighbors(sesi.vendorId, picklist.id, sesi.plantId);
+  const activity = await getOrderHistory(picklist.publicId, sesi.plantId, sesi.vendorId);
 
   const totalKanban = picklist.lines.reduce((n, l) => n + l.kanbanCount, 0);
   const orderNo = orderSheetDisplayNo(picklist.picklistNo, picklist.revision);
   const totalBox = picklist.lines.reduce((n, l) => n + l.boxOrdered, 0);
   const penanda = penandaKedatangan(picklist.deliveryDate, picklist.arrivalTime, picklist.status);
-  // 6.3.4: form konfirmasi hanya sebelum SHIPPED; sesudahnya angkanya beku di layar ini.
-  const bisaKonfirmasi = picklist.status === 'ISSUED' || picklist.status === 'DOWNLOADED';
+  // F-29: form konfirmasi baru muncul setelah dokumen diunduh; 6.3.4: sesudah
+  // SHIPPED angkanya beku di layar ini.
+  const bisaKonfirmasi = picklist.status === 'DOWNLOADED';
   const sudahKirim = picklist.shippedAt !== null;
   const aksiUtama =
     picklist.status === 'CANCELLED' ? (
@@ -66,6 +70,15 @@ export default async function PortalDetailPage({ params }: { params: Promise<{ i
       >
         <Truck className="size-[18px]" strokeWidth={2.2} aria-hidden />
         Konfirmasi kirim
+      </a>
+    ) : picklist.status === 'SHIPPED' ? (
+      // F-30: lembar yang dibawa bersama barang dan discan gudang (F-34).
+      <a
+        href={`/api/picklist/${picklist.publicId}/delivery`}
+        className="inline-flex h-11 items-center gap-2 rounded-full bg-accent px-5 text-[14px] font-semibold text-white transition-colors hover:bg-accent-soft"
+      >
+        <Truck className="size-[18px]" strokeWidth={2.2} aria-hidden />
+        Unduh Delivery Sheet
       </a>
     ) : (
       <a
@@ -98,11 +111,19 @@ export default async function PortalDetailPage({ params }: { params: Promise<{ i
               <CardHeader
                 icon={Download}
                 title="Unduh dokumen"
-                subtitle="Order Sheet, kartu Kanban, dan data CSV untuk order ini"
+                subtitle={
+                  sudahKirim
+                    ? 'Delivery Sheet untuk dibawa bersama barang, Order Sheet, kartu Kanban, dan CSV'
+                    : 'Order Sheet, kartu Kanban, dan data CSV untuk order ini'
+                }
               />
               <CardDivider />
               <CardBody>
-                <UnduhDokumen picklistId={picklist.publicId} siap={picklist.pdfReadyAt !== null} />
+                <UnduhDokumen
+                  picklistId={picklist.publicId}
+                  siap={picklist.pdfReadyAt !== null}
+                  deliverySheet={sudahKirim}
+                />
               </CardBody>
             </Card>
           </Reveal>
@@ -162,7 +183,9 @@ export default async function PortalDetailPage({ params }: { params: Promise<{ i
                   ? 'Isi box yang benar-benar naik truk per part, ETA, dan nomor kendaraan (F-30)'
                   : sudahKirim
                     ? 'Jumlah kirim sudah dikonfirmasi dan tidak bisa diubah dari portal; perubahan lewat PPIC'
-                    : 'Satu kanban per box — tempelkan kartunya pada box yang sesuai'
+                    : picklist.status === 'ISSUED'
+                      ? 'Unduh Order Sheet dan kanban dulu; form konfirmasi kirim muncul setelahnya'
+                      : 'Satu kanban per box — tempelkan kartunya pada box yang sesuai'
               }
             />
             {bisaKonfirmasi ? (
@@ -234,6 +257,8 @@ export default async function PortalDetailPage({ params }: { params: Promise<{ i
           </Card>
         </Reveal>
       </div>
+
+      <div className="mt-5 a-rise"><OrderActivityCard events={activity} /></div>
 
       <p className="mt-5 text-[14px] text-ink-muted">
         <Link href="/portal" className="font-semibold text-ink hover:underline">

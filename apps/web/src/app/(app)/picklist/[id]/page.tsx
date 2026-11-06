@@ -11,6 +11,9 @@ import {
 } from 'lucide-react';
 import { canTransition, orderSheetDisplayNo } from '@ares/domain';
 import { getPicklistDetail, getPicklistNeighbors } from '@/lib/queries';
+import { getOrderEmails, getOrderHistory } from '@/lib/order-history';
+import { OrderActivityCard } from '@/components/picklist/order-activity';
+import { OrderEmailStatus } from '@/components/picklist/order-email-status';
 import { requirePermission } from '@/lib/session';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardHeader, CardDivider } from '@/components/ui/card';
@@ -43,6 +46,10 @@ export default async function PicklistDetailPage({ params }: { params: Promise<{
   const picklist = await getPicklistDetail(sesi.vendorId ?? null, id, sesi.plantId);
   if (!picklist) notFound();
   const neighbors = await getPicklistNeighbors(sesi.vendorId ?? null, picklist.id, sesi.plantId);
+  const [activity, emails] = await Promise.all([
+    getOrderHistory(picklist.publicId, sesi.plantId, sesi.vendorId ?? null),
+    sesi.vendorId === null ? getOrderEmails(picklist.publicId, sesi.plantId) : Promise.resolve([]),
+  ]);
 
   const totalKanban = picklist.lines.reduce((n, l) => n + l.kanbanCount, 0);
   const orderNo = orderSheetDisplayNo(picklist.picklistNo, picklist.revision);
@@ -59,7 +66,11 @@ export default async function PicklistDetailPage({ params }: { params: Promise<{
         description={`${picklist.vendorName} — kirim ${tanggal(picklist.deliveryDate)} jam ${jam(picklist.arrivalTime)}${penanda ? ` · ${penanda.label}` : ''}`}
         actions={
           picklist.pdfReadyAt && picklist.status !== 'CANCELLED' ? (
-            <UnduhDokumen picklistId={picklist.publicId} siap />
+            <UnduhDokumen
+              picklistId={picklist.publicId}
+              siap
+              deliverySheet={picklist.shippedAt !== null}
+            />
           ) : (
             <span className="inline-flex h-11 items-center gap-2 rounded-full border border-line px-5 text-[14px] font-semibold text-ink-muted">
               {picklist.status === 'CANCELLED' ? (
@@ -202,6 +213,14 @@ export default async function PicklistDetailPage({ params }: { params: Promise<{
           </Table>
         </Card>
       </Reveal>
+
+      <div className="mt-5 grid items-start gap-5 xl:grid-cols-2 a-rise">
+        <OrderActivityCard events={activity} />
+        {sesi.vendorId === null ? (
+          <OrderEmailStatus reference={picklist.publicId} orderStatus={picklist.status}
+            deliveries={emails} canResend={sesi.permissions.includes('picklist.issue')} />
+        ) : null}
+      </div>
 
       <p className="mt-5 text-[14px] text-ink-muted">
         <Link href="/picklist" className="font-semibold text-ink hover:underline">

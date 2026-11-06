@@ -1,7 +1,8 @@
 import './load-env';
 import bcrypt from 'bcryptjs';
 import { getDb, closeDb } from './client';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql, inArray } from 'drizzle-orm';
+import { formatOrderSheetNo, poPeriodForDate, nextCutoff, orderPlantInitial } from '@ares/domain';
 import {
   plants,
   roles,
@@ -13,10 +14,13 @@ import {
   poLines,
   vendorParts,
   vendorCutoffs,
+  holidays,
   devices,
   deliverySchedules,
   orderQueues,
   consumptions,
+  bomLines,
+  mesFakeRecords,
   queueAdjustments,
   picklistHeaders,
   picklistLines,
@@ -25,6 +29,7 @@ import {
   receiptHeaders,
   receiptLines,
   scanEvents,
+  sequences,
 } from './schema/index';
 import { REAL_DELIVERY_SCHEDULES } from './delivery-schedule-data';
 import { REAL_SUPPLIERS } from './supplier-list-data';
@@ -38,6 +43,10 @@ const ALL_SUPPLIERS = [...REAL_SUPPLIERS, ...ELECTRIC_SUPPLIERS] as const;
  *
  * Idempoten — aman dijalankan berulang. Data contoh hanya dengan SEED_DEMO=on.
  */
+function demoPoNumber(base: string, date: string): string {
+  return `45${date.slice(2, 7).replace('-', '')}${base === '4500128877' ? '0001' : '0002'}`;
+}
+
 async function main() {
   const db = getDb();
   console.log('[seed] mulai...');
@@ -136,6 +145,10 @@ async function main() {
       { roleId: roleId('ppic'), action: 'receipt.cancel' },
       // Pemantauan dan kontrol outbox SAP (F-46–F-48).
       { roleId: roleId('admin'), action: 'outbox.read' },
+      { roleId: roleId('admin'), action: 'sap.po.sync' },
+      { roleId: roleId('ppic'), action: 'sap.po.sync' },
+      { roleId: roleId('admin'), action: 'sap.master.sync' },
+      { roleId: roleId('ppic'), action: 'sap.master.sync' },
       { roleId: roleId('admin'), action: 'outbox.collect' },
       { roleId: roleId('admin'), action: 'outbox.retry' },
       { roleId: roleId('admin'), action: 'outbox.hold' },
@@ -167,6 +180,9 @@ async function main() {
       { roleId: roleId('ppic'), action: 'consumption.push' },
       { roleId: roleId('admin'), action: 'queue.write' },
       { roleId: roleId('ppic'), action: 'queue.write' },
+      // F-50: laporan performa lintas supplier hanya untuk PPIC/Admin.
+      { roleId: roleId('admin'), action: 'report.arrival.read' },
+      { roleId: roleId('ppic'), action: 'report.arrival.read' },
       { roleId: roleId('admin'), action: 'realtime.read' },
       { roleId: roleId('ppic'), action: 'realtime.read' },
       { roleId: roleId('warehouse'), action: 'realtime.read' },
@@ -413,59 +429,28 @@ async function seedMasterContoh(plantId: number): Promise<void> {
     mustFind(vendorRows, (v) => v.sapVendorNo === no, `vendor ${no}`).id;
   const partId = (no: string) => mustFind(partRows, (p) => p.partNo === no, `part ${no}`).id;
 
-  /*
-   * Rentang PO dibuat mengelilingi tahun berjalan supaya seed tidak
-   * kedaluwarsa sendiri: pickPoItem menolak PO yang tidak meliputi tanggal
-   * kirim, dan order gagal total dengan pesan yang membingungkan.
-   */
-  const tahun = new Date().getFullYear();
-  const validFrom = `${tahun - 1}-01-01`;
-  const validTo = `${tahun + 1}-12-31`;
-
-  await insertMissing('poHeaders', poHeaders, 'sapPoNo', [
-    { sapPoNo: '4500128877', vendorId: vendorId('0000100231'), validFrom, validTo },
-    { sapPoNo: '4500128901', vendorId: vendorId('0000100544'), validFrom, validTo },
-  ]);
-
-  const poRows = await db.select().from(poHeaders);
-  const poId = (no: string) => mustFind(poRows, (p) => p.sapPoNo === no, `PO ${no}`).id;
-  const syncedAt = new Date();
-
-  await insertMissing(
-    'poLines',
-    poLines,
-    ['poId', 'item'],
-    [
-      {
-        poId: poId('4500128877'),
-        item: '00010',
-        partId: partId('48609-0K040'),
-        openQty: 12000,
-        syncedAt,
-      },
-      {
-        poId: poId('4500128877'),
-        item: '00020',
-        partId: partId('53801-0K180'),
-        openQty: 4800,
-        syncedAt,
-      },
-      {
-        poId: poId('4500128901'),
-        item: '00010',
-        partId: partId('90312-38013'),
-        openQty: 30000,
-        syncedAt,
-      },
-      {
-        poId: poId('4500128901'),
-        item: '00020',
-        partId: partId('67867-0K010'),
-        openQty: 9000,
-        syncedAt,
-      },
-    ],
-  );
+  // PO demo bulanan untuk sekitar hari ini dan tanggal dokumen demo yang sudah ada.
+  const current = new Date();
+  const tahun = current.getFullYear();
+  const dates = [-1, 0, 1].map((offset) => new Date(Date.UTC(current.getFullYear(), current.getMonth() + offset, 1)).toISOString().slice(0, 10));
+  const existingDates = await db.select({ date: picklistHeaders.deliveryDate }).from(picklistHeaders)
+    .where(inArray(picklistHeaders.vendorId, [vendorId('0000100231'), vendorId('0000100544')]));
+  const months = [...new Set([...dates, ...existingDates.map((row) => row.date)].map((date) => date.slice(0, 7)))];
+  for (const month of months) {
+    const date = `${month}-01`;
+    await insertMissing('poHeaders', poHeaders, 'sapPoNo', [
+      { sapPoNo: demoPoNumber('4500128877', date), vendorId: vendorId('0000100231'), ...poPeriodForDate(date) },
+      { sapPoNo: demoPoNumber('4500128901', date), vendorId: vendorId('0000100544'), ...poPeriodForDate(date) },
+    ]);
+    const poRows = await db.select().from(poHeaders);
+    const poId = (base: string) => mustFind(poRows, (p) => p.sapPoNo === demoPoNumber(base, date), `PO demo ${month}`).id;
+    await insertMissing('poLines', poLines, ['poId', 'item'], [
+      { poId: poId('4500128877'), item: '00010', partId: partId('48609-0K040'), openQty: 12000, syncedAt: new Date() },
+      { poId: poId('4500128877'), item: '00020', partId: partId('53801-0K180'), openQty: 4800, syncedAt: new Date() },
+      { poId: poId('4500128901'), item: '00010', partId: partId('90312-38013'), openQty: 30000, syncedAt: new Date() },
+      { poId: poId('4500128901'), item: '00020', partId: partId('67867-0K010'), openQty: 9000, syncedAt: new Date() },
+    ]);
+  }
 
   await insertMissing(
     'vendorParts',
@@ -507,16 +492,28 @@ async function seedMasterContoh(plantId: number): Promise<void> {
     ],
   );
 
-  // Jam ditulis HH:MM:SS penuh — MySQL mengembalikan TIME dalam bentuk itu,
-  // dan insertMissing membandingkan kuncinya sebagai teks.
+  // BOM part jadi demo (F-03): satu unit memakai part kedua supplier demo,
+  // supaya record MES fake harian menghasilkan antrean untuk keduanya.
+  await insertMissing(
+    'bomLines',
+    bomLines,
+    ['parentPartId', 'componentPartId'],
+    [
+      { parentPartId: partId('FG-DEMO-001'), componentPartId: partId('48609-0K040'), qtyPer: '1.0000', effectiveFrom: `${tahun - 1}-01-01` },
+      { parentPartId: partId('FG-DEMO-001'), componentPartId: partId('90312-38013'), qtyPer: '2.0000', effectiveFrom: `${tahun - 1}-01-01` },
+      { parentPartId: partId('FG-DEMO-001'), componentPartId: partId('67867-0K010'), qtyPer: '1.0000', effectiveFrom: `${tahun - 1}-01-01` },
+    ],
+  );
+
+  // Cutoff tanpa jam: satu jadwal per supplier (F-04). Jam ditulis HH:MM:SS
+  // penuh karena MySQL mengembalikan TIME dalam bentuk itu.
   await insertMissing(
     'vendorCutoffs',
     vendorCutoffs,
-    ['vendorId', 'cutoffTime'],
+    ['vendorId'],
     [
-      { vendorId: vendorId('0000100231'), cutoffTime: '10:00:00', arrivalTime: '14:00:00' },
-      { vendorId: vendorId('0000100231'), cutoffTime: '15:00:00', arrivalTime: '08:00:00' },
-      { vendorId: vendorId('0000100544'), cutoffTime: '09:00:00', arrivalTime: '13:00:00' },
+      { vendorId: vendorId('0000100231'), arrivalTime: '14:00:00' },
+      { vendorId: vendorId('0000100544'), arrivalTime: '13:00:00' },
     ],
   );
 }
@@ -528,7 +525,7 @@ type DemoKanbanStatus = typeof kanbans.$inferInsert.status;
 type DemoPicklistSpec = {
   seed: number;
   publicId: string;
-  picklistNo: string;
+  recoveryOf?: number;
   revision: number;
   vendorId: number;
   deliveryDate: string;
@@ -554,7 +551,7 @@ type DemoPicklistSpec = {
 
 /**
  * Snapshot demo end-to-end dari scan Avicenna sampai receiving. Semua natural
- * key memakai prefix DEMO/nomor 900x agar seed ulang tidak menyentuh transaksi.
+ * key memakai UUID tetap dan prefix DEMO agar seed ulang menemukan dokumen yang sama.
  */
 async function seedFlowContoh(plantId: number): Promise<void> {
   const db = getDb();
@@ -614,6 +611,33 @@ async function seedFlowContoh(plantId: number): Promise<void> {
     .where(eq(devices.code, process.env.DISPLAY_DEVICE_CODE?.trim() || 'RECEIVING-TV-01'))
     .limit(1);
 
+  // Antrean harus jatuh tepat di hari cutoff supplier (6.2, 00:00 WIB); waktu
+  // karangan diblokir saat terbit karena tidak cocok dengan kalender supplier.
+  const cutoffRows = await db.select().from(vendorCutoffs).where(eq(vendorCutoffs.isActive, true));
+  const holidayDates = (
+    await db.select({ date: holidays.date }).from(holidays).where(eq(holidays.isActive, true))
+  ).map((row) => row.date);
+  const cutoffSetelah = (vendorId: number, from: Date) =>
+    cutoffRows
+      .filter((row) => row.vendorId === vendorId)
+      .map((row) => nextCutoff({ ...row, now: from, holidays: holidayDates })?.cutoffAt)
+      .filter((at): at is Date => at != null)
+      .sort((a, b) => a.getTime() - b.getTime())[0];
+  const hari = 24 * 60 * 60_000;
+  // nextCutoff ikut menghitung hari ini, jadi pencarian berikutnya mulai besok.
+  const cutoffTerakhir = (vendorId: number) => {
+    let last: Date | undefined;
+    for (
+      let at = cutoffSetelah(vendorId, ago(8 * 24 * 60));
+      at && at <= now;
+      at = cutoffSetelah(vendorId, new Date(at.getTime() + hari))
+    ) {
+      last = at;
+    }
+    if (!last) throw new Error(`Supplier demo ${vendorId} tidak punya cutoff lampau`);
+    return last;
+  };
+
   const queueRows = [
     {
       sourceKey: 'DEMO-AVICENNA-SCAN-001',
@@ -621,7 +645,7 @@ async function seedFlowContoh(plantId: number): Promise<void> {
       vendorPart: vpA1,
       pcs: 180,
       consumedPcs: 120,
-      cutoffAt: ago(45),
+      cutoffAt: cutoffTerakhir(vendorA.id),
       line: 'MP-PRD-01',
     },
     {
@@ -630,17 +654,8 @@ async function seedFlowContoh(plantId: number): Promise<void> {
       vendorPart: vpA2,
       pcs: 72,
       consumedPcs: 72,
-      cutoffAt: ago(45),
+      cutoffAt: cutoffTerakhir(vendorA.id),
       line: 'MP-PRD-01',
-    },
-    {
-      sourceKey: 'DEMO-AVICENNA-SCAN-003',
-      sourceRecordKey: 'DEMO-AVICENNA-BATCH-002',
-      vendorPart: vpB1,
-      pcs: 400,
-      consumedPcs: 400,
-      cutoffAt: later(240),
-      line: 'MP-PRD-02',
     },
   ];
 
@@ -707,7 +722,6 @@ async function seedFlowContoh(plantId: number): Promise<void> {
     {
       seed: 1,
       publicId: '10000000-0000-4000-8000-000000000001',
-      picklistNo: 'PL-261020-9001',
       revision: 0,
       vendorId: vendorA.id,
       deliveryDate: tomorrow,
@@ -746,7 +760,6 @@ async function seedFlowContoh(plantId: number): Promise<void> {
     {
       seed: 2,
       publicId: '10000000-0000-4000-8000-000000000002',
-      picklistNo: 'PL-261020-9002',
       revision: 0,
       vendorId: vendorA.id,
       deliveryDate: tomorrow,
@@ -774,7 +787,6 @@ async function seedFlowContoh(plantId: number): Promise<void> {
     {
       seed: 3,
       publicId: '10000000-0000-4000-8000-000000000003',
-      picklistNo: 'PL-261020-9003',
       revision: 0,
       vendorId: vendorA.id,
       deliveryDate: today,
@@ -802,7 +814,6 @@ async function seedFlowContoh(plantId: number): Promise<void> {
     {
       seed: 4,
       publicId: '10000000-0000-4000-8000-000000000004',
-      picklistNo: 'PL-261020-9004',
       revision: 0,
       vendorId: vendorA.id,
       deliveryDate: today,
@@ -830,7 +841,7 @@ async function seedFlowContoh(plantId: number): Promise<void> {
     {
       seed: 5,
       publicId: '10000000-0000-4000-8000-000000000005',
-      picklistNo: 'PL-261020-9004',
+      recoveryOf: 4,
       revision: 1,
       vendorId: vendorA.id,
       deliveryDate: tomorrow,
@@ -858,7 +869,6 @@ async function seedFlowContoh(plantId: number): Promise<void> {
     {
       seed: 6,
       publicId: '10000000-0000-4000-8000-000000000006',
-      picklistNo: 'PL-261020-9005',
       revision: 0,
       vendorId: vendorA.id,
       deliveryDate: today,
@@ -886,7 +896,6 @@ async function seedFlowContoh(plantId: number): Promise<void> {
     {
       seed: 7,
       publicId: '10000000-0000-4000-8000-000000000007',
-      picklistNo: 'PL-261020-9006',
       revision: 0,
       vendorId: vendorA.id,
       deliveryDate: yesterday,
@@ -914,7 +923,6 @@ async function seedFlowContoh(plantId: number): Promise<void> {
     {
       seed: 8,
       publicId: '10000000-0000-4000-8000-000000000008',
-      picklistNo: 'PL-261020-9007',
       revision: 0,
       vendorId: vendorA.id,
       deliveryDate: yesterday,
@@ -953,8 +961,28 @@ async function seedFlowContoh(plantId: number): Promise<void> {
   ];
 
   const seeded = new Map<number, Awaited<ReturnType<typeof upsertDemoPicklist>>>();
-  for (const spec of picklists)
-    seeded.set(spec.seed, await upsertDemoPicklist(spec, plantId, ppic.id, now));
+  const [orderPlant] = await db.select({ code: plants.code }).from(plants).where(eq(plants.id, plantId));
+  if (!orderPlant) throw new Error('Pabrik order demo tidak ditemukan');
+  const orderNumbers = new Map<number, string>();
+  for (const spec of picklists) {
+    const [existing] = await db.select({
+      picklistNo: picklistHeaders.picklistNo,
+      deliveryDate: picklistHeaders.deliveryDate,
+    }).from(picklistHeaders).where(eq(picklistHeaders.publicId, spec.publicId)).limit(1);
+    // Nomor dan tanggal dokumen yang sudah terbit tetap dipertahankan saat seed diulang.
+    if (existing && /^[789]\d{9}00$/.test(existing.picklistNo)) {
+      spec.deliveryDate = existing.deliveryDate;
+    }
+    for (const line of spec.lines) line.sapPoNo = demoPoNumber(line.sapPoNo, spec.deliveryDate);
+    const picklistNo = spec.recoveryOf != null
+      ? orderNumbers.get(spec.recoveryOf)
+      : existing && /^[789]\d{9}00$/.test(existing.picklistNo)
+        ? existing.picklistNo
+        : await reserveDemoOrderNumber(orderPlant.code, spec.deliveryDate);
+    if (!picklistNo) throw new Error('Order asal recovery demo belum tersedia');
+    orderNumbers.set(spec.seed, picklistNo);
+    seeded.set(spec.seed, await upsertDemoPicklist({ ...spec, picklistNo }, plantId, ppic.id, now));
+  }
 
   await upsertDemoReceipt(
     {
@@ -999,11 +1027,44 @@ async function seedFlowContoh(plantId: number): Promise<void> {
     ago(30),
   );
 
+  // Satu record produksi per hari di MES fake (F-10). Seed tidak menulis
+  // konsumsi langsung: record ini diproses lewat "Tarik manual" di /mes, jadi
+  // BOM, stok, dan antrean cutoff hari ini dihitung oleh jalur yang sama
+  // dengan produksi sungguhan. RECORD_ID per tanggal: seed ulang di hari yang
+  // sama tidak menggandakan, besok menghasilkan record baru.
+  await insertMissing('mesFakeRecords', mesFakeRecords, 'recordId', [
+    {
+      recordId: `DEMO-MES-${today}`,
+      partNo: parentPart.partNo,
+      qty: 200,
+      line: 'MP-PRD-01',
+      producedAt: ago(30),
+    },
+  ]);
+
   console.log('[seed]   flow demo lengkap: antrean, 8 Order Sheet/recovery, dan 3 receipt');
 }
 
+/** F-21: seed memakai penghitung yang sama dengan penerbitan order, tanpa nomor tetap. */
+async function reserveDemoOrderNumber(plantCode: string, deliveryDate: string): Promise<string> {
+  const db = getDb();
+  return db.transaction(async (tx) => {
+    const code = `OS${orderPlantInitial(plantCode)}`;
+    const dateKey = deliveryDate.slice(2).replaceAll('-', '');
+    const where = and(eq(sequences.code, code), eq(sequences.dateKey, dateKey));
+    await tx.insert(sequences).values({ code, dateKey, lastNo: 0 })
+      .onDuplicateKeyUpdate({ set: { lastNo: sql`${sequences.lastNo}` } });
+    const [row] = await tx.select({ lastNo: sequences.lastNo }).from(sequences).where(where).for('update');
+    if (!row) throw new Error('Penghitung nomor order demo tidak ditemukan');
+    const nextNo = row.lastNo + 1;
+    const number = formatOrderSheetNo(plantCode, deliveryDate, nextNo);
+    await tx.update(sequences).set({ lastNo: nextNo }).where(where);
+    return number;
+  });
+}
+
 async function upsertDemoPicklist(
-  spec: DemoPicklistSpec,
+  spec: DemoPicklistSpec & { picklistNo: string },
   plantId: number,
   createdById: number,
   now: Date,
@@ -1029,20 +1090,20 @@ async function upsertDemoPicklist(
     createdById,
   };
   let [header] = await db
-    .select({ id: picklistHeaders.id })
+    .select({ id: picklistHeaders.id, picklistNo: picklistHeaders.picklistNo })
     .from(picklistHeaders)
     .where(
-      and(
-        eq(picklistHeaders.picklistNo, spec.picklistNo),
-        eq(picklistHeaders.revision, spec.revision),
-      ),
+      eq(picklistHeaders.publicId, spec.publicId),
     )
     .limit(1);
   if (header)
-    await db.update(picklistHeaders).set(headerValues).where(eq(picklistHeaders.id, header.id));
+    await db.update(picklistHeaders).set({
+      ...headerValues,
+      ...(header.picklistNo !== spec.picklistNo ? { pdfReadyAt: null } : {}),
+    }).where(eq(picklistHeaders.id, header.id));
   else {
     const id = (await db.insert(picklistHeaders).values(headerValues).$returningId())[0]!.id;
-    header = { id };
+    header = { id, picklistNo: spec.picklistNo };
   }
 
   const resultLines: Array<{
@@ -1449,12 +1510,10 @@ async function syncSupplierCutoffTemplates(
       if (!row.cutoffTime || !row.arrivalTime || !row.deliveryDays) continue;
       scheduled += 1;
       const sourceKey = `${row.sourceKey}:CUTOFF`;
-      const matched =
-        cutoffs.find((cutoff) => cutoff.sourceKey === sourceKey) ??
-        cutoffs.find((cutoff) => cutoff.cutoffTime === row.cutoffTime);
+      // Satu jadwal per supplier: jam shipping workbook tidak lagi disimpan.
+      const matched = cutoffs.find((cutoff) => cutoff.sourceKey === sourceKey) ?? cutoffs[0];
       const exactValues = {
         vendorId,
-        cutoffTime: row.cutoffTime,
         workdays: row.deliveryDays,
         leadDays: 0,
         arrivalTime: row.arrivalTime,
@@ -1483,7 +1542,6 @@ async function syncSupplierCutoffTemplates(
     const leadDays = 1;
     await db.insert(vendorCutoffs).values({
       vendorId,
-      cutoffTime: '00:00:00',
       workdays: cutoffWorkdays(row.deliveryDays, leadDays),
       leadDays,
       arrivalTime: '00:00:00',

@@ -36,6 +36,7 @@ import { SapWriterService } from '../sap/sap-writer.service';
 import { FakeSapGateway } from '../sap/sap.gateway';
 import { SequenceService } from '../common/sequence.service';
 import type { QueueService } from '../queue/queue.service';
+import { NotifyService } from '../notify/notify.service';
 
 /**
  * Alur F-34–F-38 + 6.5.3 terhadap DB `ares` lokal: terbit picklist → buka sesi
@@ -44,8 +45,8 @@ import type { QueueService } from '../queue/queue.service';
 const db = getDb();
 const queue = { add: async () => 'test' } as unknown as QueueService;
 const sequence = new SequenceService();
-const picklists = new PicklistService(db, sequence, queue);
-const receiving = new ReceivingService(db, sequence);
+const picklists = new PicklistService(db, sequence, queue, new NotifyService(db, queue));
+const receiving = new ReceivingService(db, sequence, queue);
 const outbox = new SapOutboxService(db);
 const writer = new SapWriterService(db, new FakeSapGateway());
 const stamp = Date.now().toString().slice(-10);
@@ -59,12 +60,25 @@ let vpA: number;
 let vpB: number;
 
 const kanbanCode = (id: string) => formatScanCode({ kind: 'KANBAN', id });
-const picklistCode = (no: string) => formatScanCode({ kind: 'PICKLIST', no, revision: 0 });
+/** F-34: sesi dibuka dengan barcode Delivery Sheet, bukan Order Sheet. */
+const picklistCode = (no: string) => formatScanCode({ kind: 'DELIVERY', no, revision: 0 });
 
-/** Picklist manual dengan kanban terurut per serial; [lineIdx][boxIdx]. */
-async function issue(lines: Array<{ vendorPartId: number; boxes: number }>) {
+/**
+ * Picklist manual dengan kanban terurut per serial; [lineIdx][boxIdx].
+ * Default langsung dikonfirmasi kirim penuh, karena Delivery Sheet yang
+ * membuka sesi scan baru terbit setelah konfirmasi (F-30).
+ */
+async function issue(lines: Array<{ vendorPartId: number; boxes: number }>, ship = true) {
   const out = await picklists.issueManual({ vendorId, deliveryDate: '2026-09-25', lines }, actor);
   const detail = await picklists.get(out.id, null);
+  if (ship) {
+    await picklists.markDownloaded(out.id, vendorId, actor.plantId);
+    await picklists.confirmShipment(
+      out.id,
+      { lines: detail.lines.map((l) => ({ picklistLineId: l.id, boxShipped: l.boxOrdered })) },
+      { vendorId, userId: actor.userId, plantId: actor.plantId },
+    );
+  }
   return {
     id: out.id,
     picklistNo: out.picklistNo,
@@ -112,11 +126,11 @@ beforeAll(async () => {
   )[0]!.id;
   await db
     .insert(vendorCutoffs)
-    .values({ vendorId, cutoffTime: '10:00:00', arrivalTime: '14:00:00' });
+    .values({ vendorId, arrivalTime: '14:00:00' });
   const poId = (
     await db
       .insert(poHeaders)
-      .values({ sapPoNo: `46${stamp}`, vendorId, validFrom: '2026-01-01', validTo: '2026-12-31' })
+      .values({ sapPoNo: `46${stamp}`, vendorId, validFrom: '2026-09-01', validTo: '2026-09-30' })
       .$returningId()
   )[0]!.id;
   await db.insert(poLines).values([
@@ -186,7 +200,7 @@ describe('sesi scan: buka → 5 scan (1 dobel, 1 picklist lain) → tutup → ou
       { vendorPartId: vpA, boxes: 3 },
       { vendorPartId: vpB, boxes: 2 },
     ]);
-    const B = await issue([{ vendorPartId: vpA, boxes: 1 }]);
+    const B = await issue([{ vendorPartId: vpA, boxes: 1 }], false);
     const [a1, a2] = A.lines[0]!.kanbanIds;
     const [b1] = A.lines[1]!.kanbanIds;
     const foreign = B.lines[0]!.kanbanIds[0]!;
@@ -201,15 +215,15 @@ describe('sesi scan: buka → 5 scan (1 dobel, 1 picklist lain) → tutup → ou
     // URL numerik lama tetap diterima selama masa transisi.
     await expect(receiving.resolveId(String(sesi.id), actor.plantId)).resolves.toBe(sesi.id);
     expect(sesi).toMatchObject({ status: 'OPEN', resumed: false, picklistNo: A.picklistNo });
-    expect(sesi.totals).toEqual({ boxOrdered: 5, boxShipped: 0, boxScanned: 0 });
+    expect(sesi.totals).toEqual({ boxOrdered: 5, boxShipped: 5, boxScanned: 0 });
     // scan ulang barcode picklist → sesi yang sama (F-39), bukan sesi kedua
     const lagi = await receiving.open(picklistCode(A.picklistNo), actor);
     expect(lagi).toMatchObject({ id: sesi.id, resumed: true });
 
     // ── 5 scan ──
     const s1 = await receiving.scan(sesi.id, kanbanCode(a1!), actor);
-    // picklist belum dikonfirmasi supplier → kanban masih PRINTED → diterima + penanda otomatis
-    expect(s1).toMatchObject({ result: 'OK', autoShipped: true, kanbanSerial: 1 });
+    // sudah dikonfirmasi supplier → kanban SHIPPED → diterima tanpa penanda otomatis
+    expect(s1).toMatchObject({ result: 'OK', autoShipped: false, kanbanSerial: 1 });
     expect(s1.line).toMatchObject({ id: A.lines[0]!.id, boxOrdered: 3, boxScanned: 1 });
 
     const s2 = await receiving.scan(sesi.id, kanbanCode(a2!), actor);
@@ -258,7 +272,7 @@ describe('sesi scan: buka → 5 scan (1 dobel, 1 picklist lain) → tutup → ou
       receiptNo: sesi.receiptNo,
     });
 
-    // picklist: ISSUED → (DOWNLOADED → SHIPPED otomatis) → PARTIAL
+    // picklist: SHIPPED (konfirmasi supplier) → PARTIAL
     const [pl] = await db.select().from(picklistHeaders).where(eq(picklistHeaders.id, A.id));
     expect(pl?.status).toBe('PARTIAL');
     const lines = await db
@@ -466,8 +480,8 @@ describe('sesi scan: buka → 5 scan (1 dobel, 1 picklist lain) → tutup → ou
     const [sap] = await db.select({ status: sapOutbox.status }).from(sapOutbox)
       .where(and(eq(sapOutbox.sourceTable, 'TT_RECEIPT_H'), eq(sapOutbox.sourceId, sesi.id)));
     expect(receipt?.status).toBe('CANCELLED');
-    expect(pl?.status).toBe('ISSUED');
-    expect(kanban).toEqual({ status: 'PRINTED', receiptId: null });
+    expect(pl?.status).toBe('SHIPPED');
+    expect(kanban).toEqual({ status: 'SHIPPED', receiptId: null });
     expect(sap?.status).toBe('SKIPPED');
 
     const mutations = await db.select({ delta: stockMutations.deltaPcs, type: stockMutations.type })
@@ -564,12 +578,22 @@ describe('sesi scan: buka → 5 scan (1 dobel, 1 picklist lain) → tutup → ou
     })).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('barcode bukan picklist / picklist tidak ada → ditolak sebelum menyentuh DB', async () => {
+  it('barcode bukan Delivery Sheet / DO tidak ada → ditolak sebelum menyentuh DB', async () => {
     await expect(receiving.open('ARES:K:01J8Z3M5X8Q9W2Y7V6T5R4S3P2', actor)).rejects.toThrow(
-      /Bukan barcode Order Sheet/,
+      /Bukan barcode Delivery Sheet/,
     );
-    await expect(receiving.open('ARES:P:PL-000101-9999-0', actor)).rejects.toThrow(
+    await expect(receiving.open('ARES:D:PL-000101-9999-0', actor)).rejects.toThrow(
       /tidak ditemukan/,
+    );
+  });
+
+  it('barcode Order Sheet ditolak; Delivery Sheet order yang belum dikonfirmasi kirim ditolak', async () => {
+    const G = await issue([{ vendorPartId: vpA, boxes: 1 }], false);
+    await expect(
+      receiving.open(formatScanCode({ kind: 'PICKLIST', no: G.picklistNo, revision: 0 }), actor),
+    ).rejects.toThrow(/Ini barcode Order Sheet/);
+    await expect(receiving.open(picklistCode(G.picklistNo), actor)).rejects.toThrow(
+      /belum dikonfirmasi kirim/,
     );
   });
 });

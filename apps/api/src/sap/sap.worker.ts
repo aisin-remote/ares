@@ -5,6 +5,9 @@ import { QueueService } from '../queue/queue.service';
 import { QUEUES, JOBS } from '../queue/queue.constants';
 import { SapOutboxService } from './sap-outbox.service';
 import { SapWriterService } from './sap-writer.service';
+import { SapPoService } from './sap-po.service';
+import { SapMasterService } from './sap-master.service';
+import { readStagingConfig } from './staging.config';
 
 /** Sesering apa perpindahan barang dikumpulkan dan dikirim. */
 const POLA_CRON = '* * * * *';
@@ -27,12 +30,19 @@ export class SapWorker implements OnModuleInit, OnModuleDestroy {
     private readonly queue: QueueService,
     private readonly outbox: SapOutboxService,
     private readonly writer: SapWriterService,
+    private readonly po: SapPoService,
+    private readonly master: SapMasterService,
   ) {}
 
   async onModuleInit(): Promise<void> {
     this.worker = new Worker(
       QUEUES.SAP,
       async (job: Job) => {
+        if (job.name === JOBS.SAP_SYNC_MASTER) return this.master.sync(job.data?.preview === true, Number(job.data?.userId));
+        if (job.name === JOBS.SAP_SYNC_PO) {
+          // Jadwal harian tidak membawa bulan: service memutuskan apakah hari ini tanggal tarik.
+          return job.data?.month ? this.po.sync(job.data.month, job.data.preview === true) : this.po.runScheduled();
+        }
         if (job.name === JOBS.COLLECT_SAP_OUTBOX) {
           const hasil = await this.outbox.collect();
           // Dokumen yang tertahan dicoba lepas tiap putaran: begitu movement
@@ -60,6 +70,13 @@ export class SapWorker implements OnModuleInit, OnModuleDestroy {
     // jadwal kedua yang berjalan paralel.
     for (const name of [JOBS.COLLECT_SAP_OUTBOX, JOBS.FLUSH_SAP_OUTBOX]) {
       await this.queue.addRepeating(QUEUES.SAP, name, {}, POLA_CRON);
+    }
+    if (readStagingConfig().STAGING_PULL_ENABLED) {
+      // F-44: dicek tiap hari 00.30 WIB; tanggal tarik dibaca dari TM_SETTING saat job jalan,
+      // jadi perubahan tanggal oleh admin tidak perlu menjadwal ulang.
+      await this.queue.addRepeating(QUEUES.SAP, JOBS.SAP_SYNC_PO, {}, '30 0 * * *');
+    } else {
+      await this.queue.get(QUEUES.SAP).removeJobScheduler(`repeat:${JOBS.SAP_SYNC_PO}`);
     }
 
     this.logger.log(

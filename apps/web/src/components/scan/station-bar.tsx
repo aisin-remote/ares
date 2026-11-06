@@ -46,8 +46,8 @@ export function StationBar({
   }, []);
 
   return (
-    <header className="shrink-0 border-b border-line bg-shell px-3 py-2.5 sm:px-6 sm:py-4">
-      <div className="flex items-center gap-2 sm:gap-4">
+    <header className="shrink-0 border-b border-line bg-shell px-3 py-2.5 @[640px]:px-6 @[640px]:py-4">
+      <div className="flex items-center gap-2 @[640px]:gap-4">
         <Link
           href="/receiving"
           aria-label="Kembali ke daftar sesi"
@@ -57,11 +57,11 @@ export function StationBar({
         </Link>
 
         <div className="min-w-0 flex-1">
-          <div className="flex items-baseline gap-2 sm:gap-3">
-            <span className="tabular truncate text-[20px] font-extrabold leading-none tracking-tight sm:text-[26px]">
+          <div className="flex items-baseline gap-2 @[640px]:gap-3">
+            <span className="tabular truncate text-[20px] font-extrabold leading-none tracking-tight @[640px]:text-[26px]">
               {orderSheetDisplayNo(picklistNo, revision)}
             </span>
-            <span className="hidden shrink-0 rounded-full border border-line px-3 py-1 text-[12px] font-semibold sm:inline">
+            <span className="hidden shrink-0 rounded-full border border-line px-3 py-1 text-[12px] font-semibold @[640px]:inline">
               Jam datang {arrivalTime}
             </span>
           </div>
@@ -70,7 +70,7 @@ export function StationBar({
           </div>
         </div>
 
-        <div className="hidden items-center gap-6 md:flex">
+        <div className="hidden items-center gap-6 @[768px]:flex">
           <div className="text-right">
             <div className="tabular text-[26px] font-bold leading-none">
               {now ? now.toLocaleTimeString('id-ID', { hour12: false }) : '--:--:--'}
@@ -99,11 +99,11 @@ export function StationBar({
           type="button"
           onClick={onClose}
           disabled={closeDisabled}
-          className="inline-flex h-11 shrink-0 items-center gap-2 rounded-full bg-accent px-4 text-[14px] font-semibold text-white transition-colors hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-50 sm:px-5"
+          className="inline-flex h-11 shrink-0 items-center gap-2 rounded-full bg-accent px-4 text-[14px] font-semibold text-white transition-colors hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-50 @[640px]:px-5"
         >
           <DoorClosed className="size-4" strokeWidth={2} aria-hidden />
-          <span className="hidden sm:inline">Tutup sesi</span>
-          <span className="sm:hidden">Tutup</span>
+          <span className="hidden @[640px]:inline">Tutup sesi</span>
+          <span className="@[640px]:hidden">Tutup</span>
         </button>
       </div>
     </header>

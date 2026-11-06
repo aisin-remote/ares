@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -31,6 +32,7 @@ import {
 } from '@ares/db';
 import {
   parseScanCode,
+  orderSheetDisplayNo,
   validateKanbanScan,
   closeScanSession,
   picklistStatusPathOnClose,
@@ -46,12 +48,15 @@ import { InjectDb } from '../db/db.module';
 import { SequenceService } from '../common/sequence.service';
 import type { Actor } from '../picklist/picklist.service';
 import { writeAudit } from '../common/audit';
+import { QueueService } from '../queue/queue.service';
+import { JOBS, QUEUES } from '../queue/queue.constants';
 
 /**
- * Picklist yang boleh dibuka sesi scannya. PRINTED/belum konfirmasi tetap
- * boleh diterima (catatan 6.4); PARTIAL menunggu revisi (F-25, fase 2).
+ * Order Sheet yang boleh dibuka sesi scannya: hanya yang sudah dikonfirmasi
+ * kirim, karena sesi dibuka dengan Delivery Sheet yang baru terbit setelah
+ * konfirmasi (F-30, F-34). PARTIAL menunggu revisi (F-25, fase 2).
  */
-const RECEIVABLE: readonly PicklistStatus[] = ['ISSUED', 'DOWNLOADED', 'SHIPPED'];
+const RECEIVABLE: readonly PicklistStatus[] = ['SHIPPED'];
 
 /**
  * Sesi scan kedatangan (F-34–F-38, 6.4, 6.5). Satu sesi = satu TT_RECEIPT_H.
@@ -62,21 +67,29 @@ const RECEIVABLE: readonly PicklistStatus[] = ['ISSUED', 'DOWNLOADED', 'SHIPPED'
 export class ReceivingService {
   /** Storage location tujuan GR; nilai final menunggu fase 0 (PRD §13). */
   private readonly sloc = process.env.SAP_SLOC ?? 'WH00';
+  private readonly logger = new Logger(ReceivingService.name);
 
   constructor(
     @InjectDb() private readonly db: Database,
     private readonly sequence: SequenceService,
+    private readonly queue: QueueService,
   ) {}
 
   /**
-   * F-34: buka sesi dengan barcode picklist. Satu sesi OPEN per picklist —
-   * scan ulang barcode-nya melanjutkan sesi yang ada (F-39), bukan membuat
+   * F-34: buka sesi dengan barcode Delivery Sheet (DO#). Satu sesi OPEN per
+   * Order Sheet — scan ulang barcode-nya melanjutkan sesi yang ada (F-39), bukan membuat
    * sesi kedua. Baris picklist dikunci supaya dua stasiun yang membuka
    * bersamaan tidak sama-sama lolos pemeriksaan "belum ada sesi".
    */
   async open(code: string, actor: Actor) {
     const parsed = parseScanCode(code);
-    if (parsed?.kind !== 'PICKLIST') throw new BadRequestException('Bukan barcode Order Sheet ARES');
+    if (parsed?.kind === 'PICKLIST') {
+      throw new BadRequestException(
+        'Ini barcode Order Sheet. Scan barcode Delivery Sheet yang terbit setelah supplier konfirmasi kirim',
+      );
+    }
+    if (parsed?.kind !== 'DELIVERY') throw new BadRequestException('Bukan barcode Delivery Sheet ARES');
+    const doNo = orderSheetDisplayNo(parsed.no, parsed.revision);
 
     const opened = await this.db.transaction(async (tx) => {
       const [pl] = await tx
@@ -90,12 +103,12 @@ export class ReceivingService {
           ),
         )
         .for('update');
-      if (!pl)
-        throw new NotFoundException(`Order Sheet ${parsed.no}-${parsed.revision} tidak ditemukan`);
+      if (!pl) throw new NotFoundException(`Delivery Sheet ${doNo} tidak ditemukan`);
+      if (pl.status === 'ISSUED' || pl.status === 'DOWNLOADED') {
+        throw new ConflictException(`DO ${doNo} belum dikonfirmasi kirim oleh supplier`);
+      }
       if (!RECEIVABLE.includes(pl.status)) {
-        throw new ConflictException(
-          `Order Sheet ${parsed.no} berstatus ${pl.status}, tidak bisa diterima`,
-        );
+        throw new ConflictException(`DO ${doNo} berstatus ${pl.status}, tidak bisa diterima`);
       }
 
       const [existing] = await tx
@@ -213,6 +226,19 @@ export class ReceivingService {
    * CLOSED (6.5.3), bukan ditulis di sini.
    */
   async close(receiptId: number, reason: string | undefined, actor: Actor) {
+    const hasil = await this.closeInTx(receiptId, reason, actor);
+    // Receipt Sheet untuk dicetak PPIC; gagal mengantre tidak membatalkan
+    // penerimaan yang sudah tersimpan — job bisa diulang.
+    try {
+      await this.queue.add(QUEUES.DOCUMENT, JOBS.RENDER_RECEIPT_SHEET, { receiptId: hasil.id });
+    } catch (err) {
+      const pesan = err instanceof Error ? err.message : String(err);
+      this.logger.error(`receipt ${hasil.receiptNo} ditutup tapi Receipt Sheet gagal diantre: ${pesan}`);
+    }
+    return hasil;
+  }
+
+  private async closeInTx(receiptId: number, reason: string | undefined, actor: Actor) {
     return this.db.transaction(async (tx) => {
       const s = await this.openSession(tx, receiptId, actor.plantId);
       const [pl] = await tx

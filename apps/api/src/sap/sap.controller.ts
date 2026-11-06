@@ -1,4 +1,5 @@
-import { BadRequestException, Body, Controller, Get, Post, Query, Req } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Post, Put, Param, Query, Req } from '@nestjs/common';
+import { poScheduleSchema, type PoScheduleInput } from '@ares/contracts';
 import type { Request } from 'express';
 import { z } from 'zod';
 import { SapOutboxService } from './sap-outbox.service';
@@ -7,6 +8,8 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { RequirePermission } from '../auth/permissions.guard';
 import { QueueService } from '../queue/queue.service';
 import { JOBS, QUEUES } from '../queue/queue.constants';
+import { SapPoService } from './sap-po.service';
+import { SapMasterService } from './sap-master.service';
 
 function actorOf(req: Request): { userId: number; plantId: number } {
   if (req.principal?.kind !== 'user') throw new BadRequestException('Aksi ini hanya untuk user');
@@ -23,6 +26,9 @@ const statusSchema = z.enum([
   'ALL', 'PENDING', 'PROCESSING', 'STAGED', 'POSTED', 'FAILED', 'HELD', 'SKIPPED',
 ]);
 const docTypeSchema = z.enum(['ALL', 'GR', 'GR_REVERSAL']);
+const poMonthSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Bulan harus YYYY-MM');
+const poSyncSchema = z.object({ month: poMonthSchema, preview: z.boolean().default(false) });
+const masterSyncSchema = z.object({ preview: z.boolean().default(false) });
 
 function filter<T extends z.ZodTypeAny>(schema: T, value: string | undefined, label: string) {
   if (!value) return undefined;
@@ -48,7 +54,47 @@ export class SapController {
     private readonly outbox: SapOutboxService,
     private readonly writer: SapWriterService,
     private readonly queue: QueueService,
+    private readonly po: SapPoService,
+    private readonly master: SapMasterService,
   ) {}
+
+  @Get('po/status')
+  @RequirePermission('outbox.read')
+  poStatus(@Query('month') month?: string) {
+    return this.po.status(filter(poMonthSchema, month, 'Bulan'));
+  }
+
+  @Post('po/sync')
+  @RequirePermission('sap.po.sync')
+  syncPo(@Body(new ZodValidationPipe(poSyncSchema)) body: z.infer<typeof poSyncSchema>, @Req() req: Request) {
+    return this.po.enqueue(body.month, body.preview, actorOf(req).userId);
+  }
+
+  /** F-01/F-02: tarik master supplier, part, dan vendor part dari staging SAP. */
+  @Post('master/sync')
+  @RequirePermission('sap.master.sync')
+  syncMaster(@Body(new ZodValidationPipe(masterSyncSchema)) body: z.infer<typeof masterSyncSchema>, @Req() req: Request) {
+    return this.master.enqueue(body.preview, actorOf(req).userId);
+  }
+
+  @Get('master/jobs/:id')
+  @RequirePermission('outbox.read')
+  masterJob(@Param('id') id: string) {
+    return this.master.job(id);
+  }
+
+  /** F-44: tanggal tarik PO bulanan. */
+  @Put('po/schedule')
+  @RequirePermission('setting.write')
+  setPoSchedule(@Body(new ZodValidationPipe(poScheduleSchema)) body: PoScheduleInput, @Req() req: Request) {
+    return this.po.setPullDay(body.day, actorOf(req).userId);
+  }
+
+  @Get('po/jobs/:id')
+  @RequirePermission('outbox.read')
+  poJob(@Param('id') id: string) {
+    return this.po.job(id);
+  }
 
   /** Ringkasan antrean, untuk kartu di layar pemantauan. */
   @Get('summary')

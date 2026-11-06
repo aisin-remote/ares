@@ -1,7 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import nodemailer, { type Transporter } from 'nodemailer';
 import {
   and,
+  desc,
+  emailDeliveries,
   eq,
   inArray,
   isNull,
@@ -17,19 +20,20 @@ import {
   sql,
   type Database,
 } from '@ares/db';
-import { dueReminderKinds, orderSheetDisplayNo } from '@ares/domain';
+import { dueReminderKinds, noticeResendBlock, orderSheetDisplayNo } from '@ares/domain';
+import type { PicklistNoticeKind } from '@ares/contracts';
 import { InjectDb } from '../db/db.module';
+import { QueueService } from '../queue/queue.service';
+import { JOBS, QUEUES } from '../queue/queue.constants';
+import { writeAudit } from '../common/audit';
 
 /** Peristiwa yang mengirim email ke supplier (PRD 8.4). */
-export type PicklistNoticeKind =
-  | 'PICKLIST_ISSUED'
-  | 'PICKLIST_REVISED'
-  | 'REMINDER_NOT_DOWNLOADED'
-  | 'REMINDER_NOT_CONFIRMED';
+export type { PicklistNoticeKind } from '@ares/contracts';
 
 export interface NotificationJob {
   kind: PicklistNoticeKind;
   picklistId: number;
+  deliveryId?: number;
 }
 
 /** Perubahan kemasan vendor part oleh supplier — kabar untuk PPIC. */
@@ -58,7 +62,7 @@ export class NotifyService {
   private readonly logger = new Logger(NotifyService.name);
   private readonly transport: Transporter | null;
 
-  constructor(@InjectDb() private readonly db: Database) {
+  constructor(@InjectDb() private readonly db: Database, private readonly queue: QueueService) {
     const host = process.env.SMTP_HOST?.trim();
     this.transport = host
       ? (() => {
@@ -77,6 +81,52 @@ export class NotifyService {
         })()
       : null;
     if (!this.transport) this.logger.warn('SMTP_HOST kosong — email hanya ditulis ke log');
+  }
+
+  /** F-31: simpan permintaan sebelum mengantre; Redis mati tetap terlihat sebagai gagal. */
+  async enqueuePicklistNotice(
+    kind: PicklistNoticeKind,
+    picklistId: number,
+    actor?: { userId: number; plantId: number },
+  ) {
+    const delivery = await this.db.transaction(async (tx) => {
+      const [pl] = await tx.select().from(picklistHeaders).where(and(
+        eq(picklistHeaders.id, picklistId),
+        actor ? eq(picklistHeaders.plantId, actor.plantId) : undefined,
+      )).for('update');
+      if (!pl) throw new NotFoundException('Order Sheet tidak ditemukan');
+      if (actor) {
+        const [latest] = await tx.select().from(emailDeliveries)
+          .where(eq(emailDeliveries.picklistId, picklistId)).orderBy(desc(emailDeliveries.id)).limit(1);
+        const block = noticeResendBlock(pl.status, latest);
+        if (block) throw new ConflictException(block);
+      } else {
+        const [existing] = await tx.select().from(emailDeliveries)
+          .where(eq(emailDeliveries.dedupeKey, `${picklistId}-${kind}`)).limit(1);
+        if (existing) return { ...existing, existing: true };
+      }
+      const [id] = await tx.insert(emailDeliveries).values({
+        picklistId, kind, dedupeKey: actor ? randomUUID() : `${picklistId}-${kind}`,
+        requestedById: actor?.userId ?? null, recipients: [], cc: [], accepted: [],
+      }).$returningId();
+      if (actor) await writeAudit(tx, 'TT_PICKLIST_H', picklistId, 'RESEND_EMAIL', actor.userId,
+        null, { deliveryId: id!.id, kind });
+      return { id: id!.id, existing: false };
+    });
+    if (!delivery.existing) {
+      try {
+        await this.queue.add(QUEUES.NOTIFICATION, JOBS.SEND_NOTIFICATION,
+          { kind, picklistId, deliveryId: delivery.id }, { jobId: `email-${delivery.id}` });
+      } catch (error) {
+        // Jangan menimpa hasil worker jika Redis sebenarnya menerima job sebelum timeout.
+        await this.db.update(emailDeliveries).set({
+          status: 'FAILED', lastError: 'Tidak bisa memasukkan email ke antrean. Silakan kirim ulang.',
+          finishedAt: new Date(),
+        }).where(and(eq(emailDeliveries.id, delivery.id), eq(emailDeliveries.status, 'QUEUED')));
+        this.logger.error(`Email ${delivery.id} gagal diantre`);
+      }
+    }
+    return { deliveryId: delivery.id };
   }
 
   async sendLoginOtp(job: LoginOtpEmailJob): Promise<{ recipients: number; sent: boolean }> {
@@ -100,10 +150,41 @@ export class NotifyService {
   }
 
   /** Isi email picklist terbit / direvisi: nomor, tanggal & jam kirim, jumlah line & box, tautan portal. */
-  async sendPicklistNotice(job: NotificationJob): Promise<{ recipients: number; sent: boolean }> {
+  async sendPicklistNotice(job: NotificationJob, willRetry = false): Promise<{ recipients: number; sent: boolean }> {
+    // Job lama yang masih tersimpan di Redis tetap melewati pencatatan baru.
+    if (!job.deliveryId) return this.enqueuePicklistNotice(job.kind, job.picklistId)
+      .then(() => ({ recipients: 0, sent: false }));
+    const [delivery] = await this.db.select().from(emailDeliveries).where(and(
+      eq(emailDeliveries.id, job.deliveryId), eq(emailDeliveries.picklistId, job.picklistId),
+      eq(emailDeliveries.kind, job.kind),
+    ));
+    if (!delivery || delivery.status === 'ACCEPTED' || delivery.status === 'SKIPPED')
+      return { recipients: delivery?.recipients.length ?? 0, sent: delivery?.status === 'ACCEPTED' };
+    await this.db.update(emailDeliveries).set({
+      status: 'PROCESSING', attempts: sql`${emailDeliveries.attempts} + 1`,
+      attemptedAt: new Date(), finishedAt: null, lastError: null,
+    }).where(eq(emailDeliveries.id, delivery.id));
+    try {
+      return await this.deliverPicklistNotice(job, delivery);
+    } catch (error) {
+      const code = (error as { code?: string }).code;
+      // Respons mentah SMTP dapat berisi alamat/konfigurasi relay; jangan kirim ke UI.
+      await this.db.update(emailDeliveries).set({
+        status: willRetry ? 'QUEUED' : 'FAILED',
+        lastError: `Server email menolak atau tidak merespons${code ? ` (${String(code).replace(/[^A-Z0-9_]/gi, '').slice(0, 40)})` : ''}.`,
+        finishedAt: willRetry ? null : new Date(),
+      }).where(eq(emailDeliveries.id, delivery.id));
+      throw error;
+    }
+  }
+
+  private async deliverPicklistNotice(job: NotificationJob, delivery: typeof emailDeliveries.$inferSelect) {
     const [pl] = await this.db
       .select({
         id: picklistHeaders.id,
+        publicId: picklistHeaders.publicId,
+        plantId: picklistHeaders.plantId,
+        status: picklistHeaders.status,
         picklistNo: picklistHeaders.picklistNo,
         revision: picklistHeaders.revision,
         deliveryDate: picklistHeaders.deliveryDate,
@@ -116,8 +197,11 @@ export class NotifyService {
       .from(picklistHeaders)
       .innerJoin(vendors, eq(picklistHeaders.vendorId, vendors.id))
       .where(eq(picklistHeaders.id, job.picklistId));
-    if (!pl) {
-      this.logger.warn(`notifikasi ${job.kind}: Order Sheet ${job.picklistId} tidak ada`);
+    if (!pl) throw new NotFoundException('Order Sheet tidak ditemukan');
+    if (pl.status === 'CANCELLED') {
+      await this.db.update(emailDeliveries).set({ status: 'SKIPPED',
+        lastError: 'Order sudah dibatalkan sebelum email dikirim.', finishedAt: new Date(),
+      }).where(eq(emailDeliveries.id, delivery.id));
       return { recipients: 0, sent: false };
     }
 
@@ -128,7 +212,7 @@ export class NotifyService {
       .where(
         and(eq(users.vendorId, pl.vendorId), eq(users.isActive, true), isNotNull(users.email)),
       );
-    const to = penerima.map((p) => p.email!).filter(Boolean);
+    const to = [...new Set(penerima.map((p) => p.email!.trim().toLowerCase()).filter(Boolean))];
 
     const nomor = orderSheetDisplayNo(pl.picklistNo, pl.revision);
     const subject =
@@ -139,7 +223,7 @@ export class NotifyService {
           : job.kind === 'REMINDER_NOT_CONFIRMED'
             ? `[ARES] Pengingat konfirmasi Order Sheet ${nomor}`
             : `[ARES] Order Sheet baru ${nomor} — kirim ${pl.deliveryDate}`;
-    const portal = `${process.env.WEB_ORIGIN ?? 'http://127.0.0.1:3000'}/portal/${pl.id}`;
+    const portal = `${(process.env.WEB_ORIGIN ?? 'http://127.0.0.1:3000').split(',')[0]!.trim()}/portal/${pl.publicId}`;
     const text = [
       `Yth. ${pl.vendorName},`,
       '',
@@ -160,6 +244,9 @@ export class NotifyService {
 
     if (to.length === 0) {
       this.logger.warn(`notifikasi ${nomor}: vendor ${pl.vendorName} belum punya akun ber-email`);
+      await this.db.update(emailDeliveries).set({ status: 'FAILED', recipients: [], cc: [],
+        lastError: 'Supplier belum memiliki akun aktif dengan email.', finishedAt: new Date(),
+      }).where(eq(emailDeliveries.id, delivery.id));
       return { recipients: 0, sent: false };
     }
     const reminder = job.kind.startsWith('REMINDER_');
@@ -169,11 +256,17 @@ export class NotifyService {
             .select({ email: users.email })
             .from(users)
             .innerJoin(roles, eq(users.roleId, roles.id))
-            .where(and(eq(roles.name, 'ppic'), eq(users.isActive, true), isNotNull(users.email)))
+            .where(and(eq(roles.name, 'ppic'), eq(users.plantId, pl.plantId),
+              eq(users.isActive, true), isNotNull(users.email)))
         )
           .map((row) => row.email!)
           .filter(Boolean)
       : [];
+    // Snapshot penerima dijaga saat retry; alamat yang sudah diterima SMTP tidak dikirimi dua kali.
+    const recipients = delivery.recipients.length ? delivery.recipients : to;
+    const copy = delivery.recipients.length ? delivery.cc : [...new Set(cc.map((email) => email.toLowerCase()))];
+    await this.db.update(emailDeliveries).set({ recipients, cc: copy })
+      .where(eq(emailDeliveries.id, delivery.id));
     if (!this.transport) {
       if (process.env.NODE_ENV === 'production') {
         this.logger.warn(`email ${nomor} tidak dikirim karena SMTP belum dikonfigurasi`);
@@ -183,9 +276,31 @@ export class NotifyService {
             `subject="${subject}"\n${text}`,
         );
       }
+      await this.db.update(emailDeliveries).set({ status: 'SKIPPED', finishedAt: new Date(),
+        lastError: 'SMTP belum dikonfigurasi; email hanya dicatat di log dan tidak dikirim.',
+      }).where(eq(emailDeliveries.id, delivery.id));
       return { recipients: to.length, sent: false };
     }
-    await this.transport.sendMail({ from: process.env.SMTP_FROM, to, cc, subject, text });
+    const pending = (emails: string[]) => emails.filter((email) => !delivery.accepted.includes(email));
+    const remainingTo = pending(recipients);
+    const remainingCc = pending(copy);
+    if (remainingTo.length || remainingCc.length) {
+      const info = await this.transport.sendMail({ from: process.env.SMTP_FROM,
+        to: remainingTo, cc: remainingCc, subject, text,
+        messageId: delivery.messageId ?? `<ares-email-${delivery.id}@ares.local>`,
+      });
+      const accepted = [...new Set([...delivery.accepted,
+        ...(info.accepted ?? []).map((address: string | { address: string }) =>
+          (typeof address === 'string' ? address : address.address).toLowerCase()),
+      ])];
+      await this.db.update(emailDeliveries).set({ accepted,
+        messageId: String(info.messageId ?? '').slice(0, 255),
+      }).where(eq(emailDeliveries.id, delivery.id));
+      if ([...recipients, ...copy].some((email) => !accepted.includes(email)))
+        throw new Error('Sebagian penerima ditolak server email');
+    }
+    await this.db.update(emailDeliveries).set({ status: 'ACCEPTED', finishedAt: new Date(), lastError: null })
+      .where(eq(emailDeliveries.id, delivery.id));
     this.logger.log(`email ${nomor} terkirim ke ${to.length} akun ${pl.vendorName}`);
     return { recipients: to.length, sent: true };
   }
@@ -324,10 +439,9 @@ export class NotifyService {
         );
         if (!claimed) continue;
         try {
-          await this.sendPicklistNotice({
-            kind: kind === 'NOT_DOWNLOADED' ? 'REMINDER_NOT_DOWNLOADED' : 'REMINDER_NOT_CONFIRMED',
-            picklistId: pl.id,
-          });
+          await this.enqueuePicklistNotice(
+            kind === 'NOT_DOWNLOADED' ? 'REMINDER_NOT_DOWNLOADED' : 'REMINDER_NOT_CONFIRMED', pl.id,
+          );
           processed += 1;
         } catch (error) {
           await this.db

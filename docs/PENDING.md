@@ -40,7 +40,8 @@ Terakhir diperbarui: 2026-10-18 (akun supplier internal dengan OTP email).
       cara lama). Di server pilot: biarkan berjalan seminggu, lalu bandingkan
       `/stock` dengan `select PART_ID, sum(DELTA_PCS) from TT_STOCK_MUTATION`.
 - [ ] **Menu fase** (`NEXT_PUBLIC_ARES_PHASE`): `.env` dev = 2, jadi Antrean Order,
-      Stok WH, Konsumsi, Sinkron MES tampil; laporan (fase 3) tidak. Di server
+      Stok WH, Konsumsi, Sinkron MES, dan Performa Supplier F-50 tampil; laporan
+      Konsumsi & Order (fase 3) belum. Di server
       pilot biarkan kosong (= 1). Nilai ini dibaca saat build/dev Next — ubah →
       restart `pnpm dev`.
 
@@ -78,6 +79,12 @@ outbox PENDING (GR 101, key RCP-260921-0010) dalam 15 detik.)
 
 ## 2. Keputusan yang menunggu orang
 
+- [ ] **Sumber bulan PO di staging SAP.** Aturan PPIC sudah pasti: PO awal–akhir bulan,
+      recovery lintas bulan memakai PO baru. Validasi dan pemilihan recovery ARES sudah
+      mengikuti periode itu. Tim SAP masih perlu menetapkan kolom sumber periode;
+      jangan otomatis menganggap tanggal dibuat/sinkronisasi sebagai bulan bisnis PO.
+      PO lama yang periodenya kosong/lintas bulan ditolak untuk penerbitan baru.
+
 - [ ] **Definisi cycle**. Sekarang dihitung dari urutan **jam kedatangan**
       (`ARRIVAL_TIME`), mengikuti glosarium PRD §14 "kedatangan ke-n dalam satu
       hari". Perlu konfirmasi PPIC: di sistem lama, apakah cycle dihitung begitu
@@ -101,10 +108,25 @@ outbox PENDING (GR 101, key RCP-260921-0010) dalam 15 detik.)
 - [ ] **Order Sheet PARTIAL tidak bisa dibuka sesi baru** sampai revisi (F-25, fase 2) ada.
       Kanban MISSING dari sesi pertama baru bisa diterima lewat Order Sheet recovery;
       recovery setelah receipt PARTIAL belum dibuat otomatis.
-- [ ] **Order Sheet yang diterima tanpa konfirmasi supplier** lewat DOWNLOADED → SHIPPED
-      otomatis saat sesi ditutup (`picklistStatusPathOnClose`), tanpa mengisi
-      `DOWNLOADED_AT`/`SHIPPED_AT`. Penanda "tanpa konfirmasi" hanya ada di
-      `TT_KANBAN_EVENT.TYPE = SHIPPED_AUTO`; laporan F-50 harus membacanya dari sana.
+- [ ] **Barang tanpa konfirmasi supplier tidak bisa diterima lagi** (2026-11-02).
+      Sesi scan hanya dibuka dengan Delivery Sheet (`ARES:D:<DO#>`) yang terbit
+      setelah konfirmasi kirim, jadi Order Sheet ISSUED/DOWNLOADED ditolak di gudang.
+      Kalau truk datang sebelum supplier sempat konfirmasi, PPIC/supplier harus
+      konfirmasi dulu di portal. Konfirmasi ke PPIC/WH apakah perlu jalur darurat.
+      Jalur lama (`picklistStatusPathOnClose` ISSUED→SHIPPED, kanban `SHIPPED_AUTO`)
+      masih ada di domain tapi tidak tercapai dari pembukaan sesi.
+- [ ] **Delivery Sheet belum dilihat di browser / dicetak.** PDF dirender worker
+      (`render-delivery-sheet`) setelah konfirmasi kirim dan koreksi PPIC; tombol
+      unduh muncul di portal dan detail Order Sheet. Cek tampilan PDF, lalu scan
+      barcode-nya di layar stasiun. Tidak ada kolom "siap"; klik sebelum worker
+      selesai dijawab "belum selesai dibuat".
+- [ ] **Receipt Sheet belum dilihat di browser / dicetak.** Dirender worker
+      (`render-receipt-sheet`) saat sesi scan ditutup, disimpan di
+      `storage/receipt/`, diunduh dari tombol "Receipt Sheet" di ringkasan receipt
+      (`GET /receipts/:id/receipt-sheet.pdf`, hak `receipt.read`). Receipt batal
+      tidak bisa dicetak. Isi QR = nomor receipt; "repeated no." = urutan receipt
+      untuk DO yang sama, termasuk yang batal — konfirmasi definisi ini ke PPIC.
+      Empat kotak tanda tangan di kanan bawah dibiarkan tanpa label seperti template.
 - [ ] **Kontrak staging SAP masih menunggu tim SAP.** Jalur ARES sudah siap:
       outbox idempoten, validasi GR, worker terpisah, retry bertahap, serta status
       `PENDING/PROCESSING/STAGED/POSTED`. Yang belum boleh ditebak adalah nama
@@ -112,6 +134,16 @@ outbox PENDING (GR 101, key RCP-260921-0010) dalam 15 detik.)
       document, movement reversal 102, kode plant dan sloc final, serta interval
       pembacaan staging oleh SAP. Sampai jawaban itu lengkap, gateway MSSQL tetap
       sengaja menolak kiriman dan mode pilot memakai `SAP_GATEWAY=fake`.
+      Pembaruan 2026-11-02: konfigurasi koneksi `STAGING_*` dan diagnostik
+      `pnpm --filter @ares/api staging:check` sudah tersedia. Lokal memakai
+      `SAP_GATEWAY=mssql`, push/pull false. Database tujuan = `A_DB_STG`
+      (2026-11-03; `aisinbisa_sap_stagging` hanya trial tim SAP). `A_DB_STG` adalah
+      tabel penghubung: program VB tim SAP yang menarik data staging ke SAP asli
+      dan (diduga) menulis hasilnya kembali. Koneksi
+      berhasil dan delapan tabel utama pada schema `dbo` terverifikasi. Isinya
+      salinan data trial (2026-11-03), bukan data SAP sungguhan — bersihkan
+      sebelum SAP mulai membaca `A_DB_STG`. Sinkronisasi data, pengiriman GR, dan pembacaan hasil
+      SAP masih menunggu implementasi. Detail ada di `docs/SAP-MM-MAPPING.md`.
 
 ## 3. Lingkungan pengembangan tidak sesuai dokumen
 
@@ -127,6 +159,22 @@ outbox PENDING (GR 101, key RCP-260921-0010) dalam 15 detik.)
       sebelum perbaikan zona waktu di `packages/db/src/client.ts` (`CUTOFF_AT`,
       `SYNCED_AT`, event kanban) tersimpan bergeser. Isinya hanya data uji —
       bersihkan tabel transaksi Order Sheet saat mulai serius, atau biarkan.
+
+- [ ] **GR di luar ARES tidak mengurangi sisa PO** (keputusan 2026-11-03: sisa =
+      qty PO − pesanan ARES). Kalau gudang masih sering GR manual lewat MIGO,
+      minta tim SAP menyediakan qty sudah-GR per item PO di staging.
+- [ ] **Tarik PO terjadwal belum dicoba dengan data sungguhan.** Job harian
+      00.30 WIB (`sap-sync-po`) membaca `TM_SETTING.PO_PULL_DAY` dan pada
+      tanggal itu menarik PO yang dibuat bulan ini untuk bulan depan. Aktif hanya
+      bila `STAGING_PULL_ENABLED=true`. Cek: ubah tanggal ke hari ini di layar
+      SAP, nyalakan pull, restart API, besok pagi pastikan PO bulan depan muncul
+      dan sisa PO tampil di form order manual.
+
+- [ ] **Tarik master dari SAP belum dicoba dengan data sungguhan.** `A_DB_STG`
+      masih berisi salinan trial (3 supplier, 3 part, 6 pasangan). Pratinjau aman
+      dijalankan kapan saja; simpan butuh `STAGING_PULL_ENABLED=true`. Pastikan
+      `CHR_WC_VENDOR` di `TM_KANBAN` memang berisi kode supplier SAP, dan isi pabrik
+      + cutoff untuk supplier baru sebelum dipakai order.
 
 ## 4. Utang kecil yang sengaja ditunda
 

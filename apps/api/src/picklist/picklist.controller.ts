@@ -141,7 +141,16 @@ export class PicklistController {
     );
   }
 
-  /** F-20 pembatalan sebelum SHIPPED. */
+  /** F-31: kirim ulang pemberitahuan order dari PPIC. */
+  @Post(':id/resend-email')
+  @RequirePermission('picklist.issue')
+  async resendEmail(@Param('id') reference: string, @Req() req: Request) {
+    if (scopeOf(req) !== null) throw new BadRequestException('Kirim ulang email hanya untuk akun internal');
+    const actor = actorOf(req);
+    const id = await this.picklists.resolveId(reference, null, actor.plantId);
+    return this.picklists.resendNotice(id, actor);
+  }
+
   @Post(':id/cancel')
   @RequirePermission('picklist.cancel')
   async cancel(

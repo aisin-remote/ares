@@ -57,6 +57,7 @@ export interface NavGroup {
 export const PORTAL_NAV_GROUPS: NavGroup[] = [
   {
     title: 'Order',
+    collapsible: true,
     items: [
       { href: '/portal', label: 'Order aktif', icon: 'ClipboardList' },
       { href: '/portal/riwayat', label: 'Riwayat', icon: 'BarChart3' },
@@ -64,6 +65,7 @@ export const PORTAL_NAV_GROUPS: NavGroup[] = [
   },
   {
     title: 'Data',
+    collapsible: true,
     items: [
       // Atribut kemasan yang tercetak di kanban; qty/box tetap diatur PPIC (F-02).
       {
@@ -78,7 +80,8 @@ export const PORTAL_NAV_GROUPS: NavGroup[] = [
 
 export const NAV_GROUPS: NavGroup[] = [
   {
-    title: 'Operasi',
+    title: 'Operasional',
+    collapsible: true,
     items: [
       {
         href: '/dashboard',
@@ -99,10 +102,13 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: 'ClipboardList',
         permission: 'picklist.read',
       },
+      // F-44: PO per bulan berlaku dan sisanya, dipakai saat menyiapkan order.
+      { href: '/po', label: 'PO Supplier', icon: 'FileSpreadsheet', permission: 'outbox.read' },
     ],
   },
   {
     title: 'Logistik',
+    collapsible: true,
     items: [
       { href: '/receiving', label: 'Receiving', icon: 'Truck', permission: 'receipt.read' },
       { href: '/stock', label: 'Stok WH', icon: 'Boxes', phase: 2, permission: 'stock.read' },
@@ -117,6 +123,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     title: 'Integrasi',
+    collapsible: true,
     items: [
       { href: '/sap', label: 'SAP Outbox', icon: 'Share2', permission: 'outbox.read' },
       { href: '/mes', label: 'Sinkron MES', icon: 'RefreshCw', phase: 2, permission: 'mes.read' },
@@ -124,8 +131,9 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     title: 'Laporan',
+    collapsible: true,
     items: [
-      { href: '/reports/arrival', label: 'Kedatangan', icon: 'BarChart3', phase: 3 },
+      { href: '/reports/arrival', label: 'Performa Supplier', icon: 'BarChart3', phase: 2, permission: 'report.arrival.read' },
       {
         href: '/reports/consumption',
         label: 'Konsumsi & Order',
@@ -136,6 +144,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     title: 'Setting',
+    collapsible: true,
     items: [
       {
         href: '/settings/cutoff',

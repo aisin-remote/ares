@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Preview Email ARES</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Arial, sans-serif; background: #f4f7f7; color: #17313a; }
+    .app { min-height: 100vh; display: grid; grid-template-columns: 300px 1fr; }
+    .sidebar { background: #123d4a; color: #fff; padding: 34px 28px; }
+    .brand { font-size: 28px; font-weight: 800; letter-spacing: 1px; }
+    .tagline { margin-top: 5px; color: #a9c1c8; font-size: 14px; }
+    .nav { margin-top: 56px; }
+    .nav div { padding: 14px 16px; margin: 6px 0; border-radius: 12px; color: #cbdadd; }
+    .nav .active { background: #1c5c6f; color: #fff; font-weight: 700; }
+    .main { padding: 30px 42px 42px; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 26px; }
+    .eyebrow { color: #21748a; font-size: 14px; font-weight: 800; letter-spacing: .08em; }
+    .status { padding: 8px 13px; border-radius: 999px; background: #dff4e8; color: #237147; font-weight: 700; font-size: 13px; }
+    .mail { background: #fff; border: 1px solid #dce7e9; border-radius: 22px; box-shadow: 0 16px 45px rgba(25,61,71,.10); overflow: hidden; }
+    .mail-head { padding: 26px 32px 22px; border-bottom: 1px solid #e4ecee; }
+    h1 { margin: 0 0 18px; font-size: 28px; line-height: 1.25; }
+    .meta { display: grid; grid-template-columns: 62px 1fr; row-gap: 8px; font-size: 14px; color: #5c7077; }
+    .meta strong { color: #27464f; }
+    .mail-body { padding: 32px; font-size: 17px; line-height: 1.65; }
+    .summary { margin: 24px 0; display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; }
+    .summary div { background: #f4f8f8; border: 1px solid #dfe9eb; border-radius: 14px; padding: 16px; }
+    .summary span { display: block; color: #73878d; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+    .summary b { display: block; margin-top: 7px; font-size: 17px; }
+    .cta { display: inline-block; margin: 10px 0 18px; padding: 14px 22px; border-radius: 12px; background: #1c6a7e; color: white; font-weight: 800; text-decoration: none; }
+    .note { color: #6d8086; font-size: 14px; }
+    .foot { margin-top: 22px; padding: 15px 18px; border-radius: 12px; background: #edf7f8; color: #326875; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">ARES</div>
+      <div class="tagline">e-Kanban Supplier</div>
+      <div class="nav">
+        <div class="active">Notifikasi order</div>
+        <div>Order Sheet</div>
+        <div>Konfirmasi supplier</div>
+        <div>Receiving</div>
+      </div>
+    </aside>
+    <main class="main">
+      <div class="topbar">
+        <div>
+          <div class="eyebrow">PREVIEW EMAIL SUPPLIER</div>
+          <div style="margin-top:6px;color:#687c82">Dikirim otomatis saat PPIC menerbitkan Order Sheet</div>
+        </div>
+        <div class="status">Terkirim</div>
+      </div>
+      <article class="mail">
+        <div class="mail-head">
+          <h1>[ARES] Order Sheet baru PL-261020-9004 — kirim 20 Okt 2026</h1>
+          <div class="meta">
+            <strong>Dari</strong><div>ARES e-Kanban &lt;no-reply@ares.local&gt;</div>
+            <strong>Kepada</strong><div>0000100231@aiia.co.id</div>
+          </div>
+        </div>
+        <div class="mail-body">
+          <p>Yth. PT Sinar Logam Presisi,</p>
+          <p>Order Sheet <strong>PL-261020-9004</strong> sudah terbit.</p>
+          <div class="summary">
+            <div><span>Tanggal kirim</span><b>20 Okt 2026</b></div>
+            <div><span>Jam datang</span><b>14:00</b></div>
+            <div><span>Isi order</span><b>1 part · 4 box</b></div>
+          </div>
+          <p>Unduh Order Sheet dan kanban, lalu konfirmasi pengiriman melalui portal supplier.</p>
+          <a class="cta" href="#">Buka order di portal ARES</a>
+          <div class="note">Tautan langsung: http://127.0.0.1:3000/portal/10000000-0000-4000-8000-000000000004</div>
+          <div class="foot">Email ini dikirim otomatis oleh ARES e-Kanban setelah Order Sheet diterbitkan.</div>
+        </div>
+      </article>
+    </main>
+  </div>
+</body>
+</html>

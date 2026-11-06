@@ -4,7 +4,7 @@ Versi 2026-09-18 · sumber: dokumen PRD ARES (Claude Docs). File ini salinan unt
 
 ## 1. Ringkasan
 
-ARES adalah sistem e-kanban supplier: setiap komponen yang dikonsumsi di line produksi dikumpulkan sampai jam cutoff, lalu PPIC menerbitkan order ke supplier, supplier mencetak Order Sheet dan kanban lewat portal, dan kedatangan barang diverifikasi dengan scan sebelum diposting sebagai Good Receipt ke SAP. ARES menggantikan sistem e-kanban buatan vendor Jepang yang dipakai saat ini.
+ARES adalah sistem e-kanban supplier: setiap komponen yang dikonsumsi di line produksi dikumpulkan sampai hari cutoff, lalu PPIC menerbitkan order ke supplier, supplier mencetak Order Sheet dan kanban lewat portal, dan kedatangan barang diverifikasi dengan scan sebelum diposting sebagai Good Receipt ke SAP. ARES menggantikan sistem e-kanban buatan vendor Jepang yang dipakai saat ini.
 
 **Masalah yang diselesaikan**
 
@@ -148,7 +148,7 @@ Prioritas: **M** = wajib di v1, **S** = sebaiknya v1, **L** = setelah v1.
 | F-01 | Master supplier & part disinkron dari SAP (read-only); sebelum sinkron tersedia, CRUD manual dengan kolom nomor SAP wajib | M |
 | F-02 | Vendor part: part, supplier, qty per box, back number, rak, tipe box, aktif/nonaktif, PO item default | M |
 | F-03 | BOM per part jadi: komponen, qty per, berlaku dari/sampai; sinkron dari SAP atau upload Excel | M |
-| F-04 | Setting cutoff per supplier: daftar jam cutoff per hari (boleh lebih dari satu), hari kerja, lead time ke tanggal kirim, jam kedatangan per cutoff | M |
+| F-04 | Setting cutoff per supplier: satu jadwal per supplier berisi hari cutoff (tanpa jam), lead time ke tanggal kirim, dan jam kedatangan | M |
 | F-05 | Kalender hari libur dan aturan geser: cutoff jatuh di libur → maju ke hari kerja sebelumnya atau mundur ke sesudahnya (pilihan per supplier) | M |
 | F-06 | Kekurangan kirim otomatis membuat Order Sheet recovery dari order sebelumnya: plant + YYMMDD + NNN tetap, dua digit RR naik `01`, `02`, dan seterusnya | M |
 | F-07 | Setting pembulatan box: `floor + carry-over` (default) atau `ceil` | S |
@@ -164,7 +164,7 @@ Prioritas: **M** = wajib di v1, **S** = sebaiknya v1, **L** = setelah v1.
 | F-12 | Antrean per vendor part: pcs terakumulasi, ekuivalen box, sisa carry-over, waktu cutoff berikutnya | M |
 | F-13 | PPIC mengoreksi jumlah order dalam kanban penuh, atau hold satu vendor part dari cutoff berikutnya; sistem mengonversi kanban ke pcs berdasarkan qty/box, alasan wajib dan tercatat | M |
 | F-13A | Master standar order massal per supplier-part dalam kanban: PPIC memilih supplier, mengisi seluruh part, lalu menyimpan sekaligus; antrean menampilkan selisih jumlah order terhadap standar sebagai penanda anomali | M |
-| F-14 | Konsumsi setelah jam cutoff otomatis masuk cutoff berikutnya | M |
+| F-14 | Konsumsi setelah Order Sheet hari cutoff itu terbit otomatis masuk hari cutoff berikutnya | M |
 | F-15 | Pembatalan/koreksi scan produksi (salah scan) membalik konsumsi selama antrean belum dicutoff | S |
 
 ### 5.3 Order
@@ -172,7 +172,7 @@ Prioritas: **M** = wajib di v1, **S** = sebaiknya v1, **L** = setelah v1.
 | ID | Kebutuhan | Prio |
 | --- | --- | --- |
 | F-16 | PPIC membuka halaman persiapan order per supplier dan cutoff untuk mengedit jumlah kanban serta hold/release seluruh part, lalu menyimpan perubahan atau menerbitkan setelah cutoff tercapai. Alasan wajib bila ada perubahan atau selisih standar; worker mengecek PO dan menerbitkan Order Sheet, lalu halaman detail dokumen terbuka | M |
-| F-17 | Order manual: PPIC boleh memilih supplier aktif mana pun tanpa batas plant supplier; pilih tanggal kirim dan cutoff/cycle, lalu isi jumlah box pada daftar seluruh vendor part (0 = tidak dipesan), atau upload Excel; plant dan nomor Order Sheet mengikuti plant Aisin PPIC | M |
+| F-17 | Order manual: PPIC boleh memilih supplier aktif mana pun tanpa batas plant supplier; pilih tanggal kirim, lalu isi jumlah box pada daftar seluruh vendor part (0 = tidak dipesan), atau upload Excel; plant dan nomor Order Sheet mengikuti plant Aisin PPIC | M |
 | F-18 | Vendor part tanpa PO item aktif: tidak diterbitkan, tampil sebagai *blocked* di dashboard PPIC dengan alasan | M |
 | F-19 | Validasi open qty PO: outstanding Order Sheet per PO item ≤ open qty; melebihi → blocked | S |
 | F-20 | Pembatalan Order Sheet oleh PPIC sebelum `SHIPPED`; pcs dikembalikan ke antrean bila berasal dari konsumsi | M |
@@ -195,8 +195,8 @@ Prioritas: **M** = wajib di v1, **S** = sebaiknya v1, **L** = setelah v1.
 | --- | --- | --- |
 | F-28 | Dashboard: order baru (belum unduh), order berjalan, terlambat konfirmasi, riwayat | M |
 | F-29 | Unduh PDF Order Sheet, PDF kanban, dan CSV supplier; unduhan pertama menandai `DOWNLOADED` dengan waktu | M |
-| F-30 | Konfirmasi kirim per Order Sheet: jumlah box dikirim per line, ETA, no. kendaraan, catatan | M |
-| F-31 | Email otomatis saat Order Sheet terbit dan saat direvisi; ke semua akun vendor itu | M |
+| F-30 | Konfirmasi kirim per Order Sheet: jumlah box dikirim per line, ETA, no. kendaraan, catatan; setelah konfirmasi terbit Delivery Sheet (DO# = nomor Order Sheet + RR, PO# dari SAP, qty kirim) | M |
+| F-31 | Email otomatis saat Order Sheet terbit dan saat direvisi; ke semua akun vendor itu. Detail internal menampilkan riwayat permintaan, penerima, jumlah percobaan, status antre/proses/diterima SMTP/gagal/tidak dikirim, dan kirim ulang dengan izin `picklist.issue`. Penerimaan SMTP bukan bukti inbox atau dibaca. | M |
 | F-32 | Riwayat penerimaan: box dikirim vs diterima per Order Sheet, selisih | S |
 | F-33 | Ganti password, lupa password via email | M |
 
@@ -204,7 +204,7 @@ Prioritas: **M** = wajib di v1, **S** = sebaiknya v1, **L** = setelah v1.
 
 | ID | Kebutuhan | Prio |
 | --- | --- | --- |
-| F-34 | Sesi scan dibuka dengan barcode Order Sheet; satu sesi per Order Sheet per perangkat | M |
+| F-34 | Sesi scan dibuka dengan barcode Delivery Sheet (bukan Order Sheet); satu sesi per Order Sheet per perangkat | M |
 | F-35 | Layar menampilkan line Order Sheet dengan counter box diorder / dikirim / discan, diperbarui tiap scan | M |
 | F-36 | Validasi kanban (aturan 6.4) dengan umpan balik warna + bunyi dalam < 300 ms | M |
 | F-37 | Tutup sesi: ringkasan cocok/kurang/lebih; kurang wajib alasan; hasil sesuai kebijakan short shipment | M |
@@ -224,7 +224,7 @@ Prioritas: **M** = wajib di v1, **S** = sebaiknya v1, **L** = setelah v1.
 
 | ID | Kebutuhan | Prio |
 | --- | --- | --- |
-| F-44 | Sinkron PO open items per supplier ke cache ARES; jadwal + tombol manual | M |
+| F-44 | Tarik PO bulanan dari SAP (nomor PO, item, qty) ke cache ARES tiap tanggal tarik yang diatur Admin/PPIC (default 24), untuk order bulan berikutnya: PO yang dibuat SAP bulan M berlaku bulan M+1; tombol tarik manual tetap ada. Order Sheet memakai PO bulan tanggal kirimnya; sisa per item = qty PO − pesanan ARES yang tidak batal (F-19) | M |
 | F-45 | Outbox GR: satu baris per receipt, status `PENDING/PROCESSING/STAGED/POSTED/FAILED/HELD`, percobaan, jadwal retry, error, nomor dokumen SAP | M |
 | F-46 | Layar error posting: daftar `FAILED`, detail pesan, kirim ulang, tahan | M |
 | F-47 | Kunci idempoten lintas sistem (nomor receipt) agar kirim ulang tidak dobel | M |
@@ -239,12 +239,20 @@ Prioritas: **M** = wajib di v1, **S** = sebaiknya v1, **L** = setelah v1.
 | F-51 | Laporan konsumsi & order: pcs konsumsi vs box diorder per part per periode | S |
 | F-52 | Ekspor Excel di semua laporan | S |
 
+**Definisi laporan performa supplier (F-50, 2026-10-22)**
+
+- Periode memilih jadwal kirim order asal (revisi 0), maksimal 93 hari. Recovery satu nomor order digabung ke asal; order dibatalkan dikecualikan. Batas penilaian adalah waktu sekarang atau akhir periode WIB, mana yang lebih dahulu.
+- Kedatangan memakai scan kanban OK pertama dari receipt tidak dibatalkan sebagai proxy receiving, bukan check-in truk/ETA. Tepat waktu bila scan ≤ jadwal asal + toleransi filter 0–120 menit (bawaan 0). Order belum tiba yang sudah jatuh tempo ikut denominator; sesi tanpa scan valid ditandai data belum cukup dan tidak dinilai. Order mendatang tidak masuk KPI.
+- Kelengkapan = pcs diterima dari receipt CLOSED hingga batas penilaian, termasuk recovery, dibatasi kebutuhan asal per part. Kelebihan satu part tidak menutup kekurangan part lain; selisih lebih dan kurang ditampilkan terpisah. Sesi terbuka/batal tidak masuk kuantitas final.
+- Waktu konfirmasi = konfirmasi supplier pada order asal dikurangi waktu penerbitan, hanya sampel nonnegatif hingga batas penilaian. Kosong/tidak konsisten dikeluarkan dari rata-rata dan jumlahnya ditampilkan. Event SHIPPED_AUTO ditampilkan terpisah sebagai receiving tanpa konfirmasi supplier.
+- Hak baca `report.arrival.read` untuk PPIC/Admin; seluruh query dan unduhan CSV mengikuti pabrik sesi. CSV yang bisa dibuka di Excel tersedia; ekspor `.xlsx` F-52 tetap terpisah.
+
 ### 5.10 Administrasi
 
 | ID | Kebutuhan | Prio |
 | --- | --- | --- |
 | F-53 | User, peran, permission per aksi; Admin/PPIC membuat akun supplier yang terikat vendor dan wajib memiliki email untuk OTP login | M |
-| F-54 | Audit log semua perubahan dokumen dan setting: siapa, kapan, sebelum/sesudah | M |
+| F-54 | Audit log semua perubahan dokumen dan setting: siapa, kapan, sebelum/sesudah. Detail order internal dan portal menampilkan timeline penerbitan, unduhan pertama, konfirmasi/koreksi kirim, recovery, serta aktivitas receiving; snapshot audit mentah tidak ditampilkan. | M |
 | F-55 | Log integrasi (payload kirim/terima) tersimpan 90 hari | S |
 
 ## 6. Aturan bisnis
@@ -261,12 +269,12 @@ Aturan ini adalah acuan tunggal untuk fungsi murni di `packages/domain`; setiap 
 
 **6.2 Cutoff dan kalender**
 
-1. Jam cutoff dievaluasi pada zona waktu pabrik (Asia/Jakarta), disimpan UTC. Saat waktunya tercapai, tombol pembuatan Order Sheet aktif, notifikasi PPIC muncul, dan proses menunggu konfirmasi PPIC.
-2. Sebelum diterbitkan, PPIC membuka halaman persiapan berisi seluruh part, jumlah kanban yang dapat diedit, akumulasi, standar dan selisihnya, serta pilihan tahan antrean. Perubahan dapat disimpan sebelum cutoff; penerbitan menunggu cutoff. Selisih terhadap standar wajib disertai alasan dan disimpan pada Order Sheet serta audit.
-3. Tanggal kirim = tanggal cutoff + lead time supplier (hari kerja), jam kedatangan dari setting cutoff itu.
+1. Cutoff hanya punya hari, tanpa jam (keputusan pemilik proyek 2026-10-23): PPIC biasa membuat Order Sheet pagi hari di hari cutoff. Hari cutoff dievaluasi pada zona waktu pabrik (Asia/Jakarta) dan disimpan UTC sebagai 00:00 WIB hari itu. Sejak 00:00 WIB tombol pembuatan Order Sheet aktif, notifikasi PPIC muncul, dan proses menunggu konfirmasi PPIC.
+2. Sebelum diterbitkan, PPIC membuka halaman persiapan berisi seluruh part, jumlah kanban yang dapat diedit, akumulasi, standar dan selisihnya, serta pilihan tahan antrean. Perubahan dapat disimpan sebelum hari cutoff; penerbitan menunggu hari cutoff. Selisih terhadap standar wajib disertai alasan dan disimpan pada Order Sheet serta audit.
+3. Tanggal kirim = tanggal cutoff + lead time supplier (hari kerja), jam kedatangan dari setting cutoff supplier.
 4. Cutoff atau tanggal kirim yang jatuh di hari libur digeser sesuai pilihan supplier (F-05); antrean tidak hilang, hanya ikut cutoff hasil geser.
-5. Cutoff tidak boleh dijalankan dua kali untuk pasangan supplier × jam × tanggal; kunci di database, bukan di scheduler.
-6. Konsumsi yang tercatat tepat pada detik cutoff masuk cutoff berikutnya.
+5. Cutoff tidak boleh dijalankan dua kali untuk pasangan supplier × tanggal; kunci di database, bukan di scheduler.
+6. Konsumsi pada hari cutoff masuk cutoff hari itu selama Order Sheet-nya belum terbit; setelah terbit, konsumsi masuk hari cutoff berikutnya.
 
 **6.3 Short shipment (konfirmasi supplier)**
 
@@ -297,10 +305,10 @@ Kanban `PRINTED` (supplier belum konfirmasi kirim) tetap boleh diterima; sistem 
 
 **6.6 Order Sheet dan PO**
 
-1. Setiap line Order Sheet menyimpan nomor PO dan item SAP yang berlaku pada tanggal kirim; tanpa itu line tidak terbit (F-18).
+1. Setiap line Order Sheet menyimpan nomor PO dan item SAP untuk bulan tanggal kirim; PO berlaku dari awal sampai akhir bulan tersebut, bukan sampai receiving/GR pertama (keputusan PPIC 2026-11-02). PO bisa dipakai beberapa Order Sheet selama kapasitas cukup. Periode kosong/lintas bulan tidak boleh dipakai; tanpa PO bulan yang sesuai line tidak terbit (F-18).
 2. Nomor Order Sheet tidak pernah dipakai ulang, termasuk setelah pembatalan.
 3. Order Sheet yang sudah `SHIPPED` tidak bisa dibatalkan; penyelesaiannya lewat sesi scan.
-4. Revisi mewarisi nomor PO; bila PO sudah habis/berakhir, revisi blocked sampai PPIC memilih PO lain.
+4. Recovery dalam bulan yang sama mengutamakan PO asal. Recovery lintas bulan/tahun memilih PO baru milik supplier dan part yang sama sesuai bulan tanggal kirim recovery. Nomor Order Sheet tetap memakai base asal dengan RR bertambah; tanggal pada nomor asal tidak menentukan bulan PO recovery. Bila PO baru belum tersedia atau kapasitas kurang, transaksi konfirmasi/koreksi yang membuat recovery ditolak utuh dan bisa diulang setelah PO lengkap; tidak menerbitkan recovery tanpa PO. Referensi PO pada dokumen asal/GR sebelumnya tidak diubah.
 
 **6.7 Konsumsi**
 
@@ -347,10 +355,12 @@ flowchart TD
 | TT\_SCAN\_EVENT | Setiap scan | DEDUPE\_KEY unik, SESSION\_ID, CODE, RESULT, AT |
 | TT\_STOCK\_MUTATION | Buku stok WH | PART\_ID, SLOC, DELTA\_PCS, TYPE(RECEIPT/CONSUMPTION/ADJUST), REF\_TABLE, REF\_ID |
 | TT\_SAP\_OUTBOX | Antrean ke SAP | SOURCE\_TABLE, SOURCE\_ID, DOC\_TYPE, IDEMPOTENCY\_KEY unik, PAYLOAD, STATUS, ATTEMPTS, LAST\_ERROR, SAP\_DOC\_NO |
-| TT\_PO\_HEADER / TT\_PO\_LINE | Cache PO SAP | SAP\_PO\_NO, VENDOR\_ID, VALID\_FROM/TO; line: ITEM, PART\_ID, OPEN\_QTY, SYNCED\_AT |
+| TT\_PO\_HEADER / TT\_PO\_LINE | Cache PO SAP | SAP\_PO\_NO, SOURCE, VENDOR\_ID, VALID\_FROM/TO; line: ITEM, PART\_ID, OPEN\_QTY (= qty PO), ORDERED\_QTY, IS\_ACTIVE, SYNCED\_AT |
+| TM\_SETTING | Setting global satu nilai per kunci | KEY unik, VALUE; mis. `PO_PULL_DAY` (F-44) |
 | TM\_SEQUENCE | Penomoran | CODE, DATE\_KEY, LAST\_NO; dibaca dengan `SELECT … FOR UPDATE` |
 | TM\_USER / TM\_ROLE / TM\_PERMISSION / TM\_USER\_ROLE | Akses | USER: VENDOR\_ID nullable (akun supplier) |
 | TT\_AUDIT\_LOG | Jejak perubahan | ENTITY, ENTITY\_ID, ACTION, USER\_ID, BEFORE, AFTER, AT |
+| TT\_EMAIL\_DELIVERY | Riwayat pengiriman email order | PICKLIST\_ID, DEDUPE\_KEY unik, KIND, STATUS, REQUESTED\_BY\_ID, RECIPIENTS, CC, ACCEPTED, ATTEMPTS, LAST\_ERROR, MESSAGE\_ID, ATTEMPTED\_AT, FINISHED\_AT |
 
 Stok WH per part adalah `SUM(DELTA_PCS)` dari `TT_STOCK_MUTATION`, disajikan lewat view atau tabel saldo yang diperbarui per mutasi; tidak ada kolom stok yang diedit langsung.
 
@@ -415,8 +425,9 @@ Bila aplikasi produksi lebih mudah mendorong data, endpoint `POST /api/consumpti
 
 | Kode | Simbologi | Isi | Alasan |
 | --- | --- | --- | --- |
-| Kanban | QR, error correction M | `ARES:K:<ULID>` (contoh `ARES:K:01J8Z3M5X8Q9W2Y7V6T5R4S3P2`) | Pendek, unik global, tahan perubahan atribut; detail diambil dari DB |
-| Order Sheet | Code128 | `ARES:P:<NO>-<REV>` | Membuka sesi scan; revisi ikut terbaca |
+| Kanban | QR, error correction M | `ARES:K:<ULID>|<PART_NO>|<QTY_PER_KANBAN>` (contoh `ARES:K:01J8Z3M5X8Q9W2Y7V6T5R4S3P2|90312-38013|200`) | ID unik global untuk receiving ARES; part number dan qty per kanban terbaca scanner/sistem lain. ARES hanya memakai ID, detail tetap diambil dari DB; kartu lama tanpa part/qty tetap diterima |
+| Order Sheet | Code128 | `ARES:P:<NO>-<REV>` | Identitas Order Sheet; tidak membuka sesi scan |
+| Delivery Sheet | Code128 + QR | `ARES:D:<DO#>` | Membuka sesi scan; terbit setelah konfirmasi kirim, recovery ikut terbaca |
 | Label produksi (jika dari ARES) | QR | `ARES:L:<ULID>` | Kunci idempoten konsumsi |
 
 Prefix `ARES:` memungkinkan scanner menolak kode asing tanpa query.
@@ -475,8 +486,8 @@ Tiga route group seperti Avicenna, ditambah satu untuk supplier:
 
 | Route group | Kerangka | Pengguna |
 | --- | --- | --- |
-| `(app)` | Sidebar + topbar + area gulir (`ShellFrame`) | PPIC, Admin, Warehouse (halaman daftar & laporan) |
-| `(station)` | Tanpa sidebar, `bg-surface`, satu tugas per layar | Warehouse (sesi scan receiving), Produksi (scan cadangan) |
+| `(app)` | PPIC/Admin memakai sidebar + topbar (`ShellFrame`). Warehouse memakai `WarehouseFrame` satu kolom, maksimal 560 px, navigasi bawah; login langsung ke Receiving dengan form scan dan kartu sesi. | PPIC, Admin, Warehouse |
+| `(station)` | Tanpa sidebar, `bg-surface`, satu tugas per layar. Warehouse tetap memakai susunan handheld maksimal 560 px pada semua ukuran layar; peran lain menyesuaikan lebar layar. | Warehouse (sesi scan receiving), Produksi (scan cadangan) |
 | `(portal)` | `ShellFrame` yang sama, sidebar berisi menu supplier saja, wordmark `ARES · <nama vendor>` | Supplier |
 | `login` | Panel tengah, tanpa kerangka | Semua |
 
@@ -603,7 +614,7 @@ Irisan vertikal tipis dulu, dipakai supplier pilot, baru dilebarkan. Estimasi un
 | BOM | Bill of material: daftar komponen dan qty per unit part jadi |
 | Carry-over | Sisa pcs konsumsi yang belum genap satu box, dibawa ke cutoff berikutnya |
 | Cutoff | Waktu tutup antrean konsumsi untuk satu supplier; memicu penerbitan Order Sheet |
-| Cycle | Kedatangan ke-n dalam satu hari untuk satu supplier |
+| Cycle | Kedatangan ke-n dalam satu hari untuk satu supplier; dengan cutoff tanpa jam selalu 1 |
 | GR | Good Receipt: posting penerimaan barang ke SAP terhadap PO item |
 | Kanban | Label sekali pakai per box, berisi QR ID kanban |
 | MES | Manufacturing execution system di line produksi |

@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { nextCutoff, nextScheduledDelivery } from './cutoff';
+import { deliveryForCutoff, nextCutoff, nextScheduledDelivery } from './cutoff';
 
 const schedule = {
-  cutoffTime: '10:00:00',
   workdays: '1,2,3,4,5',
   leadDays: 1,
   arrivalTime: '14:00:00',
@@ -11,14 +10,17 @@ const schedule = {
 };
 
 describe('nextCutoff (PRD 6.2)', () => {
-  it('memakai jam Jakarta dan memasukkan detik cutoff ke jadwal berikutnya', () => {
-    expect(nextCutoff({ ...schedule, now: new Date('2026-09-21T02:59:59Z') })).toEqual({
-      cutoffAt: new Date('2026-09-21T03:00:00Z'),
+  it('cutoff adalah 00:00 WIB hari cutoff dan hari ini ikut dihitung sampai tengah malam', () => {
+    // Senin 21 Sep 2026: 00:00 WIB = 20 Sep 17:00 UTC.
+    const senin = {
+      cutoffAt: new Date('2026-09-20T17:00:00Z'),
       deliveryDate: '2026-09-22',
       arrivalAt: new Date('2026-09-22T07:00:00Z'),
-    });
-    expect(nextCutoff({ ...schedule, now: new Date('2026-09-21T03:00:00Z') })?.cutoffAt).toEqual(
-      new Date('2026-09-22T03:00:00Z'),
+    };
+    expect(nextCutoff({ ...schedule, now: new Date('2026-09-20T17:00:00Z') })).toEqual(senin);
+    expect(nextCutoff({ ...schedule, now: new Date('2026-09-21T16:59:59Z') })).toEqual(senin);
+    expect(nextCutoff({ ...schedule, now: new Date('2026-09-21T17:00:00Z') })?.cutoffAt).toEqual(
+      new Date('2026-09-21T17:00:00Z'),
     );
   });
 
@@ -30,7 +32,7 @@ describe('nextCutoff (PRD 6.2)', () => {
         holidays: ['2026-09-21'],
       }),
     ).toEqual({
-      cutoffAt: new Date('2026-09-18T03:00:00Z'),
+      cutoffAt: new Date('2026-09-17T17:00:00Z'),
       deliveryDate: '2026-09-22',
       arrivalAt: new Date('2026-09-22T07:00:00Z'),
     });
@@ -40,21 +42,21 @@ describe('nextCutoff (PRD 6.2)', () => {
     expect(
       nextCutoff({
         ...schedule,
-        now: new Date('2026-09-18T03:00:00Z'),
+        now: new Date('2026-09-18T17:00:00Z'), // Sabtu
         holidays: ['2026-09-21'],
       })?.cutoffAt,
-    ).toEqual(new Date('2026-09-22T03:00:00Z'));
+    ).toEqual(new Date('2026-09-21T17:00:00Z'));
   });
 
   it('menggeser cutoff libur ke hari kerja sebelumnya, termasuk jadwal nominal masa depan', () => {
     expect(
       nextCutoff({
         ...schedule,
-        now: new Date('2026-09-17T03:00:00Z'),
+        now: new Date('2026-09-17T17:00:00Z'), // Jumat
         holidayShift: 'BEFORE',
         holidays: ['2026-09-18', '2026-09-21'],
       })?.cutoffAt,
-    ).toEqual(new Date('2026-09-22T03:00:00Z'));
+    ).toEqual(new Date('2026-09-21T17:00:00Z'));
   });
 });
 
@@ -88,5 +90,22 @@ describe('nextScheduledDelivery', () => {
       arrivalTime: '04:00:00',
       arrivalAt: new Date('2026-09-21T21:00:00Z'),
     });
+  });
+});
+
+describe('deliveryForCutoff (6.2, F-44)', () => {
+  // Kamis 29 Okt 2026 00:00 WIB = 28 Okt 17:00 UTC.
+  const cutoffAt = new Date('2026-10-28T17:00:00Z');
+  it('lead time dari cutoff; lintas bulan menentukan PO bulan kirim', () => {
+    expect(deliveryForCutoff({ ...schedule, leadDays: 2, cutoffAt, deliveryDays: null }))
+      .toEqual({ deliveryDate: '2026-11-02', arrivalTime: '14:00:00' });
+  });
+  it('digeser ke hari kirim rutin supplier', () => {
+    expect(deliveryForCutoff({ ...schedule, cutoffAt, deliveryDays: '3' }))
+      .toMatchObject({ deliveryDate: '2026-11-04' });
+  });
+  it('cutoff yang tidak cocok kalender ditolak dengan alasan', () => {
+    expect(deliveryForCutoff({ ...schedule, cutoffAt: new Date('2026-10-28T18:00:00Z'), deliveryDays: null }))
+      .toHaveProperty('error');
   });
 });

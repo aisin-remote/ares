@@ -18,6 +18,15 @@ export const queueAdjustmentSchema = z.object({
 });
 export type QueueAdjustmentInput = z.infer<typeof queueAdjustmentSchema>;
 
+/** F-13: PPIC menambah part supplier yang sama ke antrean cutoff sebelum Order Sheet terbit. */
+export const queueAddPartSchema = z.object({
+  vendorPartId: z.coerce.number().int().positive('Part tidak valid'),
+  cutoffAt: z.string().datetime({ offset: true, message: 'Waktu cutoff harus ISO 8601' }),
+  kanban: z.coerce.number().int().min(1, 'Jumlah kanban minimal 1'),
+  reason: z.string().trim().min(3, 'Alasan minimal 3 karakter').max(255),
+});
+export type QueueAddPartInput = z.infer<typeof queueAddPartSchema>;
+
 export const queueHoldSchema = z.object({
   hold: z.boolean(),
   reason: z.string().trim().min(3, 'Alasan minimal 3 karakter').max(255),

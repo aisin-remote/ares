@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, Get, Param, ParseIntPipe, Post, Req, UnprocessableEntityException } from '@nestjs/common';
 import type { Request } from 'express';
-import { fakeProductionResultSchema, productionResultSchema, queueAdjustmentSchema, queueHoldSchema, reverseConsumptionSchema, type FakeProductionResultInput, type ProductionResultInput, type QueueAdjustmentInput, type QueueHoldInput, type ReverseConsumptionInput } from '@ares/contracts';
+import { fakeProductionResultSchema, productionResultSchema, queueAddPartSchema, queueAdjustmentSchema, queueHoldSchema, reverseConsumptionSchema, type FakeProductionResultInput, type ProductionResultInput, type QueueAddPartInput, type QueueAdjustmentInput, type QueueHoldInput, type ReverseConsumptionInput } from '@ares/contracts';
 import { RequirePermission } from '../auth/permissions.guard';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { ConsumptionService } from './consumption.service';
@@ -58,6 +58,12 @@ export class MesController {
 @Controller('order-queues')
 export class OrderQueueController {
   constructor(private readonly controls: QueueControlService) {}
+
+  @Post()
+  @RequirePermission('queue.write')
+  addPart(@Body(new ZodValidationPipe(queueAddPartSchema)) body: QueueAddPartInput, @Req() req: Request) {
+    return this.controls.addPart(body, actorOf(req));
+  }
 
   @Post(':id/adjust')
   @RequirePermission('queue.write')

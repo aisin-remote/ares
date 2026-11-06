@@ -54,10 +54,13 @@ export default async function ConsumptionPage({ searchParams }: {
 
     <Reveal><Card>
       <CardHeader icon={Factory} title="Riwayat konsumsi" subtitle="Maksimal 200 baris terbaru; satu hasil produksi dapat menjadi beberapa komponen BOM." />
-      <Table><thead><tr><Th>Sumber</Th><Th>Part jadi</Th><Th>Komponen</Th><Th>Supplier</Th><Th align="right">Qty</Th><Th>Line</Th><Th>Produksi</Th><Th>Status</Th><Th>Aksi</Th></tr></thead>
-        <tbody>{rows.length === 0 ? <EmptyState colSpan={9}>Belum ada konsumsi pada saringan ini. Tarik data dari layar Sinkron MES.</EmptyState> : rows.map((row) => <Tr key={row.id}>
+      <Table><thead><tr><Th>Sumber</Th><Th>Part jadi</Th><Th>Komponen</Th><Th>Supplier</Th><Th align="right">Qty (pcs)</Th><Th align="right">Kanban</Th><Th>Line</Th><Th>Produksi</Th><Th>Status</Th><Th>Aksi</Th></tr></thead>
+        <tbody>{rows.length === 0 ? <EmptyState colSpan={10}>Belum ada konsumsi pada saringan ini. Tarik data dari layar Sinkron MES.</EmptyState> : rows.map((row) => <Tr key={row.id}>
           <Td className="tabular">{row.sourceKey}</Td><Td>{row.parentPartNo}</Td><Td strong>{row.componentPartNo}<span className="ml-2 font-normal text-ink-muted">{row.componentName}</span></Td>
-          <Td>{row.vendorName}</Td><Td align="right" className="tabular font-semibold">{row.qty.toLocaleString('id-ID')}</Td><Td>{row.line}</Td><Td className="whitespace-nowrap">{waktu(row.occurredAt)}</Td>
+          <Td>{row.vendorName}</Td><Td align="right" className="tabular font-semibold">{row.qty.toLocaleString('id-ID')}</Td>
+          {/* Ekuivalen kanban memakai qty/box vendor part antreannya; konsumsi jarang pas satu box. */}
+          <Td align="right" className="tabular whitespace-nowrap"><span className="font-semibold text-ink">{(row.qty / row.qtyPerBox).toLocaleString('id-ID', { maximumFractionDigits: 2 })} kanban</span><span className="mt-0.5 block text-[11px] text-ink-muted">{row.qtyPerBox} pcs/kanban</span></Td>
+          <Td>{row.line}</Td><Td className="whitespace-nowrap">{waktu(row.occurredAt)}</Td>
           <Td>{row.reversedAt ? <span className="font-semibold text-ng">Dibatalkan</span> : Number(row.closedQueueCount) > 0 ? <span className="font-semibold text-ink-muted">Sudah cutoff</span> : <span className="font-semibold text-ok">Aktif</span>}</Td>
           <Td>{row.id === Number(row.firstConsumptionId) && !row.reversedAt && Number(row.closedQueueCount) === 0 ? <ReverseConsumption id={row.id} /> : '—'}</Td>
         </Tr>)}</tbody>

@@ -1,12 +1,12 @@
 import { notFound } from 'next/navigation';
 import { ClipboardList } from 'lucide-react';
 import { pcsToBoxes } from '@ares/domain';
-import { getOpenOrderQueueVendorDetail } from '@/lib/queries';
+import { getCutoffPoPreview, getOpenOrderQueueVendorDetail, listVendorPartsForOrder } from '@/lib/queries';
 import { requirePermission } from '@/lib/session';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardDivider, CardHeader } from '@/components/ui/card';
 import { CutoffOrderForm } from '@/components/queue/cutoff-order-form';
-import { waktu } from '@/components/picklist/status';
+import { hariCutoff } from '@/components/picklist/status';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,16 +24,15 @@ export default async function CutoffOrderPage({
   if (!Number.isSafeInteger(vendorId) || vendorId <= 0 || typeof cutoff !== 'string') notFound();
   const cutoffAt = new Date(cutoff);
   if (!Number.isFinite(cutoffAt.getTime())) notFound();
-  const detail = await getOpenOrderQueueVendorDetail(vendorId, user.plantId);
+  const [detail, vendorPartRows, preview] = await Promise.all([
+    getOpenOrderQueueVendorDetail(vendorId, user.plantId),
+    listVendorPartsForOrder(vendorId),
+    getCutoffPoPreview(vendorId, cutoffAt),
+  ]);
   if (!detail) notFound();
   const rows = detail.rows.filter((row) => row.cutoffAt.getTime() === cutoffAt.getTime());
   if (rows.length === 0) notFound();
-  const clock = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-  });
-  const rounding = detail.cutoffs.find(
-    (item) => item.cutoffTime === `${clock.format(cutoffAt)}:00`,
-  )?.rounding ?? 'FLOOR';
+  const rounding = detail.cutoffs[0]?.rounding ?? 'FLOOR';
   const plannedRows = rows.map((row) => {
     const plan = pcsToBoxes(row.pcs + row.carryOverPcs, row.qtyPerBox, rounding);
     return {
@@ -48,6 +47,7 @@ export default async function CutoffOrderPage({
       standardKanban: row.standardKanban,
       hold: row.hold,
       blockedReason: row.blockedReason,
+      po: preview.po[row.vendorPartId] ?? null,
     };
   });
 
@@ -60,7 +60,7 @@ export default async function CutoffOrderPage({
           { label: 'Siapkan Order Sheet' },
         ]}
         title="Siapkan Order Sheet"
-        description={`${detail.name} · cutoff ${waktu(cutoffAt)}`}
+        description={`${detail.name} · cutoff ${hariCutoff(cutoffAt)}`}
       />
       <Card>
         <CardHeader
@@ -74,9 +74,21 @@ export default async function CutoffOrderPage({
           vendorName={detail.name}
           sapVendorNo={detail.sapVendorNo}
           cutoffAt={cutoffAt.toISOString()}
-          cutoffLabel={waktu(cutoffAt)}
+          cutoffLabel={hariCutoff(cutoffAt)}
           canRun={cutoffAt.getTime() <= Date.now()}
+          delivery={preview.delivery}
           rows={plannedRows}
+          extraParts={vendorPartRows
+            .filter((part) => !rows.some((row) => row.vendorPartId === part.vendorPartId))
+            .map((part) => ({
+              vendorPartId: part.vendorPartId,
+              partNo: part.partNo,
+              partName: part.partName,
+              backNo: part.backNo,
+              qtyPerKanban: part.qtyPerBox,
+              standardKanban: part.standardKanban,
+              po: preview.po[part.vendorPartId] ?? null,
+            }))}
         />
       </Card>
     </>

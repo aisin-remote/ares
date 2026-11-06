@@ -7,6 +7,7 @@ import {
   ClipboardList,
   DoorClosed,
   FileText,
+  Printer,
   ScanLine,
   Share2,
   UserRound,
@@ -58,6 +59,105 @@ export default async function ReceiptSummaryPage({ params }: { params: Promise<{
   const totalPcs = r.lines.reduce((n, l) => n + l.pcsReceived, 0);
   const orderNo = orderSheetDisplayNo(r.picklistNo, r.revision);
 
+  if (user.role === 'warehouse') {
+    return (
+      <div className="space-y-4">
+        <Link
+          href="/receiving"
+          className="inline-flex min-h-11 items-center text-[14px] font-semibold text-ink-muted hover:text-ink"
+        >
+          ← Kembali ke Receiving
+        </Link>
+        <div>
+          <h1 className="text-[24px] font-extrabold tracking-tight">Hasil penerimaan</h1>
+          <p className="tabular mt-1 text-[13px] text-ink-muted">{r.receiptNo}</p>
+        </div>
+        <Card className="space-y-2 p-4">
+          <h2 className="text-[16px] font-bold">{r.vendorName}</h2>
+          <p className="tabular text-[15px] font-semibold">{orderNo}</p>
+          <p className="text-[13px] text-ink-muted">
+            {r.status === 'OPEN'
+              ? 'Sesi masih terbuka'
+              : r.status === 'CANCELLED'
+                ? 'Sesi dibatalkan'
+                : 'Sesi sudah ditutup'}
+          </p>
+          <p className="text-[12px] text-ink-muted">
+            Dibuka {waktu(r.openedAt)}
+            {r.closedAt ? ` · ditutup ${waktu(r.closedAt)}` : ''}
+          </p>
+          {r.closedBy ? <p className="text-[12px] text-ink-muted">Petugas: {r.closedBy}</p> : null}
+        </Card>
+        <dl className="grid grid-cols-3 gap-2">
+          <div className="rounded-2xl border border-line bg-card p-3">
+            <dt className="text-[11px] text-ink-muted">Box diterima</dt>
+            <dd className="tabular mt-1 text-[24px] font-extrabold text-ok">
+              {totalScanned}
+              <span className="text-[12px] font-normal text-ink-muted"> / {totalOrdered}</span>
+            </dd>
+          </div>
+          <div className="rounded-2xl border border-line bg-card p-3">
+            <dt className="text-[11px] text-ink-muted">Box kurang</dt>
+            <dd className="tabular mt-1 text-[24px] font-extrabold text-warn">{totalMissing}</dd>
+          </div>
+          <div className="rounded-2xl border border-line bg-card p-3">
+            <dt className="text-[11px] text-ink-muted">Pcs diterima</dt>
+            <dd className="tabular mt-1 text-[24px] font-extrabold">{totalPcs}</dd>
+          </div>
+        </dl>
+        {r.note ? (
+          <Card className="p-4">
+            <h2 className="text-[14px] font-bold">Catatan penerimaan</h2>
+            <p className="mt-2 whitespace-pre-wrap break-words text-[14px] text-ink-muted">
+              {r.note}
+            </p>
+          </Card>
+        ) : null}
+        <section className="space-y-3" aria-labelledby="receipt-parts">
+          <h2 id="receipt-parts" className="text-[17px] font-bold">
+            Part diterima
+          </h2>
+          {r.lines.map((line) => (
+            <Card key={line.id} className="p-4">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h3 className="text-[17px] font-extrabold">{line.backNo}</h3>
+                <span className="tabular text-[13px] font-semibold">{line.partNo}</span>
+              </div>
+              <p className="mt-1 break-words text-[13px] text-ink-muted">{line.partName}</p>
+              <dl className="mt-3 grid grid-cols-3 gap-2 text-[12px]">
+                <div>
+                  <dt className="text-ink-muted">Diorder</dt>
+                  <dd className="tabular mt-1 font-bold">{line.boxOrdered} box</dd>
+                </div>
+                <div>
+                  <dt className="text-ink-muted">Diterima</dt>
+                  <dd className="tabular mt-1 font-bold text-ok">{line.boxScanned} box</dd>
+                </div>
+                <div>
+                  <dt className="text-ink-muted">Kurang</dt>
+                  <dd className="tabular mt-1 font-bold text-warn">{line.boxMissing} box</dd>
+                </div>
+              </dl>
+            </Card>
+          ))}
+        </section>
+        {r.outbox ? (
+          <p className="rounded-2xl border border-line bg-card p-3 text-[12px] text-ink-muted">
+            {OUTBOX_LABEL[r.outbox.status] ?? r.outbox.status}
+            {r.outbox.sapDocNumber ? ` · ${r.outbox.sapDocNumber}` : ''}
+          </p>
+        ) : null}
+        <Link
+          href={r.status === 'OPEN' ? `/receiving/${r.publicId}` : '/receiving'}
+          className="flex min-h-12 items-center justify-center gap-2 rounded-full bg-accent px-4 text-[14px] font-semibold text-white hover:bg-accent-soft"
+        >
+          <ScanLine className="size-4" aria-hidden />
+          {r.status === 'OPEN' ? 'Lanjutkan scan' : 'Scan Delivery Sheet berikutnya'}
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <>
       <PageHeader
@@ -79,6 +179,16 @@ export default async function ReceiptSummaryPage({ params }: { params: Promise<{
             </Link>
           ) : (
             <>
+              {r.status === 'CLOSED' ? (
+                // Dirender worker saat sesi ditutup; tautan biasa supaya "buka di tab baru" tetap jalan.
+                <a
+                  href={`/api/receipt/${r.publicId}/sheet`}
+                  className="inline-flex h-11 items-center gap-2 rounded-full border border-line bg-card px-5 text-[14px] font-semibold transition-colors hover:border-ink"
+                >
+                  <Printer className="size-[18px]" strokeWidth={2} aria-hidden />
+                  Receipt Sheet
+                </a>
+              ) : null}
               <Link
                 href={`/picklist/${r.picklistPublicId}`}
                 className="inline-flex h-11 items-center gap-2 rounded-full border border-line bg-card px-5 text-[14px] font-semibold transition-colors hover:border-ink"

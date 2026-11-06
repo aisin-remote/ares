@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/session';
 import { ShellFrame } from '@/components/shell/shell-frame';
 import { authorizedGroups, NAV_GROUPS } from '@/components/shell/nav-config';
+import { WarehouseFrame } from '@/components/shell/warehouse-frame';
 
 /**
  * Kerangka aplikasi.
@@ -28,6 +29,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Akun supplier tidak punya urusan di layar internal. Ini gerbang menu;
   // penyaringan datanya tetap ada di lapisan query (aturan repo 9).
   if (user.vendorId != null) redirect('/portal');
+  if (user.role === 'warehouse') {
+    return (
+      <WarehouseFrame userName={user.name} permissions={user.permissions}>
+        {children}
+      </WarehouseFrame>
+    );
+  }
 
   return (
     <ShellFrame

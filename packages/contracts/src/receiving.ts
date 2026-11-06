@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 const scanCode = z.string().trim().min(1, 'Kode wajib diisi').max(64);
 
-/** F-34: buka sesi dengan barcode picklist `ARES:P:<NO>-<REV>`. */
+/** F-34: buka sesi dengan barcode Delivery Sheet `ARES:D:<DO#>`. */
 export const openReceiptSchema = z.object({
   code: scanCode,
 });

@@ -3,6 +3,7 @@ import type { Request } from 'express';
 import { createReadStream } from 'node:fs';
 import { RequirePermission } from '../auth/permissions.guard';
 import { PicklistService } from '../picklist/picklist.service';
+import { ReceivingService } from '../receiving/receiving.service';
 import { DocumentService } from './document.service';
 import type { DocKind } from './document.types';
 
@@ -46,6 +47,13 @@ export class DocumentController {
     return this.stream(reference, 'kanban', req);
   }
 
+  /** F-30: Delivery Sheet, ada setelah supplier mengonfirmasi kirim. */
+  @Get(':id/delivery-sheet.pdf')
+  @RequirePermission('picklist.read')
+  deliverySheet(@Param('id') reference: string, @Req() req: Request): Promise<StreamableFile> {
+    return this.stream(reference, 'delivery', req);
+  }
+
   @Get(':id/order-sheet.csv')
   @RequirePermission('picklist.read')
   csv(@Param('id') reference: string, @Req() req: Request): Promise<StreamableFile> {
@@ -60,7 +68,7 @@ export class DocumentController {
     const plantId = plantOf(req);
     const id = await this.picklists.resolveId(reference, scope, plantId);
     const { data, fileName } = await this.documents.bundle(id, scope, plantId);
-    if (scope !== null) await this.picklists.markDownloaded(id, scope, plantId);
+    if (scope !== null) await this.picklists.markDownloaded(id, scope, plantId, req.principal!.sub);
     return new StreamableFile(data, {
       type: 'application/zip',
       disposition: `attachment; filename="${fileName}"`,
@@ -79,10 +87,31 @@ export class DocumentController {
      * ikut menandai, kolom "belum diunduh supplier" di dashboard portal
      * langsung kosong padahal suppliernya belum melihat apa pun.
      */
-    if (scope !== null) await this.picklists.markDownloaded(id, scope, plantId);
+    if (scope !== null) await this.picklists.markDownloaded(id, scope, plantId, req.principal!.sub);
 
     return new StreamableFile(createReadStream(path), {
       type: kind === 'csv' ? 'text/csv; charset=utf-16le' : 'application/pdf',
+      disposition: `attachment; filename="${fileName}"`,
+    });
+  }
+}
+
+/** Receipt Sheet yang dicetak PPIC setelah sesi scan ditutup (6.5). */
+@Controller('receipts')
+export class ReceiptDocumentController {
+  constructor(
+    private readonly documents: DocumentService,
+    private readonly receiving: ReceivingService,
+  ) {}
+
+  @Get(':id/receipt-sheet.pdf')
+  @RequirePermission('receipt.read')
+  async receiptSheet(@Param('id') reference: string, @Req() req: Request): Promise<StreamableFile> {
+    const plantId = plantOf(req);
+    const id = await this.receiving.resolveId(reference, plantId);
+    const { path, fileName } = await this.documents.receiptSheetFile(id, plantId);
+    return new StreamableFile(createReadStream(path), {
+      type: 'application/pdf',
       disposition: `attachment; filename="${fileName}"`,
     });
   }

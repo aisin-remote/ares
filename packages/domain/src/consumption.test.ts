@@ -68,30 +68,26 @@ describe('assignCutoff (PRD 6.2.5, F-14)', () => {
     arrivalTime: '08:00:00',
     holidayShift: 'AFTER' as const,
   };
+  const senin = new Date('2026-09-20T17:00:00.000Z'); // 00:00 WIB Senin 21 Sep
 
-  it('memilih cutoff efektif paling awal dari beberapa jadwal supplier', () => {
-    const out = assignCutoff(
-      new Date('2026-09-21T02:00:00.000Z'), // Senin 09:00 WIB
-      [
-        { id: 1, cutoffTime: '10:00:00', ...base },
-        { id: 2, cutoffTime: '15:00:00', ...base },
-      ],
-      [],
-    );
+  it('konsumsi pada hari cutoff masuk cutoff hari itu', () => {
+    const out = assignCutoff(new Date('2026-09-21T08:00:00.000Z'), [{ id: 1, ...base }], []);
     expect(out?.cutoffId).toBe(1);
-    expect(out?.cutoffAt.toISOString()).toBe('2026-09-21T03:00:00.000Z');
+    expect(out?.cutoffAt).toEqual(senin);
   });
 
-  it('tepat pada detik cutoff masuk jadwal berikutnya', () => {
+  it('setelah antrean hari itu ditutup, konsumsi masuk hari cutoff berikutnya', () => {
     const out = assignCutoff(
-      new Date('2026-09-21T03:00:00.000Z'), // tepat 10:00 WIB
-      [
-        { id: 1, cutoffTime: '10:00:00', ...base },
-        { id: 2, cutoffTime: '15:00:00', ...base },
-      ],
+      new Date('2026-09-21T08:00:00.000Z'),
+      [{ id: 1, ...base }],
       [],
+      new Set([senin.getTime()]),
     );
-    expect(out?.cutoffId).toBe(2);
-    expect(out?.cutoffAt.toISOString()).toBe('2026-09-21T08:00:00.000Z');
+    expect(out?.cutoffAt.toISOString()).toBe('2026-09-21T17:00:00.000Z');
+  });
+
+  it('akhir pekan dilewati sampai hari cutoff berikutnya', () => {
+    const out = assignCutoff(new Date('2026-09-19T03:00:00.000Z'), [{ id: 1, ...base }], []); // Sabtu
+    expect(out?.cutoffAt).toEqual(senin);
   });
 });

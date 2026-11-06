@@ -83,9 +83,11 @@ export const poHeaders = mysqlTable(
   {
     id: pk(),
     sapPoNo: varchar('SAP_PO_NO', { length: 16 }).notNull(),
+    source: mysqlEnum('SOURCE', ['LOCAL', 'SAP']).notNull().default('LOCAL'),
     vendorId: fk('VENDOR_ID')
       .notNull()
       .references(() => vendors.id),
+    /** Awal/akhir bulan bisnis PO; kosong berarti periode belum terverifikasi. */
     validFrom: date('VALID_FROM', { mode: 'string' }),
     validTo: date('VALID_TO', { mode: 'string' }),
     ...timestamps,
@@ -105,7 +107,17 @@ export const poLines = mysqlTable(
     partId: fk('PART_ID')
       .notNull()
       .references(() => parts.id),
+    /**
+     * Qty PO yang boleh dipesan ARES. Untuk PO dari SAP = CHR_QTY hasil tarik
+     * bulanan; sisa = OPEN_QTY − pesanan ARES (poItemUsage, F-19).
+     */
     openQty: int('OPEN_QTY').notNull().default(0),
+    /** CHR_QTY staging apa adanya, untuk jejak tarik terakhir. */
+    orderedQty: int('ORDERED_QTY'),
+    balanceVerified: boolean('BALANCE_VERIFIED').notNull().default(true),
+    isActive: boolean('IS_ACTIVE').notNull().default(true),
+    sapPlantNo: varchar('SAP_PLANT_NO', { length: 4 }),
+    sapUom: varchar('SAP_UOM', { length: 8 }),
     syncedAt: timestamp('SYNCED_AT').notNull(),
     ...timestamps,
   },
@@ -157,8 +169,8 @@ export const orderStandards = mysqlTable(
 );
 
 /**
- * Jadwal cutoff per supplier (F-04–F-07). Satu baris per jam cutoff; supplier
- * boleh punya beberapa. Jam disimpan sebagai jam pabrik Asia/Jakarta (6.2.1).
+ * Jadwal cutoff per supplier (F-04–F-07): satu baris per supplier, berisi hari
+ * cutoff tanpa jam. Jam datang disimpan sebagai jam pabrik Asia/Jakarta (6.2.1).
  */
 export const vendorCutoffs = mysqlTable(
   'TM_VENDOR_CUTOFF',
@@ -167,8 +179,11 @@ export const vendorCutoffs = mysqlTable(
     vendorId: fk('VENDOR_ID')
       .notNull()
       .references(() => vendors.id, { onDelete: 'cascade' }),
-    cutoffTime: time('CUTOFF_TIME').notNull(),
-    /** Hari kerja ISO (1=Senin … 7=Minggu) dipisah koma; dipakai hitung lead time (6.2.2). */
+    /**
+     * Hari cutoff ISO (1=Senin … 7=Minggu) dipisah koma; juga dasar lead time
+     * (6.2.2). Cutoff tanpa jam: satu jadwal per supplier, PPIC menerbitkan
+     * sejak pagi hari cutoff.
+     */
     workdays: varchar('WORKDAYS', { length: 16 }).notNull().default('1,2,3,4,5'),
     leadDays: int('LEAD_DAYS').notNull().default(1),
     arrivalTime: time('ARRIVAL_TIME').notNull(),
@@ -180,13 +195,13 @@ export const vendorCutoffs = mysqlTable(
     downloadWarningHours: int('DOWNLOAD_WARNING_HOURS').notNull().default(2),
     /** F-08: peringatan H jam sebelum jadwal kedatangan. */
     confirmWarningHours: int('CONFIRM_WARNING_HOURS').notNull().default(3),
-    /** Kunci template hasil impor SUPPLIER LIST; tidak berubah saat jam diedit. */
+    /** Kunci template hasil impor SUPPLIER LIST; tidak berubah saat jadwal diedit. */
     sourceKey: varchar('SOURCE_KEY', { length: 191 }),
     isActive: boolean('IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
   (t) => [
-    uniqueIndex('TM_VENDOR_CUTOFF_VENDOR_TIME_UNIQUE').on(t.vendorId, t.cutoffTime),
+    uniqueIndex('TM_VENDOR_CUTOFF_VENDOR_UNIQUE').on(t.vendorId),
     uniqueIndex('TM_VENDOR_CUTOFF_SOURCE_KEY_UNIQUE').on(t.sourceKey),
   ],
 );
@@ -234,6 +249,22 @@ export const holidays = mysqlTable(
     ...timestamps,
   },
   (t) => [uniqueIndex('TM_HOLIDAY_DATE_UNIQUE').on(t.date)],
+);
+
+/**
+ * Setting global satu nilai per kunci yang diubah Admin/PPIC dari layar,
+ * mis. `PO_PULL_DAY` (F-44). Perubahan dicatat di TT_AUDIT_LOG (F-09).
+ * ponytail: VALUE teks; validasi per kunci di domain/contracts.
+ */
+export const settings = mysqlTable(
+  'TM_SETTING',
+  {
+    id: pk(),
+    key: varchar('KEY', { length: 64 }).notNull(),
+    value: varchar('VALUE', { length: 255 }).notNull(),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex('TM_SETTING_KEY_UNIQUE').on(t.key)],
 );
 
 /**

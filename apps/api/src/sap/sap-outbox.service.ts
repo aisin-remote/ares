@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { eq, and, or, isNull, lt, lte, gte, sql, desc, count, inArray, notExists, type Database } from '@ares/db';
+import { eq, and, lt, gte, sql, desc, count, inArray, notExists, type Database } from '@ares/db';
 import {
   sapOutbox,
   plants,
@@ -15,7 +15,7 @@ import {
 } from '@ares/db';
 import { InjectDb } from '../db/db.module';
 import { writeAudit } from '../common/audit';
-import { orderSheetDisplayNo, validateGrForSap } from '@ares/domain';
+import { orderSheetDisplayNo, validateGrForSap, isPoValidForDelivery } from '@ares/domain';
 
 /**
  * Mengumpulkan perpindahan barang menjadi dokumen untuk SAP.
@@ -138,6 +138,8 @@ export class SapOutboxService {
       poPartId: poLines.partId,
       partId: parts.id,
       poOpenQty: poLines.openQty,
+      validFrom: poHeaders.validFrom,
+      validTo: poHeaders.validTo,
     }).from(receiptLines)
       .innerJoin(picklistLines, eq(receiptLines.picklistLineId, picklistLines.id))
       .innerJoin(vendorParts, eq(picklistLines.vendorPartId, vendorParts.id))
@@ -145,13 +147,13 @@ export class SapOutboxService {
       .leftJoin(poHeaders, and(
         eq(poHeaders.sapPoNo, picklistLines.sapPoNo),
         eq(poHeaders.vendorId, header.vendorId),
-        or(isNull(poHeaders.validFrom), lte(poHeaders.validFrom, header.deliveryDate)),
-        or(isNull(poHeaders.validTo), gte(poHeaders.validTo, header.deliveryDate)),
       ))
       .leftJoin(poLines, and(
         eq(poLines.poId, poHeaders.id),
         eq(poLines.item, picklistLines.sapPoItem),
         eq(poLines.partId, parts.id),
+        eq(poLines.balanceVerified, true),
+        eq(poLines.isActive, true),
       ))
       .where(eq(receiptLines.receiptId, receiptId));
 
@@ -160,7 +162,7 @@ export class SapOutboxService {
       vendorNo: header.vendorNo,
       items: items.map((item) => ({
         ...item,
-        poMatchesVendor: item.poVendorId === header.vendorId,
+        poMatchesVendor: item.poVendorId === header.vendorId && isPoValidForDelivery(item, header.deliveryDate),
         poMatchesPart: item.poPartId === item.partId,
       })),
     });
@@ -176,7 +178,7 @@ export class SapOutboxService {
         sloc: process.env.SAP_SLOC ?? 'WH00',
         deliveryNote: orderSheetDisplayNo(header.picklistNo, header.revision),
         postingDate: tanggalJakarta(occurredAt),
-        items: items.map(({ poVendorId: _poVendorId, poPartId: _poPartId, partId: _partId, poOpenQty: _poOpenQty, ...item }) => item),
+        items: items.map(({ poVendorId: _poVendorId, poPartId: _poPartId, partId: _partId, poOpenQty: _poOpenQty, validFrom: _validFrom, validTo: _validTo, ...item }) => item),
       },
     };
   }

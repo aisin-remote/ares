@@ -23,6 +23,10 @@ export const JOBS = {
   FLUSH_SAP_OUTBOX: 'flush-sap-outbox',
   // PDF picklist & kanban dirender di worker.
   RENDER_PDF: 'render-pdf',
+  // Delivery Sheet terbit setelah konfirmasi kirim (F-30) dan dirender ulang bila PPIC mengoreksi (6.3.4).
+  RENDER_DELIVERY_SHEET: 'render-delivery-sheet',
+  // Receipt Sheet dicetak PPIC setelah sesi scan ditutup (6.5).
+  RENDER_RECEIPT_SHEET: 'render-receipt-sheet',
   SEND_NOTIFICATION: 'send-notification',
   // Kabar ke PPIC saat supplier mengubah kemasan vendor part-nya sendiri.
   NOTIFY_VENDOR_PART: 'notify-vendor-part',

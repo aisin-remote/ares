@@ -25,6 +25,8 @@ export function MasterTable({
   options,
   refLabels,
   listFieldNames,
+  toolbar,
+  toolbarHeading,
 }: {
   def: EntityDef;
   entity: MasterEntity;
@@ -33,6 +35,8 @@ export function MasterTable({
   /** Peta id -> label untuk kolom referensi, disiapkan di server. */
   refLabels: Record<string, Record<string, string>>;
   listFieldNames?: string[];
+  toolbar?: React.ReactNode;
+  toolbarHeading?: React.ReactNode;
 }) {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Row | null>(null);
@@ -90,15 +94,19 @@ export function MasterTable({
 
   return (
     <>
-      <div className="mb-4 flex items-center justify-end">
-        <button
+      <div className={cn('mb-4 flex gap-4', toolbarHeading ? 'flex-col xl:flex-row xl:items-center xl:justify-between' : 'justify-end')}>
+        {toolbarHeading ? <div className="min-w-0 flex-1">{toolbarHeading}</div> : null}
+        <div className={cn('flex gap-3', toolbar ? 'flex-col items-stretch sm:flex-row sm:items-center sm:justify-end' : 'items-center justify-end')}>
+          {toolbar}
+          <button
           type="button"
           onClick={openCreate}
-          className="inline-flex h-11 items-center gap-2 rounded-full bg-accent px-5 text-[14px] font-semibold text-white transition-colors hover:bg-accent-soft"
+          className="inline-flex h-11 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-accent px-5 text-[14px] font-semibold text-white transition-colors hover:bg-accent-soft"
         >
           <Plus className="size-[18px]" strokeWidth={2.4} aria-hidden />
           Tambah {def.singular}
-        </button>
+          </button>
+        </div>
       </div>
 
       {error ? (
@@ -130,8 +138,8 @@ export function MasterTable({
                   {f.label}
                 </th>
               ))}
-              <th scope="col" className="w-px border-b border-line px-5 py-3">
-                <span className="sr-only">Aksi</span>
+              <th scope="col" className={cn('w-px border-b border-line px-5 py-3', entity === 'vendorCutoffs' && 'sticky right-0 z-10 border-l bg-card text-xs font-semibold uppercase tracking-wide text-ink-muted')}>
+                <span className={entity === 'vendorCutoffs' ? '' : 'sr-only'}>Aksi</span>
               </th>
             </tr>
           </thead>
@@ -142,9 +150,11 @@ export function MasterTable({
                   colSpan={listFields.length + 1}
                   className="px-5 py-14 text-center text-[14px] text-ink-muted"
                 >
-                  Belum ada data {def.label.toLowerCase()}. Tekan
-                  <span className="font-semibold text-ink"> Tambah {def.singular} </span>
-                  untuk membuat yang pertama.
+                  {entity === 'vendorCutoffs' ? 'Tidak ada jadwal cutoff dalam daftar ini. Ubah pencarian atau tambahkan jadwal baru.' : <>
+                    Belum ada data {def.label.toLowerCase()}. Tekan
+                    <span className="font-semibold text-ink"> Tambah {def.singular} </span>
+                    untuk membuat yang pertama.
+                  </>}
                 </td>
               </tr>
             ) : (
@@ -164,7 +174,7 @@ export function MasterTable({
                       {renderCell(f.name, row[f.name], f.kind, refLabels[f.name])}
                     </td>
                   ))}
-                  <td className="border-b border-line px-5 py-3.5">
+                  <td className={cn('border-b border-line px-5 py-3.5', entity === 'vendorCutoffs' && 'sticky right-0 z-10 border-l bg-card group-hover:bg-surface')}>
                     <div className="flex items-center justify-end gap-1.5">
                       {confirmId === row.id ? (
                         <>
@@ -199,10 +209,11 @@ export function MasterTable({
                           <button
                             type="button"
                             onClick={() => openEdit(row)}
-                            aria-label={`Ubah ${String(row.sapVendorNo ?? row.partNo ?? row.npk ?? row.id)}`}
-                            className="grid size-9 place-items-center rounded-full border border-line bg-card text-ink-muted transition-colors hover:border-line-strong hover:text-ink"
+                            aria-label={`Ubah ${entity === 'vendorCutoffs' ? `cutoff ${refLabels.vendorId?.[String(row.vendorId)] ?? row.vendorId}` : String(row.sapVendorNo ?? row.partNo ?? row.npk ?? row.id)}`}
+                            className={cn('inline-flex h-9 items-center justify-center gap-1.5 rounded-full border border-line bg-card text-ink-muted transition-colors hover:border-line-strong hover:text-ink', entity === 'vendorCutoffs' ? 'px-3' : 'w-9')}
                           >
                             <Pencil className="size-4" strokeWidth={1.8} aria-hidden />
+                            {entity === 'vendorCutoffs' ? 'Ubah' : null}
                           </button>
                           {canToggleActive ? (
                             <button

@@ -72,4 +72,38 @@ export interface KanbanDocData {
   cards: KanbanCardData[];
 }
 
-export type DocKind = 'picklist' | 'kanban' | 'csv';
+/** Delivery Sheet (F-30): susunan Order Sheet, berisi qty yang dikonfirmasi kirim. */
+export interface DeliverySheetLine extends PicklistDocLine {
+  boxShipped: number;
+  shippedPcs: number;
+  undeliveredPcs: number;
+}
+
+export interface DeliverySheetData extends Omit<PicklistDocData, 'lines'> {
+  shippedAt: Date;
+  lines: DeliverySheetLine[];
+  /** PO SAP unik dari semua line; dicetak sebagai PO#. */
+  poNumbers: string[];
+  totalBoxShipped: number;
+}
+
+/** Receipt Sheet: satu receipt (sesi scan) yang sudah CLOSED. */
+export interface ReceiptSheetLine extends PicklistDocLine {
+  boxReceived: number;
+  orderPcs: number;
+  receivedPcs: number;
+  undeliveredPcs: number;
+}
+
+export interface ReceiptSheetData extends Omit<PicklistDocData, 'lines'> {
+  receiptNo: string;
+  receivedAt: Date;
+  shippedAt: Date | null;
+  /** Penerimaan ke-n untuk DO yang sama (receipt batal tetap dihitung). */
+  repeatNo: number;
+  lines: ReceiptSheetLine[];
+  poNumbers: string[];
+  totalBoxReceived: number;
+}
+
+export type DocKind = 'picklist' | 'kanban' | 'csv' | 'delivery';

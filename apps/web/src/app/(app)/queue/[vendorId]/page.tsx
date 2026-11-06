@@ -9,7 +9,7 @@ import { Card, CardHeader } from '@/components/ui/card';
 import { EmptyState, Table, Td, Th, Tr } from '@/components/ui/table';
 import { Reveal } from '@/components/motion/reveal';
 import { CutoffIndicator } from '@/components/picklist/schedule-indicator';
-import { waktu } from '@/components/picklist/status';
+import { hariCutoff } from '@/components/picklist/status';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,15 +27,8 @@ export default async function QueueVendorDetailPage({
   if (!detail) notFound();
 
   const now = new Date();
-  const cutoffClock = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Jakarta',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  });
+  const rounding = detail.cutoffs[0]?.rounding ?? 'FLOOR';
   const plannedRows = detail.rows.map((row) => {
-    const cutoffTime = `${cutoffClock.format(row.cutoffAt)}:00`;
-    const rounding = detail.cutoffs.find((item) => item.cutoffTime === cutoffTime)?.rounding ?? 'FLOOR';
     const plan = pcsToBoxes(row.pcs + row.carryOverPcs, row.qtyPerBox, rounding);
     return {
       ...row,
@@ -86,12 +79,22 @@ export default async function QueueVendorDetailPage({
                 <Card>
                   <CardHeader
                     icon={CalendarClock}
-                    title={`Cutoff ${waktu(group.cutoffAt)}`}
+                    title={`Cutoff ${hariCutoff(group.cutoffAt)}`}
                     subtitle={
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                         <span>{group.rows.length} item · {kanban.toLocaleString('id-ID')} kanban</span>
                         <CutoffIndicator at={group.cutoffAt} now={now} />
                       </div>
+                    }
+                    actions={
+                      // Satu cutoff = satu Order Sheet untuk semua part (6.1.5), jadi tombolnya per kartu.
+                      <Link
+                        href={orderHref}
+                        className="inline-flex h-10 items-center gap-2 whitespace-nowrap rounded-full bg-accent px-5 text-[14px] font-semibold text-white transition-colors hover:bg-accent-soft"
+                      >
+                        {due ? 'Buat Order Sheet' : 'Siapkan order'}
+                        <ArrowRight className="size-4" aria-hidden />
+                      </Link>
                     }
                   />
                   <Table>
@@ -104,7 +107,6 @@ export default async function QueueVendorDetailPage({
                         <Th>Perbandingan</Th>
                         <Th align="right">Sisa</Th>
                         <Th>Status</Th>
-                        <Th>Aksi</Th>
                       </tr>
                     </thead>
                     <tbody>
@@ -161,15 +163,6 @@ export default async function QueueVendorDetailPage({
                                 {due ? 'Siap diproses' : 'Menunggu cutoff'}
                               </span>
                             )}
-                          </Td>
-                          <Td>
-                            <Link
-                              href={orderHref}
-                              className="inline-flex h-9 items-center gap-2 whitespace-nowrap rounded-full bg-accent px-4 text-[13px] font-semibold text-white transition-colors hover:bg-accent-soft"
-                            >
-                              {due ? 'Buat Order Sheet' : 'Siapkan order'}
-                              <ArrowRight className="size-4" aria-hidden />
-                            </Link>
                           </Td>
                         </Tr>
                       ))}

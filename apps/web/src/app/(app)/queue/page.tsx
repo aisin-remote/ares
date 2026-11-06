@@ -6,7 +6,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardDivider, CardHeader } from '@/components/ui/card';
 import { Reveal } from '@/components/motion/reveal';
 import { CutoffIndicator } from '@/components/picklist/schedule-indicator';
-import { waktu } from '@/components/picklist/status';
+import { hariCutoff } from '@/components/picklist/status';
 import { cn } from '@/components/ui/cn';
 import { requirePermission } from '@/lib/session';
 
@@ -33,7 +33,7 @@ export default async function QueuePage({
   return (
     <>
       <PageHeader
-        crumbs={[{ label: 'Operasi' }, { label: 'Antrean Order' }]}
+        crumbs={[{ label: 'Operasional' }, { label: 'Antrean Order' }]}
         title="Antrean order"
         description={`${meta.total} supplier · ${meta.items} item OPEN · ≈ ${meta.boxes.toLocaleString('id-ID')} kanban terkumpul`}
       />
@@ -97,7 +97,7 @@ export default async function QueuePage({
                           </p>
                         </div>
                         <div className="whitespace-nowrap">
-                          <p className="font-medium text-ink">{waktu(row.nextCutoffAt)}</p>
+                          <p className="font-medium text-ink">{hariCutoff(row.nextCutoffAt)}</p>
                           <CutoffIndicator at={row.nextCutoffAt} now={now} />
                         </div>
                         <span

@@ -6,3 +6,5 @@ export * from './receiving';
 export * from './master/registry';
 export * from './stock';
 export * from './consumption';
+export * from './notification';
+export * from './sap-po';

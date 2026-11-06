@@ -30,9 +30,17 @@ export class DocumentWorker implements OnModuleInit, OnModuleDestroy {
   onModuleInit(): void {
     this.worker = new Worker(
       QUEUES.DOCUMENT,
-      async (job: Job<{ picklistId: number }>) => {
+      async (job: Job<{ picklistId?: number; receiptId?: number }>) => {
+        const { picklistId, receiptId } = job.data;
+        if (job.name === JOBS.RENDER_RECEIPT_SHEET) {
+          if (!receiptId) throw new Error('job render-receipt-sheet tanpa receiptId');
+          return this.documents.renderReceiptSheet(receiptId);
+        }
+        if (job.name === JOBS.RENDER_DELIVERY_SHEET) {
+          if (!picklistId) throw new Error('job render-delivery-sheet tanpa picklistId');
+          return this.documents.renderDeliverySheet(picklistId);
+        }
         if (job.name !== JOBS.RENDER_PDF) return undefined;
-        const { picklistId } = job.data;
         if (!picklistId) throw new Error('job render-pdf tanpa picklistId');
         return this.documents.render(picklistId);
       },

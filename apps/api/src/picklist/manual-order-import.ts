@@ -6,7 +6,6 @@ const HEADERS = ['NOMOR_MATERIAL_SAP', 'JUMLAH_BOX'] as const;
 export interface ManualOrderWorkbook {
   sapVendorNo: string;
   deliveryDate: string;
-  cutoffTime?: string;
   note?: string;
   lines: Array<{ row: number; sapMaterialNo: string; boxes: number }>;
 }
@@ -39,14 +38,11 @@ export async function parseManualOrderWorkbook(buffer: Buffer): Promise<ManualOr
 
   const sapVendorNo = text(sheet.getCell('B3').value);
   const deliveryDate = isoDate(sheet.getCell('B4').value);
-  const cutoffTime = clockTime(sheet.getCell('B5').value);
+  // B5 dulu JAM_CUTOFF; cutoff kini tanpa jam (F-04), jadi template lama diabaikan.
   const note = text(sheet.getCell('B6').value);
   if (!sapVendorNo) throw new ManualOrderImportError('NOMOR_VENDOR_SAP di sel B3 wajib diisi');
   if (sapVendorNo.length > 16) throw new ManualOrderImportError('NOMOR_VENDOR_SAP maksimal 16 karakter');
   if (!deliveryDate) throw new ManualOrderImportError('TANGGAL_KIRIM di sel B4 harus berupa tanggal yang valid');
-  if (text(sheet.getCell('B5').value) && !cutoffTime) {
-    throw new ManualOrderImportError('JAM_CUTOFF di sel B5 harus berformat HH:mm atau dikosongkan');
-  }
   if (note.length > 255) throw new ManualOrderImportError('CATATAN di sel B6 maksimal 255 karakter');
 
   const lines: ManualOrderWorkbook['lines'] = [];
@@ -73,7 +69,6 @@ export async function parseManualOrderWorkbook(buffer: Buffer): Promise<ManualOr
   return {
     sapVendorNo,
     deliveryDate,
-    cutoffTime: cutoffTime || undefined,
     note: note || undefined,
     lines,
   };
@@ -100,22 +95,3 @@ function isoDate(value: ExcelJS.CellValue): string | null {
   const date = new Date(`${raw}T00:00:00Z`);
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === raw ? raw : null;
 }
-
-function clockTime(value: ExcelJS.CellValue): string | null {
-  const unwrapped = unwrap(value);
-  if (unwrapped == null || unwrapped === '') return '';
-  if (typeof unwrapped === 'number' && Number.isFinite(unwrapped)) {
-    const seconds = Math.round((((unwrapped % 1) + 1) % 1) * 86_400) % 86_400;
-    return `${two(Math.floor(seconds / 3600))}:${two(Math.floor((seconds % 3600) / 60))}:00`;
-  }
-  if (unwrapped instanceof Date && !Number.isNaN(unwrapped.getTime())) {
-    return `${two(unwrapped.getUTCHours())}:${two(unwrapped.getUTCMinutes())}:00`;
-  }
-  const match = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(String(unwrapped).trim());
-  if (!match) return null;
-  const hour = Number(match[1]);
-  const minute = Number(match[2]);
-  return hour <= 23 && minute <= 59 ? `${two(hour)}:${two(minute)}:00` : null;
-}
-
-const two = (value: number) => String(value).padStart(2, '0');
