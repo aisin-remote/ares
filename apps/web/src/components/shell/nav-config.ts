@@ -121,14 +121,17 @@ export const NAV_GROUPS: NavGroup[] = [
       },
     ],
   },
-  {
-    title: 'Integrasi',
-    collapsible: true,
-    items: [
-      { href: '/sap', label: 'SAP Outbox', icon: 'Share2', permission: 'outbox.read' },
-      { href: '/mes', label: 'Sinkron MES', icon: 'RefreshCw', phase: 2, permission: 'mes.read' },
-    ],
-  },
+  // ponytail: grup Integrasi disembunyikan atas permintaan pemilik proyek
+  // (belum dipakai operator). Halaman /sap dan /mes tetap hidup dan bisa
+  // dibuka lewat URL; kembalikan blok ini kalau menunya diperlukan lagi.
+  // {
+  //   title: 'Integrasi',
+  //   collapsible: true,
+  //   items: [
+  //     { href: '/sap', label: 'SAP Outbox', icon: 'Share2', permission: 'outbox.read' },
+  //     { href: '/mes', label: 'Sinkron MES', icon: 'RefreshCw', phase: 2, permission: 'mes.read' },
+  //   ],
+  // },
   {
     title: 'Laporan',
     collapsible: true,
