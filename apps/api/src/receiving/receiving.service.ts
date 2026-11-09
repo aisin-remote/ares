@@ -42,11 +42,13 @@ import {
   type CloseLineInput,
   picklistStatusAfterReceiptCancel,
   kanbanStatusAfterReceiptCancel,
+  receiveClaim as receiveClaimLines,
+  ClaimError,
 } from '@ares/domain';
-import type { PicklistStatus } from '@ares/contracts';
+import type { PicklistStatus, ReceiveClaimInput } from '@ares/contracts';
 import { InjectDb } from '../db/db.module';
 import { SequenceService } from '../common/sequence.service';
-import type { Actor } from '../picklist/picklist.service';
+import { PicklistService, type Actor } from '../picklist/picklist.service';
 import { writeAudit } from '../common/audit';
 import { QueueService } from '../queue/queue.service';
 import { JOBS, QUEUES } from '../queue/queue.constants';
@@ -73,6 +75,7 @@ export class ReceivingService {
     @InjectDb() private readonly db: Database,
     private readonly sequence: SequenceService,
     private readonly queue: QueueService,
+    private readonly picklist: PicklistService,
   ) {}
 
   /**
@@ -227,6 +230,8 @@ export class ReceivingService {
    */
   async close(receiptId: number, reason: string | undefined, actor: Actor) {
     const hasil = await this.closeInTx(receiptId, reason, actor);
+    // Recovery sudah commit bersama receipt; PDF dan email menyusul di worker.
+    if (hasil.recovery) await this.picklist.publishOrder(hasil.recovery.id, 'PICKLIST_REVISED');
     // Receipt Sheet untuk dicetak PPIC; gagal mengantre tidak membatalkan
     // penerimaan yang sudah tersimpan — job bisa diulang.
     try {
@@ -242,12 +247,7 @@ export class ReceivingService {
     return this.db.transaction(async (tx) => {
       const s = await this.openSession(tx, receiptId, actor.plantId);
       const [pl] = await tx
-        .select({
-          id: picklistHeaders.id,
-          publicId: picklistHeaders.publicId,
-          status: picklistHeaders.status,
-          plantId: picklistHeaders.plantId,
-        })
+        .select()
         .from(picklistHeaders)
         .where(eq(picklistHeaders.id, s.picklistId))
         .for('update');
@@ -357,6 +357,49 @@ export class ReceivingService {
           .set({ status: finalStatus })
           .where(eq(picklistHeaders.id, pl.id));
       }
+
+      /*
+       * Kurang saat diterima = kurang juga buat supplier. Order Sheet recovery
+       * terbit otomatis di sini, sama seperti saat supplier mengaku kirim
+       * kurang (6.3), supaya sisanya muncul di portal tanpa PPIC membuat order
+       * baru manual. Claim tidak discan, jadi tidak pernah lewat jalur ini.
+       */
+      let recovery: Awaited<ReturnType<PicklistService['createRecovery']>> | null = null;
+      let recoveryError: string | null = null;
+      const kurang = closed.lines.filter((line) => line.boxMissing > 0);
+      if (kurang.length > 0 && pl.type !== 'CLAIM') {
+        const hilang = new Set(closed.missingKanbanIds);
+        recovery = await this.picklist.createRecovery(
+          tx,
+          pl,
+          kurang.map((line) => ({
+            sourceLineId: line.picklistLineId,
+            boxes: line.boxMissing,
+            kanbanIds: ks
+              .filter(
+                (k) =>
+                  k.picklistLineId === line.picklistLineId &&
+                  (hilang.has(k.id) || k.status === 'MISSING'),
+              )
+              .map((k) => k.id),
+          })),
+          {
+            note: `Recovery dari ${s.receiptNo}: box kurang saat diterima`,
+            actorUserId: actor.userId,
+            createdById: actor.userId,
+            reissueKanban: true,
+          },
+        ).catch((error: unknown) => {
+          // PO bulan depan belum ada / kapasitas penuh: gudang tetap boleh
+          // menutup sesi. Kekurangannya dicatat di audit supaya PPIC
+          // menerbitkan recovery-nya manual setelah PO beres.
+          if (error instanceof UnprocessableEntityException) {
+            recoveryError = error.message;
+            return null;
+          }
+          throw error;
+        });
+      }
       await tx
         .update(receiptHeaders)
         .set({
@@ -371,7 +414,8 @@ export class ReceivingService {
         { status: 'OPEN', picklistStatus: pl.status, receiptNo: s.receiptNo },
         { status: 'CLOSED', picklistStatus: finalStatus ?? pl.status,
           boxReceived: closed.lines.reduce((sum, line) => sum + line.boxReceived, 0),
-          missingKanbanIds: closed.missingKanbanIds, reason: reason?.trim() || null });
+          missingKanbanIds: closed.missingKanbanIds, reason: reason?.trim() || null,
+          recovery, recoveryError });
 
       return {
         id: s.id,
@@ -383,6 +427,150 @@ export class ReceivingService {
         picklistStatus: finalStatus ?? pl.status,
         missingCount: closed.missingKanbanIds.length,
         lines: closed.lines,
+        recovery,
+        recoveryError,
+      };
+    });
+  }
+
+
+  /**
+   * Penerimaan barang claim — tanpa scan kanban.
+   *
+   * Order claim tidak punya kanban: nomor order asalnya sudah diterima penuh
+   * dan GR-nya sudah masuk SAP, jadi barang pengganti cukup dicatat qty-nya di
+   * sini. Receipt-nya tetap dibuat supaya stok dan jejaknya ada, tapi
+   * SapOutboxService melewati receipt milik order CLAIM.
+   */
+  async receiveClaim(picklistId: number, input: ReceiveClaimInput, actor: Actor) {
+    return this.db.transaction(async (tx) => {
+      const [pl] = await tx
+        .select()
+        .from(picklistHeaders)
+        .where(and(
+          eq(picklistHeaders.id, picklistId),
+          actor.plantId ? eq(picklistHeaders.plantId, actor.plantId) : undefined,
+        ))
+        .for('update');
+      if (!pl) throw new NotFoundException('Order claim tidak ditemukan');
+      if (pl.type !== 'CLAIM') {
+        throw new ConflictException('Order reguler diterima lewat sesi scan, bukan jalur ini');
+      }
+
+      const lines = await tx
+        .select({
+          id: picklistLines.id,
+          boxOrdered: picklistLines.boxOrdered,
+          qtyPerBox: picklistLines.qtyPerBox,
+          boxReceived: picklistLines.boxReceived,
+          partId: vendorParts.partId,
+        })
+        .from(picklistLines)
+        .innerJoin(vendorParts, eq(picklistLines.vendorPartId, vendorParts.id))
+        .where(eq(picklistLines.picklistId, pl.id))
+        .orderBy(asc(picklistLines.id))
+        .for('update');
+      if (lines.length === 0) throw new NotFoundException('Order claim tidak punya line');
+
+      let hasil: ReturnType<typeof receiveClaimLines>;
+      let path: PicklistStatus[];
+      try {
+        hasil = receiveClaimLines(
+          lines.map((line) => ({
+            picklistLineId: line.id,
+            boxOrdered: line.boxOrdered,
+            boxReceived: line.boxReceived,
+            qtyPerBox: line.qtyPerBox,
+          })),
+          new Map(input.lines.map((line) => [line.picklistLineId, line.boxReceived])),
+        );
+        path = picklistStatusPathOnClose(pl.status, hasil.complete ? 'COMPLETE' : 'PARTIAL');
+      } catch (e) {
+        if (e instanceof ClaimError) throw new UnprocessableEntityException(e.message);
+        if (e instanceof InvalidTransitionError) throw new ConflictException(e.message);
+        throw e;
+      }
+
+      const now = new Date();
+      const receiptNo = await this.sequence.next(tx, 'RCP', now);
+      const receiptPublicId = randomUUID();
+      const receiptId = (
+        await tx
+          .insert(receiptHeaders)
+          .values({
+            publicId: receiptPublicId,
+            plantId: pl.plantId,
+            receiptNo,
+            picklistId: pl.id,
+            status: 'CLOSED',
+            closedAt: now,
+            userId: actor.userId,
+            note: (input.note?.trim() || 'Penerimaan barang claim tanpa scan').slice(0, 255),
+          })
+          .$returningId()
+      )[0]!.id;
+
+      const lineById = new Map(lines.map((line) => [line.id, line]));
+      for (const row of hasil.lines) {
+        if (row.boxReceived === 0) continue;
+        const line = lineById.get(row.picklistLineId)!;
+        const receiptLineId = (
+          await tx
+            .insert(receiptLines)
+            .values({
+              receiptId,
+              picklistLineId: row.picklistLineId,
+              boxReceived: row.boxReceived,
+              pcsReceived: row.pcsReceived,
+            })
+            .$returningId()
+        )[0]!.id;
+        // Barang pengganti masuk gudang; keluarnya barang rusak sudah dicatat
+        // saat order claim dibuat.
+        await tx.insert(stockMutations).values({
+          plantId: pl.plantId,
+          partId: line.partId,
+          sloc: this.sloc,
+          deltaPcs: row.pcsReceived,
+          type: 'RECEIPT',
+          refTable: 'TT_RECEIPT_L',
+          refId: receiptLineId,
+          note: `Barang pengganti claim ${pl.picklistNo}`.slice(0, 255),
+          userId: actor.userId,
+          occurredAt: now,
+        });
+        await tx
+          .update(picklistLines)
+          .set({
+            boxReceived: line.boxReceived + row.boxReceived,
+            ...(row.complete ? { status: 'RECEIVED' as const } : {}),
+          })
+          .where(eq(picklistLines.id, row.picklistLineId));
+      }
+
+      const finalStatus = path[path.length - 1];
+      if (finalStatus) {
+        await tx
+          .update(picklistHeaders)
+          .set({ status: finalStatus })
+          .where(eq(picklistHeaders.id, pl.id));
+      }
+
+      await writeAudit(tx, 'TT_RECEIPT_H', receiptId, 'RECEIVE_CLAIM', actor.userId, null, {
+        receiptNo, picklistId: pl.id, picklistNo: pl.picklistNo,
+        picklistStatus: finalStatus ?? pl.status, lines: hasil.lines,
+      });
+
+      return {
+        id: receiptId,
+        publicId: receiptPublicId,
+        receiptNo,
+        picklistId: pl.id,
+        picklistPublicId: pl.publicId,
+        picklistNo: pl.picklistNo,
+        picklistStatus: finalStatus ?? pl.status,
+        complete: hasil.complete,
+        lines: hasil.lines,
       };
     });
   }

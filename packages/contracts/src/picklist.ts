@@ -67,3 +67,33 @@ export const overrideShipmentSchema = z.object({
   reason: z.string().trim().min(1, 'Alasan wajib diisi').max(255),
 });
 export type OverrideShipmentInput = z.infer<typeof overrideShipmentSchema>;
+
+// ─── Order Sheet claim ──────────────────────────────────────────────────────
+
+/** Box (kanban) rusak per line order asal; line tanpa qty diabaikan. */
+export const createClaimSchema = z.object({
+  reason: z.string().trim().min(3, 'Alasan claim wajib diisi').max(200),
+  lines: z
+    .array(
+      z.object({
+        picklistLineId: z.number().int().positive(),
+        damagedBox: z.number().int().min(0).max(10_000),
+      }),
+    )
+    .min(1, 'Minimal satu line'),
+});
+export type CreateClaimInput = z.infer<typeof createClaimSchema>;
+
+/** Penerimaan barang claim — tanpa scan, PPIC mencatat box yang datang. */
+export const receiveClaimSchema = z.object({
+  note: z.string().trim().max(200).optional(),
+  lines: z
+    .array(
+      z.object({
+        picklistLineId: z.number().int().positive(),
+        boxReceived: z.number().int().min(0).max(10_000),
+      }),
+    )
+    .min(1, 'Minimal satu line'),
+});
+export type ReceiveClaimInput = z.infer<typeof receiveClaimSchema>;

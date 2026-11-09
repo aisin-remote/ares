@@ -13,10 +13,12 @@ import {
   scanReceiptSchema,
   closeReceiptSchema,
   cancelReceiptSchema,
+  receiveClaimSchema,
   type OpenReceiptInput,
   type ScanReceiptInput,
   type CloseReceiptInput,
   type CancelReceiptInput,
+  type ReceiveClaimInput,
 } from '@ares/contracts';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { RequirePermission } from '../auth/permissions.guard';
@@ -80,6 +82,21 @@ export class ReceivingController {
     return this.receiving.close(
       await this.receiving.resolveId(reference, actor.plantId), body.reason, actor,
     );
+  }
+
+  /**
+   * Terima barang claim tanpa scan. `id` di sini adalah Order Sheet claim,
+   * bukan sesi scan: claim tidak punya kanban dan tidak diangkat ke SAP.
+   */
+  @Post('claim/:picklistId')
+  @RequirePermission('receipt.close')
+  async receiveClaim(
+    @Param('picklistId') picklistId: string,
+    @Body(new ZodValidationPipe(receiveClaimSchema)) body: ReceiveClaimInput,
+    @Req() req: Request,
+  ) {
+    const actor = actorOf(req);
+    return this.receiving.receiveClaim(Number(picklistId), body, actor);
   }
 
   /** F-40: PPIC membatalkan receipt; GR yang sudah keluar menghasilkan reversal 102. */

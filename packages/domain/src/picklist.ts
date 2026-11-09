@@ -110,7 +110,9 @@ export const PICKLIST_TRANSITIONS: Record<PicklistStatus, readonly PicklistStatu
 export const KANBAN_TRANSITIONS: Record<KanbanStatus, readonly KanbanStatus[]> = {
   PRINTED: ['SHIPPED', 'RECEIVED', 'MISSING', 'CANCELLED'],
   SHIPPED: ['RECEIVED', 'MISSING'],
-  MISSING: ['RECEIVED'],
+  // PRINTED: kartu dipakai lagi di Order Sheet recovery yang terbit otomatis
+  // saat sesi scan ditutup dengan box kurang (6.5.2).
+  MISSING: ['RECEIVED', 'PRINTED'],
   RECEIVED: [],
   CANCELLED: [],
 };

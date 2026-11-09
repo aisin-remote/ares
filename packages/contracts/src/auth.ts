@@ -11,8 +11,24 @@ export const loginSchema = z.object({
     .min(1, 'Password wajib diisi')
     .max(72)
     .refine((value) => new TextEncoder().encode(value).length <= 72, 'Password maksimal 72 byte'),
+  /** Token Google reCAPTCHA v3, dibuat saat pengguna menekan Masuk. */
+  captchaToken: z.string().min(1, 'Verifikasi keamanan belum selesai, coba masuk kembali').max(8192),
 });
 export type LoginInput = z.infer<typeof loginSchema>;
+
+/**
+ * Ganti password karena masa berlaku 90 hari habis (lihat `passwordExpired`).
+ * Dipakai tanpa sesi: bekalnya `changeToken` berumur pendek dari login.
+ */
+export const changePasswordSchema = z.object({
+  changeToken: z.string().min(1, 'Sesi ganti password tidak ditemukan').max(2048),
+  newPassword: z
+    .string()
+    .min(12, 'Password baru minimal 12 karakter')
+    .max(72)
+    .refine((value) => new TextEncoder().encode(value).length <= 72, 'Password maksimal 72 byte'),
+});
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 
 export const loginOtpSchema = z.object({
   mfaToken: z.string().min(1, 'Sesi verifikasi tidak ditemukan').max(2048),
@@ -47,6 +63,13 @@ export type LoginAttemptResponse =
       emailHint: string;
       /** Hanya dikirim API lokal/demo agar form OTP bisa terisi otomatis. */
       demoOtpCode?: string;
+    }
+  | {
+      /** Password lewat masa berlaku; sesi baru terbit setelah diganti. */
+      passwordChangeRequired: true;
+      /** Token berumur pendek, hanya sah untuk POST /auth/password. */
+      changeToken: string;
+      maxAgeDays: number;
     };
 
 /** Login terminal/scanner — pakai token device, bukan akun manusia. */

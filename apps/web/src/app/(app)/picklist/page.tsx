@@ -23,7 +23,7 @@ const PER_PAGE = 25;
 export default async function PicklistPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; status?: string }>;
+  searchParams: Promise<{ page?: string; status?: string; type?: string }>;
 }) {
   const sp = await searchParams;
   const page = Math.max(1, Math.floor(Number(sp.page ?? 1)) || 1);
@@ -32,6 +32,8 @@ export default async function PicklistPage({
   const saring = (PICKLIST_STATUSES as readonly string[]).includes(status)
     ? (status as PicklistStatus)
     : undefined;
+  // Order claim bercampur di daftar yang sama; satu chip memisahkannya.
+  const hanyaClaim = sp.type === 'CLAIM';
 
   /*
    * Akun supplier seharusnya tidak sampai ke halaman ini (layout mengarahkan
@@ -44,12 +46,22 @@ export default async function PicklistPage({
 
   const [hitungan, { data, meta }] = await Promise.all([
     getPicklistCounts(scope, sesi.plantId),
-    listPicklists(scope, { page, perPage: PER_PAGE, plantId: sesi.plantId, status: saring }),
+    listPicklists(scope, {
+      page,
+      perPage: PER_PAGE,
+      plantId: sesi.plantId,
+      status: saring,
+      type: hanyaClaim ? 'CLAIM' : undefined,
+    }),
   ]);
   const now = new Date();
 
-  const tautanHalaman = (p: number) =>
-    saring ? `/picklist?status=${saring}&page=${p}` : `/picklist?page=${p}`;
+  const tautanHalaman = (p: number) => {
+    const q = new URLSearchParams({ page: String(p) });
+    if (saring) q.set('status', saring);
+    if (hanyaClaim) q.set('type', 'CLAIM');
+    return `/picklist?${q}`;
+  };
 
   return (
     <>
@@ -112,7 +124,7 @@ export default async function PicklistPage({
                     href={s === 'ALL' ? '/picklist' : `/picklist?status=${s}`}
                     className={cn(
                       'rounded-full border px-3 py-1 text-[12px] font-semibold transition-colors',
-                      status === s
+                      !hanyaClaim && status === s
                         ? 'border-ink bg-surface text-ink'
                         : 'border-line text-ink-muted hover:border-ink hover:text-ink',
                     )}
@@ -120,6 +132,17 @@ export default async function PicklistPage({
                     {s === 'ALL' ? 'Semua' : (STATUS_LABEL[s] ?? s)}
                   </Link>
                 ))}
+                <Link
+                  href="/picklist?type=CLAIM"
+                  className={cn(
+                    'rounded-full border px-3 py-1 text-[12px] font-semibold transition-colors',
+                    hanyaClaim
+                      ? 'border-ink bg-surface text-ink'
+                      : 'border-line text-ink-muted hover:border-ink hover:text-ink',
+                  )}
+                >
+                  Claim
+                </Link>
               </div>
             }
           />
@@ -153,6 +176,11 @@ export default async function PicklistPage({
                       </Link>
                       {p.type === 'MANUAL' ? (
                         <span className="ml-2 text-[12px] font-normal text-ink-muted">manual</span>
+                      ) : null}
+                      {p.type === 'CLAIM' ? (
+                        <span className="ml-2 inline-flex items-center rounded-full border border-warn/40 bg-warn/10 px-2 py-0.5 text-[11px] font-semibold text-warn">
+                          Claim
+                        </span>
                       ) : null}
                       {p.revision > 0 ? (
                         <span className="ml-2 text-[12px] font-normal text-ink-muted">Recovery</span>

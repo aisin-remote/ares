@@ -517,3 +517,13 @@
     animation: none;
   }
 }
+
+/*
+ * Badge reCAPTCHA v3 menempel di <body>, jadi ia ikut bertahan setelah
+ * berpindah halaman dari /login tanpa reload penuh. Google mengizinkan
+ * badge-nya disembunyikan asalkan atribusinya ditulis di layar yang memakai
+ * reCAPTCHA — teks itu ada di bawah form login.
+ */
+.grecaptcha-badge {
+  visibility: hidden;
+}

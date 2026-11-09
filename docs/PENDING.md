@@ -215,3 +215,10 @@ outbox PENDING (GR 101, key RCP-260921-0010) dalam 15 detik.)
       `TT_PO_HEADER`/`TT_PO_LINE` yang seharusnya milik job `sap-sync` (F-44).
       Ditandai `ponytail:` di berkasnya; hapus begitu gateway SAP nyata ada.
       Data ini hanya dibuat bila `SEED_DEMO=on`; seed produksi tidak mengisinya.
+
+
+- [ ] **Aktivasi reCAPTCHA v3 login.** Daftarkan key v3 untuk hostname ARES, isi
+      `NEXT_PUBLIC_RECAPTCHA_SITE_KEY` dan `RECAPTCHA_SECRET_KEY` di `.env`, lalu
+      restart API/web (build ulang web produksi). CAPTCHA SVG sudah diganti;
+      uji login admin dan OTP supplier setelah key tersedia. Lihat `docs/SECURITY.md`.
+      Key belum tersedia per 9 November 2026.

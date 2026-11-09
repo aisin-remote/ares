@@ -139,3 +139,20 @@ SAP hanya kepada petugas yang memang membutuhkannya.
 - [ ] Header HSTS, CSP, frame denial, nosniff, dan referrer policy terlihat.
 - [ ] `pnpm typecheck`, `pnpm test`, `pnpm build`, dan audit dependency lulus.
 - [ ] Pemantauan, alert, rotasi log, patching, dan kontak insiden aktif.
+
+
+## Google reCAPTCHA v3 pada login
+
+Login NPK/email + password meminta token reCAPTCHA v3 dengan action `login` saat tombol Masuk ditekan. API memverifikasi token langsung ke Google sebelum memeriksa akun. Server memeriksa success, action, score (bawaan 0,5), hostname dari `WEB_ORIGIN`, dan umur token maksimal dua menit. Kegagalan jaringan/key tidak melewati pemeriksaan. OTP supplier dan ganti password wajib memakai challenge login yang sudah terverifikasi.
+
+Daftarkan key **reCAPTCHA v3 / score-based** pada https://www.google.com/recaptcha/admin/create untuk hostname ARES. Gunakan key development tersendiri untuk localhost. Isi `.env` root:
+
+```
+NEXT_PUBLIC_RECAPTCHA_SITE_KEY=<site key v3>
+RECAPTCHA_SECRET_KEY=<secret key v3>
+RECAPTCHA_MIN_SCORE=0.5
+```
+
+Secret hanya untuk API, jangan diberi awalan NEXT_PUBLIC atau dimasukkan ke Git. Daftar origin pada `WEB_ORIGIN` harus sesuai hostname login. Restart API dan web setelah mengisi key; build ulang web untuk produksi karena site key ditanam saat build. Google membutuhkan akses internet dari browser dan API. CSP mengizinkan resource reCAPTCHA Google; badge resmi tetap ditampilkan.
+
+Belum ada key v3 milik ARES pada saat implementasi 9 November 2026, sehingga login Google sungguhan belum dapat diuji. Tidak memakai key uji v2 sebagai pengganti v3. Pengujian otomatis menggunakan respons Google tiruan (mock) untuk menguji penerimaan/penolakan token tanpa membuat bypass di aplikasi.

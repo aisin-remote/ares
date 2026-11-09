@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { eq, and, lt, gte, sql, desc, count, inArray, notExists, type Database } from '@ares/db';
+import { eq, ne, and, lt, gte, sql, desc, count, inArray, notExists, type Database } from '@ares/db';
 import {
   sapOutbox,
   plants,
@@ -57,9 +57,13 @@ export class SapOutboxService {
         closedAt: receiptHeaders.closedAt,
       })
       .from(receiptHeaders)
+      // Order claim mengganti barang rusak dari order yang GR-nya sudah masuk
+      // SAP; mengangkatnya lagi akan menggandakan penerimaan.
+      .innerJoin(picklistHeaders, eq(picklistHeaders.id, receiptHeaders.picklistId))
       .where(
         and(
           eq(receiptHeaders.status, 'CLOSED'),
+          ne(picklistHeaders.type, 'CLAIM'),
           plantId ? eq(receiptHeaders.plantId, plantId) : undefined,
           notExists(
             this.db

@@ -42,6 +42,9 @@ const envSchema = z.object({
   TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(0),
   API_BODY_LIMIT: z.string().regex(/^\d+(?:kb|mb)$/i).default('256kb'),
   BCRYPT_ROUNDS: z.coerce.number().int().min(10).max(14).default(12),
+  RECAPTCHA_SECRET_KEY: z.string().default(''),
+  NEXT_PUBLIC_RECAPTCHA_SITE_KEY: z.string().default(''),
+  RECAPTCHA_MIN_SCORE: z.coerce.number().min(0).max(1).default(0.5),
   // PRD 8.2: API aplikasi produksi (MES) yang ditarik job mes-sync.
   MES_API_URL: z.string().optional(),
   MES_API_TOKEN: z.string().optional(),
@@ -78,6 +81,9 @@ const envSchema = z.object({
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['WEB_ORIGIN'], message: 'WEB_ORIGIN harus daftar origin URL tanpa wildcard' });
   }
   if (env.NODE_ENV !== 'production') return;
+  if (!env.RECAPTCHA_SECRET_KEY || !env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['RECAPTCHA_SECRET_KEY'], message: 'Produksi membutuhkan site key dan secret key reCAPTCHA v3' });
+  }
   if (env.DEMO_OTP_AUTOFILL) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,

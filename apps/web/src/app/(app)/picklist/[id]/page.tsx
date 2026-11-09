@@ -22,6 +22,7 @@ import { Table, Th, Td, Tr, EmptyState } from '@/components/ui/table';
 import { Reveal } from '@/components/motion/reveal';
 import { CancelPicklist } from '@/components/picklist/cancel-picklist';
 import { OverrideShipment } from '@/components/picklist/override-shipment';
+import { CreateClaim, ReceiveClaim } from '@/components/picklist/claim-order';
 import { OrderStatusStepper } from '@/components/picklist/order-status-stepper';
 import { OrderNeighborNav } from '@/components/picklist/order-neighbor-nav';
 import { UnduhDokumen } from '@/components/portal/unduh-dokumen';
@@ -121,7 +122,11 @@ export default async function PicklistDetailPage({ params }: { params: Promise<{
             </InfoRow>
             <InfoRow icon={Layers} label="Isi">
               {picklist.lines.length} line · {totalKanban} kanban ·{' '}
-              {picklist.type === 'MANUAL' ? 'order manual' : 'dari cutoff'}
+              {picklist.type === 'CLAIM'
+                ? 'order claim'
+                : picklist.type === 'MANUAL'
+                  ? 'order manual'
+                  : 'dari cutoff'}
               {picklist.revision > 0 ? ` · revisi ${picklist.revision}` : ''}
             </InfoRow>
             <InfoRow icon={Truck} label="Pengiriman supplier">
@@ -147,6 +152,30 @@ export default async function PicklistDetailPage({ params }: { params: Promise<{
       (sesi?.role === 'ppic' || sesi?.role === 'admin') ? (
         <Reveal>
           <OverrideShipment id={picklist.publicId} lines={picklist.lines} />
+        </Reveal>
+      ) : null}
+
+      {/* Claim hanya untuk order reguler yang barangnya sudah diterima. */}
+      {picklist.type !== 'CLAIM' &&
+      ['PARTIAL', 'COMPLETE'].includes(picklist.status) &&
+      sesi.vendorId === null &&
+      sesi.permissions.includes('picklist.claim') ? (
+        <Reveal>
+          <CreateClaim reference={picklist.publicId} lines={picklist.lines} />
+        </Reveal>
+      ) : null}
+
+      {/* Barang pengganti claim dicatat di sini — tidak lewat stasiun scan. */}
+      {picklist.type === 'CLAIM' &&
+      picklist.status !== 'CANCELLED' &&
+      sesi.vendorId === null &&
+      sesi.permissions.includes('receipt.close') ? (
+        <Reveal>
+          <ReceiveClaim
+            picklistId={picklist.id}
+            reference={picklist.publicId}
+            lines={picklist.lines}
+          />
         </Reveal>
       ) : null}
 

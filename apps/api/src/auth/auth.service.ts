@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   Logger,
   ServiceUnavailableException,
@@ -18,7 +19,10 @@ import type {
   DeviceLoginInput,
   DeviceLoginResponse,
   AuthSessionResponse,
+  ChangePasswordInput,
 } from '@ares/contracts';
+import { PASSWORD_MAX_AGE_DAYS, passwordExpired } from '@ares/domain';
+import { verifyRecaptcha } from './captcha';
 import { InjectDb } from '../db/db.module';
 import { QueueService } from '../queue/queue.service';
 import { JOBS, QUEUES } from '../queue/queue.constants';
@@ -31,6 +35,7 @@ interface LoginUser {
   name: string;
   email: string | null;
   passwordHash: string | null;
+  passwordChangedAt: Date | null;
   isActive: boolean;
   plantId: number | null;
   vendorId: number | null;
@@ -53,6 +58,9 @@ export class AuthService {
   ) {}
 
   async login(input: LoginInput, requestIp?: string): Promise<LoginAttemptResponse> {
+    // Captcha diperiksa sebelum query dan bcrypt: pagar termurah di paling depan.
+    await verifyRecaptcha(input.captchaToken, requestIp);
+
     const rows = await this.db
       .select({
         id: users.id,
@@ -60,6 +68,7 @@ export class AuthService {
         name: users.name,
         email: users.email,
         passwordHash: users.passwordHash,
+        passwordChangedAt: users.passwordChangedAt,
         isActive: users.isActive,
         plantId: users.plantId,
         vendorId: users.vendorId,
@@ -150,7 +159,7 @@ export class AuthService {
     return this.issueLoginToken(user);
   }
 
-  async loginOtp(input: LoginOtpInput): Promise<LoginResponse> {
+  async loginOtp(input: LoginOtpInput): Promise<LoginAttemptResponse> {
     let token: {
       kind?: string;
       purpose?: string;
@@ -193,6 +202,7 @@ export class AuthService {
           name: users.name,
           email: users.email,
           passwordHash: users.passwordHash,
+          passwordChangedAt: users.passwordChangedAt,
           isActive: users.isActive,
           plantId: users.plantId,
           vendorId: users.vendorId,
@@ -235,7 +245,26 @@ export class AuthService {
     return this.issueLoginToken(result);
   }
 
-  private async issueLoginToken(user: LoginUser): Promise<LoginResponse> {
+  /**
+   * Password lewat masa berlaku: sesi belum terbit, klien dikirim ke layar
+   * ganti password dengan token sekali pakai berumur pendek (aturan 6.x,
+   * `passwordExpired` di packages/domain).
+   */
+  private async issueLoginToken(user: LoginUser): Promise<LoginAttemptResponse> {
+    if (passwordExpired({ role: user.roleName, changedAt: user.passwordChangedAt })) {
+      return {
+        passwordChangeRequired: true,
+        changeToken: await this.jwt.signAsync(
+          { kind: 'pwd-change', sub: user.id },
+          { expiresIn: '10m' },
+        ),
+        maxAgeDays: PASSWORD_MAX_AGE_DAYS,
+      };
+    }
+    return this.signSession(user);
+  }
+
+  private async signSession(user: LoginUser): Promise<LoginResponse> {
     const principal: UserPrincipal = {
       kind: 'user',
       sub: user.id,
@@ -259,6 +288,59 @@ export class AuthService {
         vendorId: user.vendorId ?? null,
       },
     };
+  }
+
+  /**
+   * Ganti password setelah masa berlakunya habis, lalu langsung terbitkan sesi.
+   * Tidak memakai sesi lama: bekalnya token sekali pakai dari login.
+   */
+  async changePassword(input: ChangePasswordInput): Promise<LoginResponse> {
+    let token: { kind?: string; sub?: number } | null = null;
+    try {
+      token = await this.jwt.verifyAsync(input.changeToken);
+    } catch {
+      token = null;
+    }
+    if (token?.kind !== 'pwd-change' || !Number.isInteger(token.sub)) {
+      throw new UnauthorizedException('Sesi ganti password kedaluwarsa, silakan login ulang');
+    }
+
+    const [user] = await this.db
+      .select({
+        id: users.id,
+        npk: users.npk,
+        name: users.name,
+        email: users.email,
+        passwordHash: users.passwordHash,
+        passwordChangedAt: users.passwordChangedAt,
+        isActive: users.isActive,
+        plantId: users.plantId,
+        vendorId: users.vendorId,
+        roleName: roles.name,
+      })
+      .from(users)
+      .leftJoin(roles, eq(users.roleId, roles.id))
+      .where(eq(users.id, token.sub!))
+      .limit(1);
+
+    if (!user?.isActive || !user.passwordHash) {
+      throw new UnauthorizedException('Akun tidak aktif');
+    }
+    if (await bcrypt.compare(input.newPassword, user.passwordHash)) {
+      throw new BadRequestException('Password baru harus berbeda dari password lama');
+    }
+
+    const changedAt = new Date();
+    const passwordHash = await bcrypt.hash(
+      input.newPassword,
+      Number(process.env.BCRYPT_ROUNDS ?? 12),
+    );
+    await this.db
+      .update(users)
+      .set({ passwordHash, passwordChangedAt: changedAt })
+      .where(eq(users.id, user.id));
+
+    return this.signSession({ ...user, passwordHash, passwordChangedAt: changedAt });
   }
 
   /**

@@ -16,3 +16,5 @@ export * from './sap-master';
 export * from './notification';
 export * from './order-activity';
 export * from './supplier-performance';
+export * from './password';
+export * from './claim';

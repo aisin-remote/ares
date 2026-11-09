@@ -1,11 +1,13 @@
 import { Body, Controller, Get, Post, Req, UnauthorizedException, UsePipes } from '@nestjs/common';
 import type { Request } from 'express';
 import {
+  changePasswordSchema,
   deviceLoginSchema,
   loginSchema,
   loginOtpSchema,
 } from '@ares/contracts';
 import type {
+  ChangePasswordInput,
   DeviceLoginInput,
   LoginInput,
   LoginOtpInput,
@@ -34,6 +36,15 @@ export class AuthController {
   @UsePipes(new ZodValidationPipe(loginOtpSchema))
   loginOtp(@Body() body: LoginOtpInput) {
     return this.auth.loginOtp(body);
+  }
+
+  /** Ganti password yang sudah lewat masa berlaku; tidak butuh sesi. */
+  @Public()
+  @Post('password')
+  @LimitRequests({ limit: 5, ipLimit: 20, windowSeconds: 60 })
+  @UsePipes(new ZodValidationPipe(changePasswordSchema))
+  changePassword(@Body() body: ChangePasswordInput) {
+    return this.auth.changePassword(body);
   }
 
   @Public()

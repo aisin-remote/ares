@@ -70,6 +70,11 @@ export const picklistHeaders = mysqlTable(
     eta: timestamp('ETA'),
     vehicleNo: varchar('VEHICLE_NO', { length: 32 }),
     note: varchar('NOTE', { length: 255 }),
+    /**
+     * Order asal yang barangnya rusak; hanya terisi untuk TYPE = CLAIM.
+     * Recovery tidak memakainya karena nomornya sama dengan order asal.
+     */
+    claimOfPicklistId: fk('CLAIM_OF_PICKLIST_ID'),
     createdById: fk('CREATED_BY_ID').references(() => users.id),
     ...timestamps,
   },
@@ -101,6 +106,11 @@ export const picklistLines = mysqlTable(
     /** PO item SAP yang berlaku pada tanggal kirim; tanpa ini line tidak terbit (6.6.1, F-18). */
     sapPoNo: varchar('SAP_PO_NO', { length: 16 }).notNull(),
     sapPoItem: varchar('SAP_PO_ITEM', { length: 8 }).notNull(),
+    /**
+     * Line order asal yang barangnya rusak; hanya terisi pada Order Sheet
+     * claim. Dipakai untuk menghitung sisa pcs yang masih boleh diklaim.
+     */
+    claimOfLineId: fk('CLAIM_OF_LINE_ID'),
     status: mysqlEnum('STATUS', PICKLIST_LINE_STATUSES).notNull().default('OPEN'),
     ...timestamps,
   },

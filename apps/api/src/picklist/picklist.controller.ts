@@ -18,11 +18,13 @@ import {
   cancelPicklistSchema,
   confirmShipmentSchema,
   overrideShipmentSchema,
+  createClaimSchema,
   picklistListQuerySchema,
   type IssueManualPicklistInput,
   type CancelPicklistInput,
   type ConfirmShipmentInput,
   type OverrideShipmentInput,
+  type CreateClaimInput,
   type PicklistListQuery,
 } from '@ares/contracts';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
@@ -137,6 +139,24 @@ export class PicklistController {
   ) {
     const actor = actorOf(req);
     return this.picklists.overrideShipment(
+      await this.picklists.resolveId(reference, null, actor.plantId), body, actor,
+    );
+  }
+
+  /**
+   * Order Sheet claim: barang rusak ketahuan setelah diterima.
+   * Nomornya `claim-...` dengan urutan sendiri dan tidak diangkat ke SAP.
+   */
+  @Post(':id/claim')
+  @RequirePermission('picklist.claim')
+  async createClaim(
+    @Param('id') reference: string,
+    @Body(new ZodValidationPipe(createClaimSchema)) body: CreateClaimInput,
+    @Req() req: Request,
+  ) {
+    if (scopeOf(req) !== null) throw new BadRequestException('Order claim dibuat oleh PPIC');
+    const actor = actorOf(req);
+    return this.picklists.createClaim(
       await this.picklists.resolveId(reference, null, actor.plantId), body, actor,
     );
   }

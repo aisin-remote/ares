@@ -39,6 +39,8 @@ export function formatOrderSheetNo(
 
 /** Nomor yang ditampilkan. Nomor lama PL-* tetap memakai suffix `rev`. */
 export function orderSheetDisplayNo(baseNo: string, revision: number): string {
+  // Claim tidak punya recovery; nomornya tampil apa adanya.
+  if (baseNo.startsWith('claim-')) return baseNo;
   if (/^[789]\d{11}$/.test(baseNo)) {
     if (!Number.isInteger(revision) || revision < 0 || revision > 99) {
       throw new OrderNumberError('Urutan recovery harus 0–99');
@@ -55,4 +57,28 @@ export function orderSheetBaseNo(displayNo: string): { baseNo: string; revision:
     baseNo: `${displayNo.slice(0, -2)}00`,
     revision: Number(displayNo.slice(-2)),
   };
+}
+
+// ─── Order Sheet claim ──────────────────────────────────────────────────────
+
+/** Nomor claim = nomor Order Sheet biasa dengan awalan ini. */
+export const CLAIM_PREFIX = 'claim-';
+
+/**
+ * Nomor Order Sheet claim: `claim-826102700100`.
+ *
+ * Bentuknya sama dengan order reguler, tapi running number-nya terpisah
+ * (TM_SEQUENCE kode `CL<initial>`) supaya urutan order harian tidak bolong
+ * karena claim.
+ */
+export function formatClaimOrderNo(
+  plantCode: string,
+  deliveryDate: string,
+  sequence: number,
+): string {
+  return `${CLAIM_PREFIX}${formatOrderSheetNo(plantCode, deliveryDate, sequence)}`;
+}
+
+export function isClaimOrderNo(no: string): boolean {
+  return no.startsWith(CLAIM_PREFIX) && /^[789]\d{11}$/.test(no.slice(CLAIM_PREFIX.length));
 }

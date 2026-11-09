@@ -2,7 +2,12 @@
 
 import { revalidatePath } from 'next/cache';
 import { unstable_rethrow } from 'next/navigation';
-import type { IssueManualPicklistInput, OverrideShipmentInput } from '@ares/contracts';
+import type {
+  CreateClaimInput,
+  IssueManualPicklistInput,
+  OverrideShipmentInput,
+  ReceiveClaimInput,
+} from '@ares/contracts';
 import { apiFetch, apiUpload, ApiRequestError } from '@/lib/api';
 
 /**
@@ -118,6 +123,47 @@ export async function overrideShipmentAction(
     revalidatePath('/picklist');
     revalidatePath(`/picklist/${reference}`);
     revalidatePath('/queue');
+    return res;
+  } catch (err) {
+    unstable_rethrow(err);
+    return { error: toMessage(err) };
+  }
+}
+
+/** Order Sheet claim: qty rusak ketahuan setelah barang diterima. */
+export async function createClaimAction(
+  reference: string,
+  input: CreateClaimInput,
+): Promise<{ id: number; publicId: string; picklistNo: string } | { error: string }> {
+  try {
+    const res = await apiFetch<{ id: number; publicId: string; picklistNo: string }>(
+      `/picklists/${encodeURIComponent(reference)}/claim`,
+      { method: 'POST', body: JSON.stringify(input) },
+    );
+    revalidatePath('/picklist');
+    revalidatePath(`/picklist/${reference}`);
+    return res;
+  } catch (err) {
+    unstable_rethrow(err);
+    return { error: toMessage(err) };
+  }
+}
+
+/** Terima barang pengganti claim — tanpa scan, tidak diangkat ke SAP. */
+export async function receiveClaimAction(
+  picklistId: number,
+  reference: string,
+  input: ReceiveClaimInput,
+): Promise<{ receiptNo: string; complete: boolean } | { error: string }> {
+  try {
+    const res = await apiFetch<{ receiptNo: string; complete: boolean }>(
+      `/receipts/claim/${picklistId}`,
+      { method: 'POST', body: JSON.stringify(input) },
+    );
+    revalidatePath('/picklist');
+    revalidatePath(`/picklist/${reference}`);
+    revalidatePath('/receiving');
+    revalidatePath('/stock');
     return res;
   } catch (err) {
     unstable_rethrow(err);

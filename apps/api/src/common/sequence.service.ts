@@ -1,6 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { and, eq, sql, sequences, type Transaction } from '@ares/db';
-import { dateKey, formatDocNo, formatOrderSheetNo, orderPlantInitial } from '@ares/domain';
+import {
+  dateKey,
+  formatClaimOrderNo,
+  formatDocNo,
+  formatOrderSheetNo,
+  orderPlantInitial,
+} from '@ares/domain';
 
 /**
  * Penomoran dokumen (F-21, 6.6.2): unik, berurutan per hari, aman dari dua
@@ -51,5 +57,16 @@ export class SequenceService {
     const key = deliveryDate.slice(2).replaceAll('-', '');
     const sequence = await this.allocate(tx, `OS${orderPlantInitial(plantCode)}`, key);
     return formatOrderSheetNo(plantCode, deliveryDate, sequence);
+  }
+
+  /**
+   * Nomor Order Sheet claim: `claim-826102700100`.
+   * Running number-nya terpisah dari order reguler (kode `CL<initial>`) supaya
+   * urutan order harian tidak bolong karena claim.
+   */
+  async nextClaimOrder(tx: Transaction, plantCode: string, deliveryDate: string): Promise<string> {
+    const key = deliveryDate.slice(2).replaceAll('-', '');
+    const sequence = await this.allocate(tx, `CL${orderPlantInitial(plantCode)}`, key);
+    return formatClaimOrderNo(plantCode, deliveryDate, sequence);
   }
 }

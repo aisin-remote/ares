@@ -37,7 +37,7 @@ describe('pagar keamanan', () => {
   });
 
   it('menolak password yang melebihi batas 72 byte bcrypt', () => {
-    expect(loginSchema.safeParse({ npk: 'A', password: 'é'.repeat(40) }).success).toBe(false);
+    expect(loginSchema.safeParse({ npk: 'A', password: 'é'.repeat(40), captchaToken: 'token' }).success).toBe(false);
   });
 
   it('menolak secret lemah dan origin HTTP pada produksi', () => {
@@ -62,6 +62,7 @@ describe('pagar keamanan', () => {
       JWT_SECRET: 'Q2x1a0dFc2VyYUJ1a2FuU2VjcmV0UHJvZHVrc2k2NFJhbmRvbQ==',
       WEB_ORIGIN: 'https://ares.example.com', TRUST_PROXY_HOPS: '1',
       SMTP_HOST: 'smtp.example.com',
+      RECAPTCHA_SECRET_KEY: 'test-only-v3-secret', NEXT_PUBLIC_RECAPTCHA_SITE_KEY: 'test-only-v3-site',
     });
     expect(env.NODE_ENV).toBe('production');
     expect(env.WEB_ORIGIN).toBe('https://ares.example.com');

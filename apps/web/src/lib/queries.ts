@@ -42,7 +42,7 @@ import {
   orderQueues,
   deliverySchedules,
 } from '@ares/db';
-import type { PicklistStatus, ReceiptStatus } from '@ares/contracts';
+import type { PicklistStatus, PicklistType, ReceiptStatus } from '@ares/contracts';
 import { getEntityDef, type MasterEntity } from '@ares/contracts';
 import { checkPoOpenQty, deliveryForCutoff, nextCutoff, orderSheetDisplayNo, pickPoItem } from '@ares/domain';
 import type { GlobalSearchResult, NavNotification } from './shell-types';
@@ -918,6 +918,8 @@ export async function listPicklists(
     status?: PicklistStatus;
     /** Beberapa status sekaligus, mis. daftar order aktif di portal. */
     statuses?: PicklistStatus[];
+    /** Saring per jenis order, mis. hanya order claim. */
+    type?: PicklistType;
   },
 ) {
   const db = getDb();
@@ -925,6 +927,7 @@ export async function listPicklists(
     scopeVendor(scope),
     eq(picklistHeaders.plantId, opts.plantId),
     opts.status ? eq(picklistHeaders.status, opts.status) : undefined,
+    opts.type ? eq(picklistHeaders.type, opts.type) : undefined,
     opts.statuses && opts.statuses.length > 0
       ? inArray(picklistHeaders.status, opts.statuses)
       : undefined,

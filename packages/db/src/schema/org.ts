@@ -1,5 +1,13 @@
-import { mysqlTable, varchar, boolean, uniqueIndex, index, mysqlEnum } from 'drizzle-orm/mysql-core';
-import { relations } from 'drizzle-orm';
+import {
+  mysqlTable,
+  varchar,
+  boolean,
+  uniqueIndex,
+  index,
+  mysqlEnum,
+  timestamp,
+} from 'drizzle-orm/mysql-core';
+import { relations, sql } from 'drizzle-orm';
 import { pk, fk, timestamps } from './_shared';
 import { vendors } from './master';
 
@@ -41,6 +49,14 @@ export const users = mysqlTable(
     name: varchar('NAME', { length: 128 }).notNull(),
     email: varchar('EMAIL', { length: 191 }),
     passwordHash: varchar('PASSWORD_HASH', { length: 255 }),
+    /**
+     * Kapan password terakhir diganti. Dasar masa berlaku 90 hari; admin
+     * dikecualikan supaya pintu darurat tidak ikut terkunci (lihat
+     * `passwordExpired` di packages/domain).
+     */
+    passwordChangedAt: timestamp('PASSWORD_CHANGED_AT')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
     /** Kolom lama Google Authenticator; dipertahankan agar data lama tetap terbaca. */
     totpSecretEncrypted: varchar('TOTP_SECRET_ENCRYPTED', { length: 512 }),
     roleId: fk('ROLE_ID').references(() => roles.id),

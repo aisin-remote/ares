@@ -1,8 +1,18 @@
 'use client';
 
 import { useActionState, useEffect, useState } from 'react';
+import Script from 'next/script';
+import { executeLoginCaptcha } from '@/lib/recaptcha';
 import { motion } from 'motion/react';
-import { AlertCircle, ArrowLeft, ArrowRight, Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import {
+  AlertCircle,
+  ArrowLeft,
+  ArrowRight,
+  Eye,
+  EyeOff,
+  KeyRound,
+  ShieldCheck,
+} from 'lucide-react';
 import { loginAction, type LoginState } from './actions';
 import { durations, easeSoft } from '@/components/motion/transitions';
 import { BrandWrite } from '@/components/shell/brand-write';
@@ -11,16 +21,22 @@ import { OtpCodeInput } from '@/components/ui/otp-code-input';
 const initial: LoginState = {};
 
 export default function LoginPage() {
-  const [state, formAction, pending] = useActionState(loginAction, initial);
+  const [state, formAction, pending] = useActionState(async (prev: LoginState, data: FormData) => {
+    if (!prev.stage) {
+      try { data.set('captchaToken', await executeLoginCaptcha()); }
+      catch { return { error: 'Verifikasi keamanan belum tersedia. Coba muat ulang atau hubungi Admin.' }; }
+    }
+    return loginAction(prev, data);
+  }, initial);
   const [showPassword, setShowPassword] = useState(false);
   const [otpCode, setOtpCode] = useState('');
-
   useEffect(() => {
     if (state.demoOtpCode) setOtpCode(state.demoOtpCode);
   }, [state.demoOtpCode]);
 
   return (
     <main className="relative grid min-h-screen place-items-center overflow-hidden p-5">
+      {process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY && <Script src={`https://www.google.com/recaptcha/api.js?render=${encodeURIComponent(process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY)}`} strategy="afterInteractive" />}
       {/* Layar pembuka: nama aplikasi ditulis goresan demi goresan, lalu memudar. */}
       <div
         className="login-intro pointer-events-none absolute inset-0 z-10 grid place-items-center bg-canvas"
@@ -76,6 +92,55 @@ export default function LoginPage() {
               Kembali ke email dan password
             </a>
           </motion.div>
+        ) : state.stage === 'PASSWORD_EXPIRED' ? (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: durations.base, ease: easeSoft }}
+          >
+            <div className="grid size-12 place-items-center rounded-full bg-accent/10 text-accent">
+              <KeyRound className="size-6" strokeWidth={1.9} aria-hidden />
+            </div>
+            <h1 className="mt-5 text-[22px] font-extrabold tracking-tight">Password kedaluwarsa</h1>
+            <p className="mt-2 text-[14px] leading-6 text-ink-muted">
+              Password wajib diganti tiap {state.maxAgeDays ?? 90} hari. Buat password baru untuk
+              melanjutkan.
+            </p>
+            <form action={formAction} className="mt-7 space-y-4">
+              <div>
+                <label htmlFor="newPassword" className="mb-2 block text-[14px] font-semibold">
+                  Password baru
+                </label>
+                <input
+                  id="newPassword"
+                  name="newPassword"
+                  type="password"
+                  autoComplete="new-password"
+                  autoFocus
+                  required
+                  minLength={12}
+                  className="h-12 w-full rounded-2xl border border-line bg-surface px-4 text-[15px] outline-none transition-colors duration-200 focus:border-line-strong focus:bg-card"
+                />
+                <p className="mt-2 text-[12px] text-ink-muted">Minimal 12 karakter.</p>
+              </div>
+              <div>
+                <label htmlFor="confirmPassword" className="mb-2 block text-[14px] font-semibold">
+                  Ulangi password baru
+                </label>
+                <input
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  minLength={12}
+                  className="h-12 w-full rounded-2xl border border-line bg-surface px-4 text-[15px] outline-none transition-colors duration-200 focus:border-line-strong focus:bg-card"
+                />
+              </div>
+              <ErrorMessage message={state.error} />
+              <SubmitButton pending={pending} label="Simpan dan masuk" />
+            </form>
+          </motion.div>
         ) : (
           <>
             <div>
@@ -130,14 +195,42 @@ export default function LoginPage() {
               </div>
 
               <ErrorMessage message={state.error} />
+              {!process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY && <p role="alert" className="text-[13px] text-ng">Login belum tersedia karena verifikasi keamanan belum dikonfigurasi. Hubungi Admin ARES.</p>}
               <SubmitButton pending={pending} label="Masuk" />
             </form>
             <p className="mt-6 text-center text-[13px] leading-5 text-ink-muted">
-              Akun supplier dibuat oleh PPIC atau Admin. Hubungi PIC ARES jika belum memiliki akun.
+              Belum punya akun? Hubungi PIC ARES.
             </p>
           </>
         )}
       </div>
+
+      {/*
+        Atribusi wajib Google karena badge reCAPTCHA disembunyikan
+        (globals.css). Ditaruh di dasar halaman, bukan di dalam kartu, supaya
+        form login tidak penuh teks legal.
+      */}
+      <p className="absolute inset-x-0 bottom-4 px-5 text-center text-[11px] leading-4 text-ink-muted/70">
+        Dilindungi reCAPTCHA — berlaku{' '}
+        <a
+          href="https://policies.google.com/privacy"
+          target="_blank"
+          rel="noreferrer"
+          className="hover:text-ink-muted hover:underline"
+        >
+          Kebijakan Privasi
+        </a>{' '}
+        dan{' '}
+        <a
+          href="https://policies.google.com/terms"
+          target="_blank"
+          rel="noreferrer"
+          className="hover:text-ink-muted hover:underline"
+        >
+          Persyaratan Layanan
+        </a>{' '}
+        Google.
+      </p>
     </main>
   );
 }

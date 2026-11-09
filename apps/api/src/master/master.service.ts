@@ -255,11 +255,14 @@ export class MasterService {
   ): Promise<Record<string, unknown>> {
     const { password, ...rest } = values;
     const output = { ...rest };
-    if (password !== undefined)
+    if (password !== undefined) {
       output.passwordHash = await bcrypt.hash(
         String(password),
         Number(process.env.BCRYPT_ROUNDS ?? 12),
       );
+      // Masa berlaku 90 hari dihitung ulang dari password yang baru dipasang.
+      output.passwordChangedAt = new Date();
+    }
     const roleId = Number(output.roleId ?? current?.roleId);
     const [role] = await this.db
       .select({ name: roles.name })

@@ -115,6 +115,9 @@ async function main() {
       { roleId: roleId('ppic'), action: 'picklist.cancel' },
       { roleId: roleId('admin'), action: 'picklist.override' },
       { roleId: roleId('ppic'), action: 'picklist.override' },
+      // Order Sheet claim: ganti barang rusak setelah diterima.
+      { roleId: roleId('admin'), action: 'picklist.claim' },
+      { roleId: roleId('ppic'), action: 'picklist.claim' },
       /*
        * Membaca picklist pun butuh izin, bukan sekadar token yang sah. Tanpa
        * baris-baris ini, token device scanner yang berumur setahun ikut bisa

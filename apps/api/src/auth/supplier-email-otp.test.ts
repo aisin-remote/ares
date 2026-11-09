@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { UnauthorizedException } from '@nestjs/common';
 import bcrypt from 'bcryptjs';
 import {
@@ -13,6 +13,7 @@ import {
   vendors,
 } from '@ares/db';
 import { AuthService } from './auth.service';
+vi.mock('./captcha', () => ({ verifyRecaptcha: vi.fn().mockResolvedValue(undefined) }));
 import type { QueueService } from '../queue/queue.service';
 
 const db = getDb();
@@ -27,6 +28,12 @@ const queue = {
   },
 } as unknown as QueueService;
 let mfaPayload: Record<string, unknown> | undefined;
+/** Captcha baru tiap panggilan; token sekali pakai, jadi jti harus berbeda. */
+let captchaSeq = 0;
+const captchaLogin = () => {
+  captchaSeq += 1;
+  return { captchaToken: `test-captcha-${captchaSeq}` };
+};
 const jwt = {
   signAsync: async (payload: Record<string, unknown>) => {
     if (payload.kind === 'mfa') {
@@ -101,7 +108,7 @@ afterAll(async () => {
 
 describe('login supplier dengan OTP email', () => {
   it('mengirim OTP setelah password benar, membatasi percobaan, dan memakai kode sekali', async () => {
-    const firstStep = await service.login({ npk: email, password }, '127.0.0.1');
+    const firstStep = await service.login({ npk: email, password, ...captchaLogin() }, '127.0.0.1');
     expect(firstStep).toMatchObject({
       mfaRequired: true,
       mfaToken: 'test-mfa-token',
@@ -130,8 +137,11 @@ describe('login supplier dengan OTP email', () => {
     expect(afterWrongCode?.attempts).toBe(1);
 
     const loggedIn = await service.loginOtp({ mfaToken: 'test-mfa-token', otpCode: code });
-    expect(loggedIn.accessToken).toBe('test-access-token');
-    expect(loggedIn.user.vendorId).toBe(vendorId);
+    // Akun uji baru dibuat, jadi passwordnya belum kedaluwarsa: sesi langsung terbit.
+    expect(loggedIn).toMatchObject({
+      accessToken: 'test-access-token',
+      user: { vendorId },
+    });
     await expect(
       service.loginOtp({ mfaToken: 'test-mfa-token', otpCode: code }),
     ).rejects.toBeInstanceOf(UnauthorizedException);
@@ -140,7 +150,7 @@ describe('login supplier dengan OTP email', () => {
   it('tidak pernah membocorkan OTP pada production meskipun flag demo aktif', async () => {
     process.env.NODE_ENV = 'production';
     try {
-      const firstStep = await service.login({ npk: email, password }, '127.0.0.1');
+      const firstStep = await service.login({ npk: email, password, ...captchaLogin() }, '127.0.0.1');
       expect('demoOtpCode' in firstStep ? firstStep.demoOtpCode : undefined).toBeUndefined();
     } finally {
       process.env.NODE_ENV = 'test';

@@ -15,6 +15,7 @@ import {
   eq,
   inArray,
   count,
+  ne,
   or,
   sql,
   vendors,
@@ -30,6 +31,7 @@ import {
   receiptHeaders,
   kanbans,
   kanbanEvents,
+  stockMutations,
   holidays,
   orderQueues,
   queueAdjustments,
@@ -50,14 +52,18 @@ import {
   assignCutoff,
   deliveryForCutoff,
   planPicklist,
+  planClaim,
+  ClaimError,
   type PoCandidate,
   type ShipmentLineInput,
 } from '@ares/domain';
 import type {
   ConfirmShipmentInput,
+  CreateClaimInput,
   IssueManualPicklistInput,
   OverrideShipmentInput,
   PicklistListQuery,
+  PicklistType,
   ShortShipPolicy,
 } from '@ares/contracts';
 import type { PicklistNoticeKind } from '../notify/notify.service';
@@ -744,6 +750,19 @@ export class PicklistService {
    * (6.6.2) — membatalkan order yang sudah sempurna hanya karena Redis mati
    * jauh lebih merugikan daripada PDF yang terlambat. Job bisa diulang.
    */
+  /**
+   * Setelah recovery/claim commit: render PDF-nya dan kabari supplier.
+   * Dipanggil modul lain (receiving) yang menerbitkan Order Sheet lewat
+   * `createRecovery`, di luar transaksi.
+   */
+  async publishOrder(
+    picklistId: number,
+    kind: PicklistNoticeKind = 'PICKLIST_ISSUED',
+  ): Promise<void> {
+    await this.enqueueRender(picklistId);
+    await this.enqueueNotice(kind, picklistId);
+  }
+
   private async enqueueRender(
     picklistId: number,
     job: typeof JOBS.RENDER_PDF | typeof JOBS.RENDER_DELIVERY_SHEET = JOBS.RENDER_PDF,
@@ -1029,62 +1048,20 @@ export class PicklistService {
       const carryOver: never[] = [];
 
       // REVISION: nomor sama, revisi+1, hanya line sisa; kanban sisa ikut pindah.
+      // Order claim dihitung per pcs dan diterima tanpa scan: kekurangan kirim
+      // cukup membuat claim tetap PARTIAL, bukan melahirkan recovery baru.
       let revision: { id: number; publicId: string; revision: number; lineCount: number } | null = null;
-      if (result.revisionLines.length > 0) {
-        const lineById = new Map(lines.map((l) => [l.id, l]));
-        const deliveryDate = tambahHari(pl.deliveryDate, 1);
-        const recoveryPos = await this.resolveRecoveryPos(tx, pl.vendorId, deliveryDate,
-          result.revisionLines.map((r) => ({ ...lineById.get(r.picklistLineId)!, boxes: r.boxes })));
-        const revNo = pl.revision + 1;
-        const revisionPublicId = randomUUID();
-        const revId = (
-          await tx
-            .insert(picklistHeaders)
-            .values({
-              publicId: revisionPublicId,
-              plantId: pl.plantId,
-              picklistNo: pl.picklistNo,
-              revision: revNo,
-              type: pl.type,
-              vendorId: pl.vendorId,
-              cutoffAt: pl.cutoffAt,
-              deliveryDate,
-              arrivalTime: pl.arrivalTime,
-              cycle: pl.cycle,
-              status: 'ISSUED',
-              note: `Revisi ${revNo} dari ${ref}: sisa yang belum terkirim`,
-              createdById: pl.createdById,
-            })
-            .$returningId()
-        )[0]!.id;
-        for (const r of result.revisionLines) {
-          const src = lineById.get(r.picklistLineId)!;
-          const newLineId = (
-            await tx
-              .insert(picklistLines)
-              .values({
-                picklistId: revId,
-                vendorPartId: src.vendorPartId,
-                boxOrdered: r.boxes,
-                qtyPerBox: src.qtyPerBox,
-                pcs: r.boxes * src.qtyPerBox,
-                sapPoNo: recoveryPos.get(src.id)!.sapPoNo,
-                sapPoItem: recoveryPos.get(src.id)!.sapPoItem,
-              })
-              .$returningId()
-          )[0]!.id;
-          if (r.kanbanIds.length > 0) {
-            await tx
-              .update(kanbans)
-              .set({ picklistLineId: newLineId })
-              .where(inArray(kanbans.id, r.kanbanIds));
-          }
-        }
-        revision = { id: revId, publicId: revisionPublicId, revision: revNo, lineCount: result.revisionLines.length };
-        await writeAudit(tx, 'TT_PICKLIST_H', revId, 'CREATE_REVISION', actor.userId, null, {
-          picklistNo: pl.picklistNo, revision: revNo, sourceId: pl.id,
-          lines: result.revisionLines.map((line) => ({ picklistLineId: line.picklistLineId, boxes: line.boxes })),
-        });
+      if (result.revisionLines.length > 0 && pl.type !== 'CLAIM') {
+        revision = await this.createRecovery(
+          tx,
+          pl,
+          result.revisionLines.map((r) => ({
+            sourceLineId: r.picklistLineId,
+            boxes: r.boxes,
+            kanbanIds: r.kanbanIds,
+          })),
+          { note: `Revisi ${pl.revision + 1} dari ${ref}: sisa yang belum terkirim`, actorUserId: actor.userId },
+        );
       }
 
       await writeAudit(tx, 'TT_PICKLIST_H', pl.id, 'CONFIRM_SHIPMENT', actor.userId,
@@ -1216,49 +1193,24 @@ export class PicklistService {
       let revision: { id: number; publicId: string; revision: number; lineCount: number } | null = null;
       const short = result.filter((row) => row.boxShort > 0);
       if (policy === 'REVISION' && short.length > 0) {
-        const deliveryDate = tambahHari(pl.deliveryDate, 1);
-        const recoveryPos = await this.resolveRecoveryPos(tx, pl.vendorId, deliveryDate,
-          short.map((r) => ({ ...lineById.get(r.picklistLineId)!, boxes: r.boxShort })));
-        const revNo = pl.revision + 1;
-        const revisionPublicId = randomUUID();
-        const revId = (await tx.insert(picklistHeaders).values({
-          publicId: revisionPublicId,
-          plantId: pl.plantId,
-          picklistNo: pl.picklistNo,
-          revision: revNo,
-          type: pl.type,
-          vendorId: pl.vendorId,
-          cutoffAt: pl.cutoffAt,
-          deliveryDate,
-          arrivalTime: pl.arrivalTime,
-          cycle: pl.cycle,
-          status: 'ISSUED',
-          note: `Revisi ${revNo} dari ${ref}: koreksi PPIC`,
-          createdById: actor.userId,
-        }).$returningId())[0]!.id;
-        for (const row of short) {
-          const source = lineById.get(row.picklistLineId)!;
-          const revLineId = (await tx.insert(picklistLines).values({
-            picklistId: revId,
-            vendorPartId: source.vendorPartId,
-            boxOrdered: row.boxShort,
-            qtyPerBox: source.qtyPerBox,
-            pcs: row.boxShort * source.qtyPerBox,
-            sapPoNo: recoveryPos.get(source.id)!.sapPoNo,
-            sapPoItem: recoveryPos.get(source.id)!.sapPoItem,
-          }).$returningId())[0]!.id;
-          const move = kanbanRows
-            .filter((kanban) => kanban.picklistLineId === source.id)
-            .sort((a, b) => a.serial - b.serial)
-            .slice(row.boxShipped)
-            .map((kanban) => kanban.id);
-          if (move.length > 0) await tx.update(kanbans).set({ picklistLineId: revLineId })
-            .where(inArray(kanbans.id, move));
-        }
-        revision = { id: revId, publicId: revisionPublicId, revision: revNo, lineCount: short.length };
-        await writeAudit(tx, 'TT_PICKLIST_H', revId, 'CREATE_REVISION', actor.userId, null, {
-          picklistNo: pl.picklistNo, revision: revNo, sourceId: pl.id, reason: input.reason,
-        });
+        revision = await this.createRecovery(
+          tx,
+          pl,
+          short.map((row) => ({
+            sourceLineId: row.picklistLineId,
+            boxes: row.boxShort,
+            kanbanIds: kanbanRows
+              .filter((kanban) => kanban.picklistLineId === row.picklistLineId)
+              .sort((a, b) => a.serial - b.serial)
+              .slice(row.boxShipped)
+              .map((kanban) => kanban.id),
+          })),
+          {
+            note: `Revisi ${pl.revision + 1} dari ${ref}: koreksi PPIC — ${input.reason}`,
+            actorUserId: actor.userId,
+            createdById: actor.userId,
+          },
+        );
       }
 
       await writeAudit(tx, 'TT_PICKLIST_H', pl.id, 'OVERRIDE_SHIPMENT', actor.userId,
@@ -1273,6 +1225,280 @@ export class PicklistService {
       await this.enqueueNotice('PICKLIST_REVISED', hasil.revision.id);
     }
     return hasil;
+  }
+
+
+
+  /**
+   * Order Sheet claim (barang rusak ketahuan setelah diterima).
+   *
+   * Nomornya `claim-<nomor order>` dengan running number sendiri, qty-nya
+   * dalam satuan kanban (box) seperti order lain, dan tidak punya kartu
+   * kanban — penerimaannya nanti tanpa scan dan tidak diangkat ke SAP karena
+   * order asal sudah ter-GR penuh.
+   *
+   * Barang rusak dikembalikan ke supplier, jadi stok WH turun sekarang; stok
+   * naik lagi saat barang gantinya diterima.
+   */
+  async createClaim(sourceId: number, input: CreateClaimInput, actor: Actor) {
+    const hasil = await this.db.transaction(async (tx) => {
+      const [source] = await tx
+        .select()
+        .from(picklistHeaders)
+        .where(and(
+          eq(picklistHeaders.id, sourceId),
+          actor.plantId ? eq(picklistHeaders.plantId, actor.plantId) : undefined,
+        ))
+        .for('update');
+      if (!source) throw new NotFoundException('Order Sheet tidak ditemukan');
+      if (source.type === 'CLAIM') {
+        throw new ConflictException('Order claim tidak bisa diklaim lagi');
+      }
+      if (!['PARTIAL', 'COMPLETE'].includes(source.status)) {
+        throw new ConflictException('Claim hanya untuk order yang barangnya sudah diterima');
+      }
+
+      const lines = await tx
+        .select({
+          id: picklistLines.id,
+          vendorPartId: picklistLines.vendorPartId,
+          qtyPerBox: picklistLines.qtyPerBox,
+          boxReceived: picklistLines.boxReceived,
+          sapPoNo: picklistLines.sapPoNo,
+          sapPoItem: picklistLines.sapPoItem,
+          partId: vendorParts.partId,
+        })
+        .from(picklistLines)
+        .innerJoin(vendorParts, eq(picklistLines.vendorPartId, vendorParts.id))
+        .where(eq(picklistLines.picklistId, source.id))
+        .orderBy(asc(picklistLines.id));
+
+      // Box yang sudah diklaim dari tiap line, dari claim yang belum dibatalkan.
+      const claimed = lines.length
+        ? await tx
+            .select({
+              claimOfLineId: picklistLines.claimOfLineId,
+              box: sql<number>`COALESCE(SUM(${picklistLines.boxOrdered}), 0)`,
+            })
+            .from(picklistLines)
+            .innerJoin(picklistHeaders, eq(picklistLines.picklistId, picklistHeaders.id))
+            .where(and(
+              inArray(picklistLines.claimOfLineId, lines.map((line) => line.id)),
+              ne(picklistHeaders.status, 'CANCELLED'),
+            ))
+            .groupBy(picklistLines.claimOfLineId)
+        : [];
+      const claimedByLine = new Map(claimed.map((row) => [Number(row.claimOfLineId), Number(row.box)]));
+
+      let planned: ReturnType<typeof planClaim>;
+      try {
+        planned = planClaim(
+          lines.map((line) => ({
+            picklistLineId: line.id,
+            qtyPerBox: line.qtyPerBox,
+            boxReceived: line.boxReceived,
+            boxClaimed: claimedByLine.get(line.id) ?? 0,
+          })),
+          input.lines,
+        );
+      } catch (error) {
+        if (error instanceof ClaimError) throw new UnprocessableEntityException(error.message);
+        throw error;
+      }
+
+      const [plant] = await tx
+        .select({ code: plants.code })
+        .from(plants)
+        .where(eq(plants.id, source.plantId));
+      if (!plant) throw new NotFoundException('Pabrik order ini tidak ditemukan');
+
+      const now = new Date();
+      const deliveryDate = tambahHari(hariIni(), 1);
+      const picklistNo = await this.sequence.nextClaimOrder(tx, plant.code, deliveryDate);
+      const publicId = randomUUID();
+      const id = (
+        await tx
+          .insert(picklistHeaders)
+          .values({
+            publicId,
+            plantId: source.plantId,
+            picklistNo,
+            revision: 0,
+            type: 'CLAIM',
+            vendorId: source.vendorId,
+            cutoffAt: now,
+            deliveryDate,
+            arrivalTime: source.arrivalTime,
+            cycle: 1,
+            status: 'ISSUED',
+            claimOfPicklistId: source.id,
+            note: `Claim dari ${source.picklistNo}: ${input.reason}`.slice(0, 255),
+            createdById: actor.userId,
+          })
+          .$returningId()
+      )[0]!.id;
+
+      const lineById = new Map(lines.map((line) => [line.id, line]));
+      for (const row of planned) {
+        const src = lineById.get(row.picklistLineId)!;
+        const claimLineId = (
+          await tx
+            .insert(picklistLines)
+            .values({
+              picklistId: id,
+              vendorPartId: src.vendorPartId,
+              boxOrdered: row.boxOrdered,
+              qtyPerBox: src.qtyPerBox,
+              pcs: row.pcs,
+              // Disalin sebagai keterangan; claim tidak pernah diangkat ke SAP.
+              sapPoNo: src.sapPoNo,
+              sapPoItem: src.sapPoItem,
+              claimOfLineId: src.id,
+            })
+            .$returningId()
+        )[0]!.id;
+        // Barang rusak keluar dari gudang menuju supplier.
+        await tx.insert(stockMutations).values({
+          plantId: source.plantId,
+          partId: src.partId,
+          sloc: process.env.SAP_SLOC ?? 'WH00',
+          deltaPcs: -row.pcs,
+          type: 'ADJUST',
+          refTable: 'TT_PICKLIST_L',
+          refId: claimLineId,
+          note: `Barang rusak dikembalikan ke supplier (${picklistNo})`.slice(0, 255),
+          userId: actor.userId,
+          occurredAt: now,
+        });
+      }
+
+      await writeAudit(tx, 'TT_PICKLIST_H', id, 'CREATE_CLAIM', actor.userId, null, {
+        picklistNo, sourceId: source.id, sourceNo: source.picklistNo,
+        reason: input.reason, lines: planned,
+      });
+
+      return {
+        id,
+        publicId,
+        picklistNo,
+        deliveryDate,
+        lines: planned,
+        source: { id: source.id, publicId: source.publicId, picklistNo: source.picklistNo },
+      };
+    });
+
+    await this.publishOrder(hasil.id);
+    return hasil;
+  }
+
+  /**
+   * Menerbitkan Order Sheet recovery: nomor sama, RR + 1, hanya berisi sisa.
+   *
+   * Satu jalur untuk ketiga pemicunya — supplier konfirmasi kirim kurang (6.3),
+   * koreksi PPIC (6.3.4), dan sesi scan ditutup dengan box kurang (6.5.2).
+   * Dipanggil di dalam transaksi pemanggil supaya order asal dan recovery-nya
+   * selalu commit bersama.
+   */
+  async createRecovery(
+    tx: Transaction,
+    source: RecoverySource,
+    items: ReadonlyArray<{ sourceLineId: number; boxes: number; kanbanIds: readonly string[] }>,
+    opts: { note: string; actorUserId: number; createdById?: number | null; reissueKanban?: boolean },
+  ): Promise<{ id: number; publicId: string; revision: number; lineCount: number }> {
+    const sourceLineIds = items.map((item) => item.sourceLineId);
+    const lines = await tx
+      .select({
+        id: picklistLines.id,
+        vendorPartId: picklistLines.vendorPartId,
+        qtyPerBox: picklistLines.qtyPerBox,
+        sapPoNo: picklistLines.sapPoNo,
+        sapPoItem: picklistLines.sapPoItem,
+      })
+      .from(picklistLines)
+      .where(inArray(picklistLines.id, sourceLineIds));
+    const lineById = new Map(lines.map((line) => [line.id, line]));
+
+    const deliveryDate = tambahHari(source.deliveryDate, 1);
+    const recoveryPos = await this.resolveRecoveryPos(
+      tx,
+      source.vendorId,
+      deliveryDate,
+      items.map((item) => ({ ...lineById.get(item.sourceLineId)!, boxes: item.boxes })),
+    );
+
+    const revision = source.revision + 1;
+    const publicId = randomUUID();
+    const id = (
+      await tx
+        .insert(picklistHeaders)
+        .values({
+          publicId,
+          plantId: source.plantId,
+          picklistNo: source.picklistNo,
+          revision,
+          type: source.type,
+          vendorId: source.vendorId,
+          cutoffAt: source.cutoffAt,
+          deliveryDate,
+          arrivalTime: source.arrivalTime,
+          cycle: source.cycle,
+          status: 'ISSUED',
+          note: opts.note.slice(0, 255),
+          createdById: opts.createdById ?? source.createdById,
+        })
+        .$returningId()
+    )[0]!.id;
+
+    const now = new Date();
+    for (const item of items) {
+      const src = lineById.get(item.sourceLineId)!;
+      const newLineId = (
+        await tx
+          .insert(picklistLines)
+          .values({
+            picklistId: id,
+            vendorPartId: src.vendorPartId,
+            boxOrdered: item.boxes,
+            qtyPerBox: src.qtyPerBox,
+            pcs: item.boxes * src.qtyPerBox,
+            sapPoNo: recoveryPos.get(src.id)!.sapPoNo,
+            sapPoItem: recoveryPos.get(src.id)!.sapPoItem,
+          })
+          .$returningId()
+      )[0]!.id;
+      if (item.kanbanIds.length > 0) {
+        await tx
+          .update(kanbans)
+          .set({
+            picklistLineId: newLineId,
+            // Kartu yang sudah ditandai hilang dipakai lagi di recovery; tanpa
+            // dikembalikan ke PRINTED kartunya tidak bisa discan lagi (6.4).
+            ...(opts.reissueKanban ? { status: 'PRINTED' as const, receiptId: null } : {}),
+          })
+          .where(inArray(kanbans.id, [...item.kanbanIds]));
+        if (opts.reissueKanban) {
+          await tx.insert(kanbanEvents).values(
+            item.kanbanIds.map((kanbanId) => ({
+              kanbanId,
+              type: 'PRINTED' as const,
+              userId: opts.actorUserId,
+              occurredAt: now,
+              ref: `${source.picklistNo}-${revision}`,
+            })),
+          );
+        }
+      }
+    }
+
+    await writeAudit(tx, 'TT_PICKLIST_H', id, 'CREATE_REVISION', opts.actorUserId, null, {
+      picklistNo: source.picklistNo,
+      revision,
+      sourceId: source.id,
+      note: opts.note,
+      lines: items.map((item) => ({ picklistLineId: item.sourceLineId, boxes: item.boxes })),
+    });
+
+    return { id, publicId, revision, lineCount: items.length };
   }
 
   /** PO dikunci dan kapasitas diperiksa sebelum recovery diterbitkan, dalam transaksi asal. */
@@ -1547,8 +1773,28 @@ export class PicklistService {
 }
 
 /** Tanggal kalender YYYY-MM-DD + n hari, tanpa geser zona waktu. */
+/** Tanggal hari ini di zona pabrik (Asia/Jakarta), bukan zona server. */
+function hariIni(now = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(now);
+}
+
 function tambahHari(ymd: string, n: number): string {
   const d = new Date(`${ymd}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
+}
+
+/** Kolom Order Sheet asal yang dibutuhkan saat menerbitkan recovery-nya. */
+interface RecoverySource {
+  id: number;
+  plantId: number;
+  picklistNo: string;
+  revision: number;
+  type: PicklistType;
+  vendorId: number;
+  cutoffAt: Date;
+  deliveryDate: string;
+  arrivalTime: string;
+  cycle: number;
+  createdById: number | null;
 }

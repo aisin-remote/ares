@@ -9,6 +9,7 @@ import {
   inArray,
   asc,
   desc,
+  sql,
   plants,
   users,
   vendors,
@@ -46,7 +47,7 @@ const db = getDb();
 const queue = { add: async () => 'test' } as unknown as QueueService;
 const sequence = new SequenceService();
 const picklists = new PicklistService(db, sequence, queue, new NotifyService(db, queue));
-const receiving = new ReceivingService(db, sequence, queue);
+const receiving = new ReceivingService(db, sequence, queue, picklists);
 const outbox = new SapOutboxService(db);
 const writer = new SapWriterService(db, new FakeSapGateway());
 const stamp = Date.now().toString().slice(-10);
@@ -193,6 +194,15 @@ afterAll(async () => {
   await closeDb();
 });
 
+/** Stok WH part A = SUM(DELTA_PCS); tidak ada tabel saldo (aturan repo 7). */
+async function stokPartA(): Promise<number> {
+  const [row] = await db
+    .select({ pcs: sql<number>`COALESCE(SUM(${stockMutations.deltaPcs}), 0)` })
+    .from(stockMutations)
+    .where(eq(stockMutations.partId, partA));
+  return Number(row?.pcs ?? 0);
+}
+
 describe('sesi scan: buka → 5 scan (1 dobel, 1 picklist lain) → tutup → outbox GR', () => {
   it('menjalankan alur lengkap dan hasilnya konsisten di semua tabel', async () => {
     // Picklist A: 3 box RA (100/box) + 2 box RB (50/box). Picklist B: umpan kanban asing.
@@ -272,6 +282,27 @@ describe('sesi scan: buka → 5 scan (1 dobel, 1 picklist lain) → tutup → ou
       receiptNo: sesi.receiptNo,
     });
 
+    // Box kurang saat diterima → Order Sheet recovery (RR+1) terbit otomatis.
+    expect(closed.recovery).toMatchObject({ revision: 1, lineCount: 2 });
+    expect(closed.recoveryError).toBeNull();
+    const [rec] = await db
+      .select({ id: picklistHeaders.id, status: picklistHeaders.status })
+      .from(picklistHeaders)
+      .where(and(eq(picklistHeaders.picklistNo, A.picklistNo), eq(picklistHeaders.revision, 1)));
+    expect(rec?.status).toBe('ISSUED');
+    const recLines = await db
+      .select({ boxOrdered: picklistLines.boxOrdered })
+      .from(picklistLines)
+      .where(eq(picklistLines.picklistId, rec!.id))
+      .orderBy(asc(picklistLines.id));
+    expect(recLines.map((l) => l.boxOrdered)).toEqual([1, 1]);
+    const recKanban = await db
+      .select({ status: kanbans.status })
+      .from(kanbans)
+      .innerJoin(picklistLines, eq(kanbans.picklistLineId, picklistLines.id))
+      .where(eq(picklistLines.picklistId, rec!.id));
+    expect(recKanban.map((k) => k.status)).toEqual(['PRINTED', 'PRINTED']);
+
     // picklist: SHIPPED (konfirmasi supplier) → PARTIAL
     const [pl] = await db.select().from(picklistHeaders).where(eq(picklistHeaders.id, A.id));
     expect(pl?.status).toBe('PARTIAL');
@@ -285,20 +316,15 @@ describe('sesi scan: buka → 5 scan (1 dobel, 1 picklist lain) → tutup → ou
       { boxReceived: 1, status: 'OPEN' },
     ]);
 
-    // kanban: 3 RECEIVED di sesi ini, 2 MISSING; kanban picklist B tidak tersentuh
+    // kanban: 3 RECEIVED tinggal di order asal; 2 yang belum datang pindah ke
+    // Order Sheet recovery dan kembali PRINTED supaya bisa discan lagi.
     const ks = await db
       .select({ status: kanbans.status, receiptId: kanbans.receiptId })
       .from(kanbans)
       .innerJoin(picklistLines, eq(kanbans.picklistLineId, picklistLines.id))
       .where(eq(picklistLines.picklistId, A.id))
       .orderBy(asc(picklistLines.id), asc(kanbans.serial));
-    expect(ks.map((k) => k.status)).toEqual([
-      'RECEIVED',
-      'RECEIVED',
-      'MISSING',
-      'RECEIVED',
-      'MISSING',
-    ]);
+    expect(ks.map((k) => k.status)).toEqual(['RECEIVED', 'RECEIVED', 'RECEIVED']);
     expect(ks.filter((k) => k.status === 'RECEIVED').every((k) => k.receiptId === sesi.id)).toBe(
       true,
     );
@@ -399,6 +425,68 @@ describe('sesi scan: buka → 5 scan (1 dobel, 1 picklist lain) → tutup → ou
     await expect(receiving.open(picklistCode(C.picklistNo), actor)).rejects.toBeInstanceOf(
       ConflictException,
     );
+  });
+
+  it('barang rusak setelah diterima → order claim, stok turun lalu naik, tanpa GR', async () => {
+    // Order asal diterima penuh dulu; claim baru boleh dibuat setelah itu.
+    const asal = await issue([{ vendorPartId: vpA, boxes: 2 }]);
+    const sesi = await receiving.open(picklistCode(asal.picklistNo), actor);
+    for (const id of asal.lines[0]!.kanbanIds) await receiving.scan(sesi.id, kanbanCode(id), actor);
+    await receiving.close(sesi.id, undefined, actor);
+
+    const [asalLine] = await db
+      .select({ id: picklistLines.id })
+      .from(picklistLines)
+      .where(eq(picklistLines.picklistId, asal.id));
+    const stokSebelum = await stokPartA();
+
+    const claim = await picklists.createClaim(
+      asal.id,
+      { reason: 'Karat di 1 box', lines: [{ picklistLineId: asalLine!.id, damagedBox: 1 }] },
+      actor,
+    );
+    // Nomor claim: format order biasa dengan awalan claim-, urutan sendiri.
+    expect(claim.picklistNo).toMatch(/^claim-[789]\d{11}$/);
+    // Qty claim memakai satuan kanban; pcs ikut qty per box line asal (100).
+    expect(claim.lines).toEqual([{ picklistLineId: asalLine!.id, boxOrdered: 1, pcs: 100 }]);
+    // Barang rusak dikembalikan ke supplier → stok WH turun.
+    expect(await stokPartA()).toBe(stokSebelum - 100);
+
+    const [claimHeader] = await db
+      .select({ type: picklistHeaders.type, claimOf: picklistHeaders.claimOfPicklistId })
+      .from(picklistHeaders)
+      .where(eq(picklistHeaders.id, claim.id));
+    expect(claimHeader).toEqual({ type: 'CLAIM', claimOf: asal.id });
+
+    // Box rusak tidak boleh melebihi sisa yang masih bisa diklaim (2 − 1 = 1).
+    await expect(
+      picklists.createClaim(
+        asal.id,
+        { reason: 'Klaim kedua kebanyakan', lines: [{ picklistLineId: asalLine!.id, damagedBox: 2 }] },
+        actor,
+      ),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+
+    // Penerimaan barang pengganti tanpa scan.
+    const [claimLine] = await db
+      .select({ id: picklistLines.id })
+      .from(picklistLines)
+      .where(eq(picklistLines.picklistId, claim.id));
+    const terima = await receiving.receiveClaim(
+      claim.id,
+      { lines: [{ picklistLineId: claimLine!.id, boxReceived: 1 }] },
+      actor,
+    );
+    expect(terima).toMatchObject({ complete: true, picklistStatus: 'COMPLETE' });
+    expect(await stokPartA()).toBe(stokSebelum);
+
+    // Order asal sudah ter-GR penuh, jadi claim tidak pernah diangkat ke SAP.
+    await outbox.collect();
+    const gr = await db
+      .select({ id: sapOutbox.id })
+      .from(sapOutbox)
+      .where(and(eq(sapOutbox.sourceTable, 'TT_RECEIPT_H'), eq(sapOutbox.sourceId, terima.id)));
+    expect(gr).toHaveLength(0);
   });
 
   it('sesi tanpa satu pun scan → semua MISSING, receipt tanpa line, outbox SKIPPED', async () => {

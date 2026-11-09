@@ -7,7 +7,8 @@
 export const PICKLIST_STATUSES = ['ISSUED', 'DOWNLOADED', 'SHIPPED', 'PARTIAL', 'COMPLETE', 'CANCELLED'] as const;
 export type PicklistStatus = (typeof PICKLIST_STATUSES)[number];
 
-export const PICKLIST_TYPES = ['AUTO', 'MANUAL'] as const;
+/** CLAIM = order ganti barang rusak; tidak discan dan tidak diangkat ke SAP. */
+export const PICKLIST_TYPES = ['AUTO', 'MANUAL', 'CLAIM'] as const;
 export type PicklistType = (typeof PICKLIST_TYPES)[number];
 
 /** SHORT = supplier konfirmasi kirim kurang dari order (6.3.2). */
