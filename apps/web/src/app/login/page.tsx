@@ -81,14 +81,14 @@ export default function LoginPage() {
             <div>
               <div className="text-[24px] font-extrabold leading-none tracking-tight">ARES</div>
               <p className="mt-2 text-[14px] text-ink-muted">
-                e-Kanban Supplier — NPK untuk karyawan, email untuk supplier
+                Aisin Ordering &amp; Receiving System
               </p>
             </div>
 
             <form action={formAction} className="mt-8 space-y-4">
               <div>
                 <label htmlFor="npk" className="mb-2 block text-[14px] font-semibold">
-                  NPK / email supplier
+                  Email
                 </label>
                 <input
                   id="npk"
