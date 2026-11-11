@@ -44,12 +44,12 @@ export class PermissionsGuard implements CanActivate {
         context.getHandler(), context.getClass(),
       ]);
       if (authenticated) return true;
-      throw new ForbiddenException('Endpoint belum memiliki kebijakan akses');
+      throw new ForbiddenException('Akses untuk halaman ini belum diatur');
     }
 
     const principal = context.switchToHttp().getRequest<Request>().principal;
     if (principal?.kind !== 'user' || !principal.role) {
-      throw new ForbiddenException(`Tidak punya hak ${action}`);
+      throw new ForbiddenException('Anda tidak punya akses untuk tindakan ini');
     }
 
     const [row] = await this.db
@@ -58,7 +58,7 @@ export class PermissionsGuard implements CanActivate {
       .innerJoin(roles, eq(permissions.roleId, roles.id))
       .where(and(eq(roles.name, principal.role), eq(permissions.action, action)))
       .limit(1);
-    if (!row) throw new ForbiddenException(`Peran ${principal.role} tidak punya hak ${action}`);
+    if (!row) throw new ForbiddenException('Anda tidak punya akses untuk tindakan ini');
     return true;
   }
 }

@@ -25,7 +25,7 @@ import { QUEUES, JOBS } from '../queue/queue.constants';
 
 function entityOf(value: string): MasterEntity {
   if (!isMasterEntity(value))
-    throw new BadRequestException(`Entitas master "${value}" tidak dikenal`);
+    throw new BadRequestException('Data master tidak dikenal');
   return value;
 }
 

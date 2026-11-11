@@ -38,10 +38,8 @@ export class MssqlStagingGateway implements SapGateway {
 
   async send(row: typeof sapOutbox.$inferSelect): Promise<SapGatewayResult> {
     void row;
-    if (!this.enabled) throw new Error('Pengiriman staging dinonaktifkan (STAGING_PUSH_ENABLED=false).');
-    throw new Error(
-      'Pengiriman ke MS SQL belum diimplementasikan. ' +
-        'Bentuk tabel tujuan dan movement type harus disepakati tim SAP lebih dulu.',
-    );
+    if (!this.enabled) throw new Error('Pengiriman ke SAP belum diaktifkan.');
+    // ponytail: tabel tujuan & movement type masih menunggu kesepakatan tim SAP.
+    throw new Error('Pengiriman ke SAP belum tersedia.');
   }
 }

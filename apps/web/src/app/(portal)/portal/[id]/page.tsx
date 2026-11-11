@@ -180,7 +180,7 @@ export default async function PortalDetailPage({ params }: { params: Promise<{ i
               title={bisaKonfirmasi ? 'Konfirmasi kirim' : 'Yang dikirim'}
               subtitle={
                 bisaKonfirmasi
-                  ? 'Isi box yang benar-benar naik truk per part, ETA, dan nomor kendaraan (F-30)'
+                  ? 'Isi box yang benar-benar naik truk per part, ETA, dan nomor kendaraan'
                   : sudahKirim
                     ? 'Jumlah kirim sudah dikonfirmasi dan tidak bisa diubah dari portal; perubahan lewat PPIC'
                     : picklist.status === 'ISSUED'

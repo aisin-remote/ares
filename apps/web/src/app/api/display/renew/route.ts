@@ -22,6 +22,6 @@ export async function POST() {
     await setDisplayToken(body.accessToken);
     return new NextResponse(null, { status: 204 });
   } catch {
-    return NextResponse.json({ message: 'API tidak dapat dihubungi' }, { status: 503 });
+    return NextResponse.json({ message: 'Sistem tidak dapat dihubungi' }, { status: 503 });
   }
 }

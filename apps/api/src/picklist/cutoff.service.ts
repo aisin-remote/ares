@@ -55,7 +55,7 @@ export class CutoffService {
       .limit(1);
     if (!group) throw new NotFoundException('Antrean supplier pada cutoff ini sudah tidak tersedia');
     if (group.plantId !== actor.plantId) {
-      throw new BadRequestException('Antrean supplier bukan milik pabrik pengguna');
+      throw new BadRequestException('Antrean supplier bukan milik pabrik Anda');
     }
 
     const target = {
@@ -69,7 +69,7 @@ export class CutoffService {
 
   async jobStatus(jobId: string, actor: Actor): Promise<CutoffJobStatus> {
     if (!/^[-_:a-zA-Z0-9]{1,128}$/.test(jobId)) {
-      throw new BadRequestException('ID proses cutoff tidak valid');
+      throw new BadRequestException('Proses cutoff tidak dikenal');
     }
     const job = await this.queue.get(QUEUES.ORDER).getJob(jobId);
     const data = job?.data as { actor?: Actor } | undefined;

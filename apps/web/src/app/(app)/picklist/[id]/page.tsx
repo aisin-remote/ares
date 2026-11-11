@@ -184,7 +184,7 @@ export default async function PicklistDetailPage({ params }: { params: Promise<{
           <CardHeader
             icon={Layers}
             title="Line order"
-            subtitle={`${picklist.lines.length} part — kanban dicetak satu per box (F-22)`}
+            subtitle={`${picklist.lines.length} part — kanban dicetak satu per box`}
           />
           <Table scroll>
             <thead>
@@ -256,10 +256,10 @@ export default async function PicklistDetailPage({ params }: { params: Promise<{
           Kembali ke daftar
         </Link>
         {picklist.status === 'CANCELLED'
-          ? ' · Order dibatalkan; PDF-nya tidak lagi dilayani (F-20).'
+          ? ' · Order dibatalkan, PDF tidak bisa dicetak lagi.'
           : picklist.pdfReadyAt
-            ? ` · PDF dibuat ${waktu(picklist.pdfReadyAt)}, dicetak ulang tanpa dihitung ulang (F-27).`
-            : ' · PDF dirender di latar belakang; muat ulang halaman ini sebentar lagi.'}
+            ? ` · PDF dibuat ${waktu(picklist.pdfReadyAt)}.`
+            : ' · PDF sedang disiapkan, muat ulang halaman sebentar lagi.'}
       </p>
     </>
   );

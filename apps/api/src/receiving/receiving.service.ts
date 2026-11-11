@@ -108,10 +108,10 @@ export class ReceivingService {
         .for('update');
       if (!pl) throw new NotFoundException(`Delivery Sheet ${doNo} tidak ditemukan`);
       if (pl.status === 'ISSUED' || pl.status === 'DOWNLOADED') {
-        throw new ConflictException(`DO ${doNo} belum dikonfirmasi kirim oleh supplier`);
+        throw new ConflictException(`Delivery Sheet ${doNo} belum dikonfirmasi kirim oleh supplier`);
       }
       if (!RECEIVABLE.includes(pl.status)) {
-        throw new ConflictException(`DO ${doNo} berstatus ${pl.status}, tidak bisa diterima`);
+        throw new ConflictException(`Delivery Sheet ${doNo} tidak bisa diterima`);
       }
 
       const [existing] = await tx
@@ -470,7 +470,7 @@ export class ReceivingService {
         .where(eq(picklistLines.picklistId, pl.id))
         .orderBy(asc(picklistLines.id))
         .for('update');
-      if (lines.length === 0) throw new NotFoundException('Order claim tidak punya line');
+      if (lines.length === 0) throw new NotFoundException('Order claim tidak punya baris');
 
       let hasil: ReturnType<typeof receiveClaimLines>;
       let path: PicklistStatus[];
@@ -798,7 +798,7 @@ export class ReceivingService {
       .where(and(eq(receiptHeaders.id, receiptId), eq(receiptHeaders.plantId, plantId)))
       .for('update');
     if (!s) throw new NotFoundException('Sesi scan tidak ditemukan');
-    if (s.status !== 'OPEN') throw new ConflictException(`Sesi ${s.receiptNo} sudah ${s.status}`);
+    if (s.status !== 'OPEN') throw new ConflictException(`Sesi ${s.receiptNo} sudah tidak terbuka`);
     return s;
   }
 

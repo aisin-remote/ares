@@ -13,7 +13,7 @@ import { SapMasterService } from './sap-master.service';
 
 function actorOf(req: Request): { userId: number; plantId: number } {
   if (req.principal?.kind !== 'user') throw new BadRequestException('Aksi ini hanya untuk user');
-  if (req.principal.plantId == null) throw new BadRequestException('Akun belum terikat ke pabrik');
+  if (req.principal.plantId == null) throw new BadRequestException('Akun Anda belum terhubung ke pabrik');
   return { userId: req.principal.sub, plantId: req.principal.plantId };
 }
 

@@ -195,7 +195,7 @@ export class QueueControlService {
         eq(consumptions.sourceRecordKey, seed.sourceRecordKey),
         sql`${consumptions.qty} < 0`,
       )).limit(1);
-      if (existingReversal[0]) throw new ConflictException('Record konsumsi sudah dibatalkan');
+      if (existingReversal[0]) throw new ConflictException('Konsumsi ini sudah dibatalkan');
 
       const rows = await tx.select({
         id: consumptions.id,

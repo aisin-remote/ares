@@ -155,7 +155,7 @@ export class DocumentService {
   async renderDeliverySheet(picklistId: number): Promise<{ doNo: string } | null> {
     const data = await this.dataFor(picklistId);
     if (data.status === 'CANCELLED' || !data.shippedAt) {
-      this.logger.warn(`Order Sheet ${picklistId} belum dikonfirmasi kirim, Delivery Sheet tidak dirender`);
+      this.logger.warn('Order Sheet belum dikonfirmasi kirim, Delivery Sheet belum bisa dibuat');
       return null;
     }
     const { picklistNo, revision } = data.picklist;
@@ -207,9 +207,9 @@ export class DocumentService {
       .from(receiptHeaders)
       .where(eq(receiptHeaders.id, receiptId))
       .limit(1);
-    if (!receipt) throw new NotFoundException(`Receipt ${receiptId} tidak ditemukan`);
+    if (!receipt) throw new NotFoundException('Receipt tidak ditemukan');
     if (receipt.status !== 'CLOSED' || !receipt.closedAt) {
-      this.logger.warn(`Receipt ${receipt.receiptNo} berstatus ${receipt.status}, Receipt Sheet tidak dirender`);
+      this.logger.warn(`Receipt Sheet ${receipt.receiptNo} belum bisa dibuat`);
       return null;
     }
 
@@ -347,7 +347,7 @@ export class DocumentService {
     if (!row) throw new NotFoundException('Order Sheet tidak ditemukan');
     if (row.status === 'CANCELLED') {
       throw new NotFoundException(
-        `Order Sheet ${row.picklistNo} sudah dibatalkan; dokumennya tidak boleh dicetak lagi (F-20).`,
+        `Order Sheet ${row.picklistNo} sudah dibatalkan; dokumennya tidak boleh dicetak lagi.`,
       );
     }
 
@@ -401,7 +401,7 @@ export class DocumentService {
       .innerJoin(plants, eq(picklistHeaders.plantId, plants.id))
       .where(eq(picklistHeaders.id, picklistId))
       .limit(1);
-    if (!header) throw new NotFoundException(`Order Sheet ${picklistId} tidak ditemukan`);
+    if (!header) throw new NotFoundException('Order Sheet tidak ditemukan');
 
     const lineRows = await this.db
       .select({

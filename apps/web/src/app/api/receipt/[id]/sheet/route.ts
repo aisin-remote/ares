@@ -22,7 +22,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   });
   if (!hulu.ok || !hulu.body) {
     const body = (await hulu.json().catch(() => null)) as { message?: string } | null;
-    return new Response(body?.message ?? `Berkas tidak bisa diambil (${hulu.status})`, {
+    return new Response(body?.message ?? 'Berkas tidak bisa diambil', {
       status: hulu.status,
       headers: { 'Content-Type': 'text/plain; charset=utf-8' },
     });

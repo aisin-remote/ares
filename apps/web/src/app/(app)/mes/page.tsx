@@ -20,7 +20,7 @@ export default async function MesPage() {
       <StaggerItem><StatCard label="Record diproses" value={status.fake.PROCESSED ?? 0} hint={status.syncedAt ? `terakhir ${new Date(status.syncedAt).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}` : 'belum pernah ditarik'} icon={RefreshCw} /></StaggerItem>
     </Stagger>
     <Reveal><Card>
-      <CardHeader icon={RefreshCw} title="Kontrol sinkronisasi" subtitle={status.gateway === 'fake' ? `Mode uji: ${status.fake.PENDING ?? 0} menunggu, ${status.fake.PROCESSED ?? 0} selesai, ${status.fake.FAILED ?? 0} gagal.` : 'Data ditarik dari endpoint production-results dengan cursor tersimpan.'} />
+      <CardHeader icon={RefreshCw} title="Kontrol sinkronisasi" subtitle={status.gateway === 'fake' ? `Mode uji: ${status.fake.PENDING ?? 0} menunggu, ${status.fake.PROCESSED ?? 0} selesai, ${status.fake.FAILED ?? 0} gagal.` : 'Data konsumsi ditarik otomatis dari MES.'} />
       <CardBody className="border-t border-line"><MesActions fake={status.gateway === 'fake'} /></CardBody>
     </Card></Reveal>
   </>;

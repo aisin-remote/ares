@@ -146,7 +146,7 @@ export function ManualOrderForm({
   if (vendors.length === 0) {
     return (
       <p className="px-6 py-10 text-center text-[14px] text-ink-muted">
-        Belum ada supplier aktif. Isi master supplier dan vendor part lebih dulu (F-01, F-02).
+        Belum ada supplier aktif. Isi master supplier dan vendor part lebih dulu.
       </p>
     );
   }

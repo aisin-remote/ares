@@ -23,6 +23,6 @@ export async function adjustStockAction(
       const details = (err.body as { details?: Array<{ message?: string }> } | null)?.details;
       return { error: details?.[0]?.message ?? err.message };
     }
-    return { error: 'Tidak bisa menghubungi server.' };
+    return { error: 'Sistem tidak bisa dihubungi. Periksa jaringan.' };
   }
 }

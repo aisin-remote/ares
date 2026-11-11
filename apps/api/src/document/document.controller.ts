@@ -17,7 +17,7 @@ function scopeOf(req: Request): number | null {
 function plantOf(req: Request): number {
   const p = req.principal;
   if (p?.kind !== 'user' || p.plantId == null)
-    throw new BadRequestException('Akun belum terikat ke pabrik');
+    throw new BadRequestException('Akun Anda belum terhubung ke pabrik');
   return p.plantId;
 }
 

@@ -66,7 +66,7 @@ export async function poJobAction(jobId: string): Promise<PoSyncJob | { error: s
 
 function toMessage(err: unknown): string {
   if (err instanceof ApiRequestError) return err.message;
-  return 'Tidak bisa menghubungi server.';
+  return 'Sistem tidak bisa dihubungi. Periksa jaringan.';
 }
 
 /** Mengumpulkan sekarang juga, tanpa menunggu putaran berikutnya. */

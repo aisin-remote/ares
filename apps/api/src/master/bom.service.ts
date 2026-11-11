@@ -133,7 +133,7 @@ export class BomService {
       .select({ id: parts.id, partNo: parts.partNo, name: parts.name })
       .from(parts)
       .where(eq(parts.id, partId));
-    if (!root) throw new NotFoundException(`Part #${partId} tidak ditemukan`);
+    if (!root) throw new NotFoundException('Part tidak ditemukan');
 
     // BOM seluruh pabrik cukup kecil untuk dibaca sekali (PRD §9: 3.000 vendor part).
     const rows = await this.db

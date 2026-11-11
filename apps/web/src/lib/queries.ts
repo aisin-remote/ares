@@ -1687,7 +1687,7 @@ export async function getCutoffPoPreview(vendorId: number, cutoffAt: Date) {
       .where(and(eq(poHeaders.vendorId, vendorId), eq(poLines.balanceVerified, true), eq(poLines.isActive, true))),
   ]);
   const po: Record<number, CutoffPo> = {};
-  if (!cutoff) return { delivery: { error: 'Supplier belum punya jadwal cutoff aktif (F-04)' }, po };
+  if (!cutoff) return { delivery: { error: 'Supplier belum punya jadwal cutoff aktif' }, po };
   const delivery = deliveryForCutoff({
     cutoffAt, workdays: cutoff.workdays, leadDays: cutoff.leadDays, arrivalTime: cutoff.arrivalTime,
     holidayShift: cutoff.holidayShift, holidays: holidayRows.map((row) => row.date), deliveryDays: vendor?.deliveryDays,

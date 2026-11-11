@@ -112,7 +112,7 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
   },
   bom: {
     key: 'bom', label: 'BOM', singular: 'Baris BOM', icon: 'GitBranch',
-    description: 'Komposisi part jadi — komponen dan qty per induk, berversi tanggal (F-03)',
+    description: 'Komposisi part jadi — komponen dan qty per induk, berversi tanggal',
     searchFields: [], defaultSort: 'parentPartId', fields: [
       { name: 'parentPartId', label: 'Part jadi', kind: 'reference', refEntity: 'parts', required: true, inList: true,
         hint: 'Part yang dibuat.' },

@@ -36,7 +36,7 @@ export async function confirmShipmentAction(
   } catch (err) {
     unstable_rethrow(err);
     if (err instanceof ApiRequestError) return { error: err.message };
-    return { error: 'Tidak bisa menghubungi server. Periksa jaringan.' };
+    return { error: 'Sistem tidak bisa dihubungi. Periksa jaringan.' };
   }
 }
 
@@ -68,6 +68,6 @@ export async function updateVendorPartAction(
       const details = (err.body as { details?: Array<{ message?: string }> } | null)?.details;
       return { error: details?.[0]?.message ?? err.message };
     }
-    return { error: 'Tidak bisa menghubungi server.' };
+    return { error: 'Sistem tidak bisa dihubungi. Periksa jaringan.' };
   }
 }

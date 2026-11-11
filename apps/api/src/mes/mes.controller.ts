@@ -10,7 +10,7 @@ import { QueueControlService } from './queue-control.service';
 function actorOf(req: Request): { userId: number; plantId: number } {
   const principal = req.principal;
   if (principal?.kind !== 'user' || principal.plantId == null) {
-    throw new BadRequestException('Akun user harus terikat ke pabrik');
+    throw new BadRequestException('Akun Anda belum terhubung ke pabrik');
   }
   return { userId: principal.sub, plantId: principal.plantId };
 }

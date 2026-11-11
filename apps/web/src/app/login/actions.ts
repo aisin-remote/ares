@@ -124,5 +124,5 @@ async function consume(res: LoginAttemptResponse): Promise<LoginState | null> {
 
 function loginError(error: unknown): string {
   if (error instanceof ApiRequestError) return error.message;
-  return 'Tidak bisa menghubungi server API';
+  return 'Sistem tidak bisa dihubungi. Periksa jaringan.';
 }

@@ -232,7 +232,7 @@ export default async function ReceiptSummaryPage({ params }: { params: Promise<{
                   >
                     {r.outbox
                       ? `${OUTBOX_LABEL[r.outbox.status] ?? r.outbox.status}${r.outbox.sapDocNumber ? ` · ${r.outbox.sapDocNumber}` : ''}`
-                      : 'GR menunggu dipungut worker'}
+                      : 'GR menunggu diproses'}
                   </span>
                 ) : null}
               </span>

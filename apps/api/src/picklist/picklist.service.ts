@@ -258,7 +258,7 @@ export class PicklistService {
       const blocked = resolved.filter((r) => !r.po).map((r) => r.vp.partNo);
       if (blocked.length > 0) {
         throw new UnprocessableEntityException(
-          `Tidak ada PO item aktif pada ${input.deliveryDate} untuk part: ${blocked.join(', ')}. Order tidak diterbitkan (F-18).`,
+          `Tidak ada PO item aktif pada ${input.deliveryDate} untuk part: ${blocked.join(', ')}. Order tidak diterbitkan.`,
         );
       }
       const capacity = await this.poCapacityProblems(tx, resolved.map((r) => ({
@@ -453,7 +453,7 @@ export class PicklistService {
         tx.select({ date: holidays.date }).from(holidays).where(eq(holidays.isActive, true)),
       ]);
       const cutoff = cutoffs[0];
-      if (!cutoff) return block('Supplier belum punya jadwal cutoff aktif (F-04)');
+      if (!cutoff) return block('Supplier belum punya jadwal cutoff aktif');
 
       const holidayDates = holidayRows.map((row) => row.date);
       // Cutoff tanpa jam: hari cutoff dihitung dari 00:00 WIB-nya sendiri.
@@ -973,7 +973,7 @@ export class PicklistService {
       const domainLines: ShipmentLineInput[] = lines.map((l) => {
         const boxShipped = shippedByLine.get(l.id);
         if (boxShipped === undefined) {
-          throw new UnprocessableEntityException(`Line ${l.id} belum diisi jumlah box dikirim`);
+          throw new UnprocessableEntityException('Masih ada baris yang belum diisi jumlah box dikirim');
         }
         return {
           picklistLineId: l.id,
@@ -1108,7 +1108,7 @@ export class PicklistService {
         .for('update');
       if (!pl) throw new NotFoundException('Order Sheet tidak ditemukan');
       if (pl.status !== 'SHIPPED') {
-        throw new ConflictException('Jumlah kirim hanya bisa dikoreksi saat Order Sheet berstatus SHIPPED');
+        throw new ConflictException('Jumlah kirim hanya bisa dikoreksi setelah supplier konfirmasi kirim');
       }
       const [session] = await tx.select({ id: receiptHeaders.id }).from(receiptHeaders)
         .where(eq(receiptHeaders.picklistId, id)).limit(1).for('update');
@@ -1136,7 +1136,7 @@ export class PicklistService {
         .orderBy(asc(picklistLines.id)).for('update');
       const requested = new Map(input.lines.map((line) => [line.picklistLineId, line.boxShipped]));
       if (requested.size !== lines.length || lines.some((line) => !requested.has(line.id))) {
-        throw new UnprocessableEntityException('Semua line Order Sheet wajib diisi untuk koreksi jumlah kirim');
+        throw new UnprocessableEntityException('Semua baris Order Sheet wajib diisi untuk koreksi jumlah kirim');
       }
       const result = (() => {
         try {
@@ -1168,7 +1168,7 @@ export class PicklistService {
         const line = lineById.get(row.picklistLineId)!;
         const own = kanbanRows.filter((kanban) => kanban.picklistLineId === line.id);
         if (own.length !== line.boxOrdered) {
-          throw new ConflictException(`Kanban line ${line.id} sudah dipindah ke revisi; koreksi dibatalkan`);
+          throw new ConflictException('Kanban sudah dipindah ke revisi, koreksi dibatalkan');
         }
         for (let index = 0; index < own.length; index += 1) {
           const kanban = own[index]!;
@@ -1765,7 +1765,7 @@ export class PicklistService {
       throw new BadRequestException(
         cutoffId
           ? 'Cutoff tidak ditemukan untuk supplier ini'
-          : 'Supplier belum punya setting cutoff aktif (F-04)',
+          : 'Supplier belum punya setting cutoff aktif',
       );
     }
     return { ...dipilih, cycle: 1 };

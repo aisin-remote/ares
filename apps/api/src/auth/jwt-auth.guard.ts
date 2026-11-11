@@ -33,12 +33,12 @@ export class JwtAuthGuard implements CanActivate {
 
     const req = context.switchToHttp().getRequest<Request>();
     const token = extractToken(req);
-    if (!token) throw new UnauthorizedException('Token tidak ditemukan');
+    if (!token) throw new UnauthorizedException('Sesi tidak ditemukan, silakan masuk kembali');
 
     try {
       const verified = await this.jwt.verifyAsync<Principal | { kind?: string }>(token);
       if (verified.kind !== 'user' && verified.kind !== 'device') {
-        throw new UnauthorizedException('Token tidak dapat dipakai sebagai sesi');
+        throw new UnauthorizedException('Sesi tidak valid, silakan masuk kembali');
       }
       let principal = verified as Principal;
       if (principal.kind === 'device') {
@@ -95,7 +95,7 @@ export class JwtAuthGuard implements CanActivate {
       return true;
     } catch (error) {
       if (error instanceof UnauthorizedException) throw error;
-      throw new UnauthorizedException('Token tidak valid atau kedaluwarsa');
+      throw new UnauthorizedException('Sesi tidak valid atau sudah berakhir, silakan masuk kembali');
     }
   }
 }

@@ -167,11 +167,10 @@ export class NotifyService {
     try {
       return await this.deliverPicklistNotice(job, delivery);
     } catch (error) {
-      const code = (error as { code?: string }).code;
       // Respons mentah SMTP dapat berisi alamat/konfigurasi relay; jangan kirim ke UI.
       await this.db.update(emailDeliveries).set({
         status: willRetry ? 'QUEUED' : 'FAILED',
-        lastError: `Server email menolak atau tidak merespons${code ? ` (${String(code).replace(/[^A-Z0-9_]/gi, '').slice(0, 40)})` : ''}.`,
+        lastError: 'Email gagal terkirim, coba kirim ulang.',
         finishedAt: willRetry ? null : new Date(),
       }).where(eq(emailDeliveries.id, delivery.id));
       throw error;
@@ -277,7 +276,7 @@ export class NotifyService {
         );
       }
       await this.db.update(emailDeliveries).set({ status: 'SKIPPED', finishedAt: new Date(),
-        lastError: 'SMTP belum dikonfigurasi; email hanya dicatat di log dan tidak dikirim.',
+        lastError: 'Pengiriman email belum aktif.',
       }).where(eq(emailDeliveries.id, delivery.id));
       return { recipients: to.length, sent: false };
     }
@@ -297,7 +296,7 @@ export class NotifyService {
         messageId: String(info.messageId ?? '').slice(0, 255),
       }).where(eq(emailDeliveries.id, delivery.id));
       if ([...recipients, ...copy].some((email) => !accepted.includes(email)))
-        throw new Error('Sebagian penerima ditolak server email');
+        throw new Error('Sebagian penerima gagal dikirimi email');
     }
     await this.db.update(emailDeliveries).set({ status: 'ACCEPTED', finishedAt: new Date(), lastError: null })
       .where(eq(emailDeliveries.id, delivery.id));

@@ -42,7 +42,7 @@ export async function apiFetch<T>(
     // Body ikut dibawa: galat validasi memuat rincian per kolom yang perlu
     // ditampilkan tepat di bawah input yang bersangkutan.
     throw new ApiRequestError(
-      body?.message ?? `Permintaan gagal (${res.status})`,
+      body?.message ?? 'Permintaan gagal, coba lagi.',
       res.status,
       body,
     );
@@ -81,7 +81,7 @@ export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { message?: string } | null;
     throw new ApiRequestError(
-      body?.message ?? `Permintaan gagal (${res.status})`,
+      body?.message ?? 'Permintaan gagal, coba lagi.',
       res.status,
       body,
     );

@@ -33,8 +33,7 @@ export class StagingDbService implements OnModuleDestroy {
     } catch (error) {
       await pool.close().catch(() => undefined);
       // Jangan meneruskan connection config/kredensial ke log atau respons.
-      const code = (error as { code?: string }).code;
-      throw new Error(`Koneksi staging gagal (${code ?? 'UNKNOWN'}). Periksa jaringan, database, dan kredensial.`);
+      throw new Error('Koneksi ke SAP gagal. Periksa jaringan dan konfigurasi.');
     }
   }
 

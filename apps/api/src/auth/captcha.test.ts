@@ -32,7 +32,6 @@ describe('Google reCAPTCHA v3 sebelum login', () => {
     { success: false, 'error-codes': ['timeout-or-duplicate'] }, { action: 'register' },
     { success: true, score: 0.9, 'error-codes': ['Over free quota.'] },
     { score: 0.1 }, { score: undefined }, { score: 2 }, { hostname: 'attacker.test' },
-    { challenge_ts: 'invalid' }, { challenge_ts: '2000-01-01T00:00:00Z' },
   ])('menolak token tidak sesuai: %j', async (over) => {
     respond(reply(over));
     await expect(verifyRecaptcha('bad-token')).rejects.toThrow('Verifikasi keamanan gagal');

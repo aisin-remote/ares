@@ -10,7 +10,7 @@ import { waktu } from './status';
 const STATUS: Record<EmailDeliveryStatus, { label: string; tone: string }> = {
   QUEUED: { label: 'Antre', tone: 'border-live/40 bg-live/10 text-live' },
   PROCESSING: { label: 'Sedang dikirim', tone: 'border-live/40 bg-live/10 text-live' },
-  ACCEPTED: { label: 'Diterima server email', tone: 'border-ok/40 bg-ok/10 text-ok' },
+  ACCEPTED: { label: 'Terkirim', tone: 'border-ok/40 bg-ok/10 text-ok' },
   FAILED: { label: 'Gagal', tone: 'border-ng/40 bg-ng/10 text-ng' },
   SKIPPED: { label: 'Tidak dikirim', tone: 'border-warn/40 bg-warn/10 text-warn' },
 };
@@ -29,7 +29,6 @@ export function OrderEmailStatus({ reference, orderStatus, deliveries, canResend
       <CardHeader icon={Mail} title="Email ke supplier" subtitle="Status pengiriman pemberitahuan order" />
       <CardDivider />
       <CardBody className="space-y-5">
-        <p className="text-[12px] leading-5 text-ink-muted">Diterima server email berarti relay SMTP menerima pesan; belum membuktikan email masuk inbox atau sudah dibaca supplier.</p>
         {canResend ? <ResendOrderEmail reference={reference} blocked={blocked} first={!latest} /> : null}
         {deliveries.length ? (
           <ol className="max-h-[32rem] divide-y divide-line overflow-y-auto scroll-slim" aria-label="Riwayat pengiriman email">
@@ -42,13 +41,13 @@ export function OrderEmailStatus({ reference, orderStatus, deliveries, canResend
                 <p className="text-[12px] text-ink-muted">{waktu(delivery.createdAt)} WIB · {delivery.requestedBy ?? 'Otomatis ARES'} · {delivery.attempts} percobaan</p>
                 <p className="break-words text-[13px] text-ink-soft">Kepada: {delivery.recipients.length ? delivery.recipients.join(', ') : 'Penerima belum tercatat'}</p>
                 {delivery.cc.length ? <p className="break-words text-[12px] text-ink-muted">CC: {delivery.cc.join(', ')}</p> : null}
-                {delivery.accepted.length ? <p className="break-words text-[12px] text-ok">Diterima SMTP: {delivery.accepted.join(', ')}</p> : null}
+                {delivery.accepted.length ? <p className="break-words text-[12px] text-ok">Terkirim ke: {delivery.accepted.join(', ')}</p> : null}
                 {delivery.lastError ? <p className={cn('text-[13px]', delivery.status === 'FAILED' ? 'text-ng' : 'text-ink-muted')}>{delivery.lastError}</p> : null}
                 {delivery.attemptedAt ? <p className="text-[12px] text-ink-muted">Dicoba terakhir: {waktu(delivery.attemptedAt)} WIB{delivery.finishedAt ? ` · selesai ${waktu(delivery.finishedAt)} WIB` : ''}</p> : null}
               </li>
             ))}
           </ol>
-        ) : <p className="text-sm text-ink-muted">Belum ada catatan pengiriman email. Email order lama sebelum fitur ini tidak memiliki status tersimpan.</p>}
+        ) : <p className="text-sm text-ink-muted">Belum ada catatan pengiriman email.</p>}
       </CardBody>
     </Card>
   );

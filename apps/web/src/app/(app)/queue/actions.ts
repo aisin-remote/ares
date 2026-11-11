@@ -6,7 +6,7 @@ import type { QueueAddPartInput, QueueAdjustmentInput, QueueHoldInput } from '@a
 import { apiFetch, ApiRequestError } from '@/lib/api';
 
 type Result = { ok: true } | { error: string };
-const message = (error: unknown) => error instanceof ApiRequestError ? error.message : 'Tidak bisa menghubungi server.';
+const message = (error: unknown) => error instanceof ApiRequestError ? error.message : 'Sistem tidak bisa dihubungi. Periksa jaringan.';
 
 export async function setQueueKanbanAction(id: number, input: QueueAdjustmentInput): Promise<Result> {
   try {
@@ -75,7 +75,7 @@ export async function runCutoffAction(
       method: 'POST',
       body: JSON.stringify({ vendorId, cutoffAt, reason: reason?.trim() || undefined }),
     });
-    if (!result.jobId) return { error: 'Nomor proses cutoff tidak diterima dari server.' };
+    if (!result.jobId) return { error: 'Proses cutoff gagal dimulai. Coba lagi.' };
     return { jobId: result.jobId };
   } catch (error) {
     unstable_rethrow(error);

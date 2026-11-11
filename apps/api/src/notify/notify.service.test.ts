@@ -66,7 +66,7 @@ describe('pencatatan email order', () => {
     const [record] = await db.select().from(emailDeliveries).where(eq(emailDeliveries.id, first.deliveryId));
     expect(record).toMatchObject({ status: 'SKIPPED', attempts: 1, accepted: [] });
     expect(record!.recipients.sort()).toEqual(supplierEmails.slice().sort());
-    expect(record!.lastError).toContain('SMTP belum');
+    expect(record!.lastError).toContain('belum aktif');
   });
 
   it('menyimpan kegagalan antrean Redis agar bisa ditangani PPIC', async () => {
@@ -111,7 +111,7 @@ describe('pencatatan email order', () => {
     await expect(service.sendPicklistNotice(jobs[0]!)).rejects.toThrow();
     const [record] = await db.select().from(emailDeliveries).where(eq(emailDeliveries.id, result.deliveryId));
     expect(record?.status).toBe('FAILED');
-    expect(record?.lastError).toContain('ECONNECTION');
+    expect(record?.lastError).toContain('gagal terkirim');
     expect(record?.lastError).not.toContain('secret');
   });
 

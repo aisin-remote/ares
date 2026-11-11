@@ -5,7 +5,7 @@ import { RequirePermission } from '../auth/permissions.guard';
 
 function validChannel(channel: string | undefined): string {
   if (!channel || !/^(?:line|plant|machine):[A-Za-z0-9._-]{1,64}$/.test(channel))
-    throw new BadRequestException('Channel realtime tidak valid');
+    throw new BadRequestException('Saluran pembaruan tidak dikenal');
   return channel;
 }
 

@@ -15,7 +15,7 @@ import { apiFetch, ApiRequestError } from '@/lib/api';
  */
 function toMessage(err: unknown): string {
   if (err instanceof ApiRequestError) return err.message;
-  return 'Tidak bisa menghubungi server. Periksa jaringan.';
+  return 'Sistem tidak bisa dihubungi. Periksa jaringan.';
 }
 
 /** F-34: scan barcode picklist → sesi OPEN (atau lanjutkan yang ada) → layar stasiun. */

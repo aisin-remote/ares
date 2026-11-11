@@ -19,7 +19,7 @@ function toMessage(err: unknown): string {
     const rincian = rincianValidasi(err.body);
     return rincian ? `${err.message}: ${rincian}` : err.message;
   }
-  return 'Tidak bisa menghubungi server.';
+  return 'Sistem tidak bisa dihubungi. Periksa jaringan.';
 }
 
 /** Galat validasi membawa `details` per kolom; tanpa itu pesannya terlalu umum. */

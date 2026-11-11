@@ -116,7 +116,7 @@ export class MasterService {
       .innerJoin(roles, eq(permissions.roleId, roles.id))
       .where(and(eq(roles.name, actor.role), eq(permissions.action, action)))
       .limit(1);
-    if (!row) throw new ForbiddenException(`Peran ${actor.role} tidak punya hak ${action}`);
+    if (!row) throw new ForbiddenException('Anda tidak punya akses untuk tindakan ini');
   }
 
   private async assertReadPermission(entity: MasterEntity, actor: MasterActor) {
@@ -127,7 +127,7 @@ export class MasterService {
       .innerJoin(roles, eq(permissions.roleId, roles.id))
       .where(and(eq(roles.name, actor.role), eq(permissions.action, 'user.write')))
       .limit(1);
-    if (!row) throw new ForbiddenException(`Peran ${actor.role} tidak punya hak user.write`);
+    if (!row) throw new ForbiddenException('Anda tidak punya akses untuk mengubah akun');
   }
 
   private sortColumn(entity: MasterEntity, sort?: string) {
@@ -178,7 +178,7 @@ export class MasterService {
     const table = this.table(entity);
     const [row] = await this.db.select().from(table).where(eq(table.id, id)).limit(1);
     if (!row)
-      throw new NotFoundException(`${getEntityDef(entity).singular} #${id} tidak ditemukan`);
+      throw new NotFoundException(`${getEntityDef(entity).singular} tidak ditemukan`);
     return publicRow(entity, row as Row);
   }
 
@@ -233,7 +233,7 @@ export class MasterService {
       }));
     }
     if (!isMasterEntity(entity))
-      throw new BadRequestException(`Entitas master "${entity}" tidak dikenal`);
+      throw new BadRequestException('Data master tidak dikenal');
     await this.assertReadPermission(entity, actor);
     const table = this.table(entity);
     const rows = await this.db
@@ -317,7 +317,7 @@ export class MasterService {
         const result = await tx.insert(table).values(values);
         const id = Number(result[0].insertId);
         const [after] = await tx.select().from(table).where(eq(table.id, id)).limit(1);
-        if (!after) throw new Error('Baris master baru tidak ditemukan setelah INSERT');
+        if (!after) throw new Error('Data gagal disimpan, coba lagi');
         await tx.insert(auditLogs).values({
           entity,
           entityId: String(id),
@@ -465,7 +465,7 @@ export class MasterService {
           .limit(1)
           .for('update');
         if (!before)
-          throw new NotFoundException(`${getEntityDef(entity).singular} #${id} tidak ditemukan`);
+          throw new NotFoundException(`${getEntityDef(entity).singular} tidak ditemukan`);
         const values =
           entity === 'users' ? await this.userValues(provided, before as Row, actor) : provided;
         const candidate = { ...(before as Row), ...values };
@@ -493,7 +493,7 @@ export class MasterService {
         }
         await tx.update(table).set(values).where(eq(table.id, id));
         const [after] = await tx.select().from(table).where(eq(table.id, id)).limit(1);
-        if (!after) throw new Error('Baris master hilang setelah UPDATE');
+        if (!after) throw new Error('Data gagal diperbarui, coba lagi');
         const oldActive = (before as Row).isActive;
         const newActive = (after as Row).isActive;
         const action =
@@ -550,11 +550,11 @@ export class MasterService {
           .where(and(eq(vendorParts.id, id), eq(vendorParts.vendorId, actor.vendorId)))
           .limit(1)
           .for('update');
-        if (!before) throw new NotFoundException(`Vendor Part #${id} tidak ditemukan`);
+        if (!before) throw new NotFoundException('Vendor part tidak ditemukan');
 
         await tx.update(vendorParts).set(provided).where(eq(vendorParts.id, id));
         const [after] = await tx.select().from(vendorParts).where(eq(vendorParts.id, id)).limit(1);
-        if (!after) throw new Error('Baris vendor part hilang setelah UPDATE');
+        if (!after) throw new Error('Vendor part gagal diperbarui, coba lagi');
 
         // F-54: jejaknya dibedakan dari UPDATE PPIC supaya terlihat siapa yang
         // mengubah kemasan — PPIC memeriksanya lewat entity yang sama.

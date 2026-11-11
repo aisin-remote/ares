@@ -46,7 +46,7 @@ export async function GET(
     // Pesan API sudah berbahasa Indonesia dan menjelaskan sebabnya
     // (mis. PDF belum selesai dirender), jadi diteruskan apa adanya.
     const body = (await hulu.json().catch(() => null)) as { message?: string } | null;
-    return new Response(body?.message ?? `Berkas tidak bisa diambil (${hulu.status})`, {
+    return new Response(body?.message ?? 'Berkas tidak bisa diambil', {
       status: hulu.status,
       headers: { 'Content-Type': 'text/plain; charset=utf-8' },
     });

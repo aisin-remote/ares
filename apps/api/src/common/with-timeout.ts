@@ -13,7 +13,7 @@ export async function withTimeout<T>(promise: Promise<T>, ms: number, label: str
     return await Promise.race([
       promise,
       new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`${label} melewati batas ${ms}ms`)), ms);
+        timer = setTimeout(() => reject(new Error(`${label} terlalu lama merespons`)), ms);
       }),
     ]);
   } finally {

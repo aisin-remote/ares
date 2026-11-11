@@ -264,7 +264,7 @@ export default async function SapPage({
                       ) : d.status === 'STAGED' ? (
                         'Menunggu hasil posting dari SAP'
                       ) : d.status === 'PROCESSING' ? (
-                        'Worker sedang mengirim dokumen'
+                        'Dokumen sedang dikirim'
                       ) : d.nextAttemptAt ? (
                         `Dicoba lagi ${new Date(d.nextAttemptAt).toLocaleString('id-ID', {
                           timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit',

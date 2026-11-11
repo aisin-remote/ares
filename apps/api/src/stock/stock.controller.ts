@@ -9,7 +9,7 @@ import { StockSnapshotService } from './stock-snapshot.service';
 function actorOf(req: Request): StockActor {
   const p = req.principal;
   if (p?.kind !== 'user') throw new BadRequestException('Aksi ini hanya untuk akun user');
-  if (p.plantId == null) throw new BadRequestException('Akun belum terikat ke pabrik');
+  if (p.plantId == null) throw new BadRequestException('Akun Anda belum terhubung ke pabrik');
   return { userId: p.sub, plantId: p.plantId };
 }
 

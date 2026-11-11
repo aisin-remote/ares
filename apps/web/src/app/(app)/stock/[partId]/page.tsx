@@ -93,7 +93,7 @@ export default async function StockLedgerPage({ params }: { params: Promise<{ pa
             <CardHeader
               icon={SlidersHorizontal}
               title="Penyesuaian manual"
-              subtitle="Koreksi = baris mutasi baru beralasan; saldo tidak pernah ditimpa (F-42)"
+              subtitle="Koreksi = baris mutasi baru beralasan; saldo tidak pernah ditimpa"
             />
             <CardDivider />
             <AdjustStockForm partId={ledger.part.id} uom={ledger.part.uom} />

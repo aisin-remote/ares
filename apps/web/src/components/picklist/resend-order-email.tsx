@@ -20,7 +20,7 @@ export function ResendOrderEmail({ reference, blocked, first }: { reference: str
       if ('error' in result) { setError(result.error); router.refresh(); return; }
       setConfirm(false);
       setError(null);
-      feedback.success('Permintaan email dicatat', 'Periksa status email setelah worker selesai memproses.');
+      feedback.success('Email sedang dikirim', 'Perbarui status sebentar lagi untuk melihat hasilnya.');
       router.refresh();
     });
   }
@@ -37,7 +37,7 @@ export function ResendOrderEmail({ reference, blocked, first }: { reference: str
       </div>
       {confirm ? (
         <div className="rounded-2xl border border-line bg-surface p-4">
-          <p className="text-[13px] text-ink-soft">Kirim pemberitahuan order ke akun supplier yang aktif? Permintaan ini akan tercatat di riwayat. Supplier dapat menerima email lagi jika sebelumnya sudah terkirim.</p>
+          <p className="text-[13px] text-ink-soft">Kirim pemberitahuan order ke akun supplier yang aktif?</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <Button size="sm" icon={Send} disabled={pending || !!blocked} onClick={send}>{pending ? 'Memproses…' : 'Ya, kirim email'}</Button>
             <Button size="sm" variant="ghost" disabled={pending} onClick={() => setConfirm(false)}>Batal</Button>

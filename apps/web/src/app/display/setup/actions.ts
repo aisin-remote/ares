@@ -36,7 +36,7 @@ export async function displaySetupAction(
     await setDisplayToken(response.accessToken);
   } catch (error) {
     if (error instanceof ApiRequestError) return { error: error.message };
-    return { error: 'Tidak bisa menghubungi server API' };
+    return { error: 'Sistem tidak bisa dihubungi. Periksa jaringan.' };
   }
 
   redirect('/display/receiving');

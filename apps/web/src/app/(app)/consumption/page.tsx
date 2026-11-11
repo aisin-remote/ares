@@ -43,7 +43,7 @@ export default async function ConsumptionPage({ searchParams }: {
     />
 
     {failures.length > 0 ? <Reveal><Card className="mb-5 border-ng/30">
-      <CardHeader icon={AlertTriangle} title="Konsumsi gagal" subtitle="Perbaiki BOM, vendor part, atau cutoff; cursor MES akan mencoba record ini lagi." />
+      <CardHeader icon={AlertTriangle} title="Konsumsi gagal" subtitle="Perbaiki BOM, vendor part, atau cutoff; data ini akan dicoba lagi otomatis." />
       <Table><thead><tr><Th>Record</Th><Th>Part jadi</Th><Th>Line</Th><Th align="right">Qty</Th><Th>Waktu produksi</Th><Th>Masalah</Th></tr></thead>
         <tbody>{failures.map((row) => <Tr key={row.id}>
           <Td strong className="tabular">{row.recordId}</Td><Td>{row.partNo}</Td><Td>{row.line}</Td>

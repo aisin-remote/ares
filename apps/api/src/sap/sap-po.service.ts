@@ -126,7 +126,7 @@ export class SapPoService {
         result.failed += source.length;
         // Hanya error validasi boleh terlihat; rincian SQL/credential tidak dikirim ke browser.
         const reason = error instanceof Error && !('query' in error) && !('code' in error)
-          ? error.message : 'Gagal menyimpan PO; periksa log database';
+          ? error.message : 'Gagal menyimpan PO, coba lagi';
         if (result.issues.length < 100) result.issues.push({ poNo, reason });
       }
     }

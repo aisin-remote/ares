@@ -41,7 +41,7 @@ export default async function PicklistBaruPage() {
           <CardHeader
             icon={ClipboardList}
             title="Order baru"
-            subtitle="Nomor Order Sheet diberikan saat terbit dan tidak pernah dipakai ulang (F-21)"
+            subtitle="Nomor Order Sheet diberikan saat terbit dan tidak pernah dipakai ulang"
           />
           <CardDivider />
           <ManualOrderForm vendors={vendors} defaultDeliveryDate={tanggalKirim} />

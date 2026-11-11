@@ -140,10 +140,10 @@ export default async function SupplierPerformancePage({ searchParams }: { search
 
         <Card><CardHeader icon={Info} title="Cara membaca laporan" subtitle="Definisi metrik yang dipakai pada halaman ini" />
           <CardBody className="space-y-3 border-t border-line text-[13px] leading-6 text-ink-muted">
-            <p><strong className="text-ink">Kedatangan:</strong> scan kanban pertama yang diterima dari sesi receiving tidak dibatalkan, dibanding jadwal order asal + {period.toleranceMinutes} menit. Ini penanda proses receiving, bukan check-in truk atau ETA supplier.</p>
-            <p><strong className="text-ink">Tepat waktu:</strong> order tepat waktu ÷ order jatuh tempo yang dapat dinilai. Order belum tiba ikut denominator; sesi tanpa scan valid dikeluarkan sebagai data belum cukup. Order mendatang dan dibatalkan tidak dinilai.</p>
-            <p><strong className="text-ink">Kelengkapan:</strong> pcs diterima dari sesi CLOSED sampai batas penilaian, termasuk recovery, dibanding kebutuhan order asal per part. Kelebihan satu part tidak menutup kekurangan part lain. Box yang masih dalam sesi terbuka belum masuk kelengkapan.</p>
-            <p><strong className="text-ink">Konfirmasi:</strong> rata-rata waktu dari penerbitan order asal sampai konfirmasi supplier. Waktu kosong, setelah batas penilaian, atau sebelum penerbitan tidak masuk rata-rata. Konfirmasi otomatis receiving bukan konfirmasi supplier.</p>
+            <p><strong className="text-ink">Kedatangan:</strong> scan kanban pertama dari sesi receiving yang tidak dibatalkan, dibanding jadwal order asal + {period.toleranceMinutes} menit. Diukur dari proses receiving, bukan jam truk masuk.</p>
+            <p><strong className="text-ink">Tepat waktu:</strong> order yang tiba tepat waktu dibanding seluruh order yang sudah jatuh tempo. Order yang belum tiba tetap dihitung; order mendatang dan yang dibatalkan tidak dinilai.</p>
+            <p><strong className="text-ink">Kelengkapan:</strong> pcs yang diterima sampai batas penilaian, termasuk recovery, dibanding kebutuhan order asal per part. Kelebihan satu part tidak menutup kekurangan part lain; box pada sesi yang masih terbuka belum dihitung.</p>
+            <p><strong className="text-ink">Konfirmasi:</strong> rata-rata waktu dari order terbit sampai supplier konfirmasi kirim. Konfirmasi otomatis dari receiving tidak ikut dihitung.</p>
           </CardBody>
         </Card>
       </> : null}

@@ -55,7 +55,7 @@ describe('konfigurasi staging ARES', () => {
     vi.stubEnv('SAP_MSSQL_ENABLED', 'true');
     const gateway = new MssqlStagingGateway();
     expect(gateway.enabled).toBe(false);
-    await expect(gateway.send({} as Parameters<typeof gateway.send>[0])).rejects.toThrow('dinonaktifkan');
+    await expect(gateway.send({} as Parameters<typeof gateway.send>[0])).rejects.toThrow('belum diaktifkan');
     expect(mock.create).not.toHaveBeenCalled();
   });
 });
@@ -81,7 +81,8 @@ describe('koneksi staging lazy', () => {
   it('koneksi gagal ditutup, password tidak bocor, dan percobaan berikutnya bisa berhasil', async () => {
     mock.connect.mockRejectedValueOnce(Object.assign(new Error(env.STAGING_PASSWORD), { code: 'ELOGIN' }));
     const db = new StagingDbService();
-    await expect(db.connect()).rejects.toThrow('ELOGIN');
+    // Pesan yang keluar tetap, tanpa menyalin isi error asli (di sini = password).
+    await expect(db.connect()).rejects.toThrow('Koneksi ke SAP gagal. Periksa jaringan dan konfigurasi.');
     expect(mock.close).toHaveBeenCalledTimes(1);
     expect((await db.connect()).connected).toBe(true);
     expect(mock.create).toHaveBeenCalledTimes(2);

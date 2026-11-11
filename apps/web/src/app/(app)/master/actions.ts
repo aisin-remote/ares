@@ -18,7 +18,7 @@ function errorState(error: unknown): FormState {
       };
     return { error: error.message };
   }
-  return { error: 'Tidak bisa menghubungi server.' };
+  return { error: 'Sistem tidak bisa dihubungi. Periksa jaringan.' };
 }
 
 function refreshMaster(entity: string) {

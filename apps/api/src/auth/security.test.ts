@@ -25,7 +25,7 @@ describe('pagar keamanan', () => {
       getAllAndOverride: vi.fn((key: string) => key === IS_PUBLIC ? false : undefined),
     };
     const guard = new PermissionsGuard(reflector as never, {} as never);
-    await expect(guard.canActivate(context())).rejects.toThrow('Endpoint belum memiliki kebijakan akses');
+    await expect(guard.canActivate(context())).rejects.toThrow('belum diatur');
   });
 
   it('membatasi login per identitas sebelum bcrypt dijalankan', () => {

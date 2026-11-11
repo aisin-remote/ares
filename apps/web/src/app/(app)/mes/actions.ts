@@ -5,7 +5,7 @@ import { unstable_rethrow } from 'next/navigation';
 import { apiFetch, ApiRequestError } from '@/lib/api';
 
 export interface MesActionState { ok?: string; error?: string }
-const message = (error: unknown) => error instanceof ApiRequestError ? error.message : 'Tidak bisa menghubungi server.';
+const message = (error: unknown) => error instanceof ApiRequestError ? error.message : 'Sistem tidak bisa dihubungi. Periksa jaringan.';
 
 export async function syncMesAction(): Promise<MesActionState> {
   try {
