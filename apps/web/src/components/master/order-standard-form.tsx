@@ -31,10 +31,6 @@ export function OrderStandardForm({ vendors }: { vendors: OrderStandardOption[] 
   const configured = (vendor?.parts ?? []).filter(
     (part) => (values[part.id] ?? '').trim() !== '',
   ).length;
-  const totalKanban = (vendor?.parts ?? []).reduce((total, part) => {
-    const raw = values[part.id]?.trim() ?? '';
-    return total + (raw === '' ? 0 : Number(raw) || 0);
-  }, 0);
 
   function changeVendor(id: number | '') {
     setVendorId(id);
@@ -118,11 +114,11 @@ export function OrderStandardForm({ vendors }: { vendors: OrderStandardOption[] 
           <div>
             <h3 className="text-[14px] font-semibold">Part dan standar order</h3>
             <p className="mt-1 text-[13px] text-ink-muted">
-              Isi jumlah kanban normal. Kosongkan jika standar belum ditetapkan.
+              Isi qty normal sesuai satuan setiap part. Kosongkan jika standar belum ditetapkan.
             </p>
           </div>
           <span className="rounded-full border border-line bg-surface px-3 py-1.5 text-[12px] font-semibold text-ink-soft">
-            {configured} dari {vendor?.parts.length ?? 0} part · {totalKanban.toLocaleString('id-ID')} kanban
+            {configured} dari {vendor?.parts.length ?? 0} part
           </span>
         </div>
 
@@ -157,7 +153,7 @@ export function OrderStandardForm({ vendors }: { vendors: OrderStandardOption[] 
                         {part.backNo}
                       </td>
                       <td className="px-4 py-3 text-right tabular text-ink-soft">
-                        {part.qtyPerKanban.toLocaleString('id-ID')} pcs
+                        {part.usesKanban ? `${part.qtyPerKanban.toLocaleString('id-ID')} ${part.uom}` : 'Tanpa kanban'}
                       </td>
                       <td className="px-5 py-3 text-right">
                         <div className="relative ml-auto w-40">
@@ -179,7 +175,7 @@ export function OrderStandardForm({ vendors }: { vendors: OrderStandardOption[] 
                             className="h-10 w-full rounded-xl border border-line bg-surface px-3 pr-16 text-right text-[15px] font-semibold tabular outline-none transition-colors placeholder:text-ink-muted focus:border-accent focus:bg-card"
                           />
                           <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-ink-muted">
-                            kanban
+                            {part.usesKanban ? 'kanban' : part.uom}
                           </span>
                         </div>
                       </td>
@@ -199,7 +195,7 @@ export function OrderStandardForm({ vendors }: { vendors: OrderStandardOption[] 
       <div className="mt-4 flex items-start gap-2 rounded-2xl border border-line bg-surface px-4 py-3 text-[12px] text-ink-muted">
         <Check className="mt-0.5 size-4 shrink-0 text-ok" strokeWidth={2.2} aria-hidden />
         <p>
-          Angka 0 berarti part memang memiliki standar normal 0 kanban. Mengosongkan kolom akan menonaktifkan standar part tersebut.
+          Angka 0 berarti part memang memiliki standar normal 0. Mengosongkan kolom akan menonaktifkan standar part tersebut.
         </p>
       </div>
 

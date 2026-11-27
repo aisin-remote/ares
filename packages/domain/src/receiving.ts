@@ -156,6 +156,7 @@ export interface CloseLineInput {
   picklistLineId: number;
   qtyPerBox: number;
   kanbans: ReadonlyArray<{ id: string; status: KanbanStatus; receiptId: number | null }>;
+  manual?: { qtyExpected: number; qtyReceived: number | null };
 }
 
 export interface CloseLineResult {
@@ -165,6 +166,7 @@ export interface CloseLineResult {
   pcsReceived: number;
   /** Belum datang (SHIPPED/PRINTED/MISSING) setelah sesi ditutup. */
   boxMissing: number;
+  qtyMissing?: number;
 }
 
 export interface CloseResult {
@@ -178,7 +180,7 @@ export interface CloseResult {
 /** 6.5.2: penutupan dengan kanban kurang wajib beralasan (F-37). */
 export class ReasonRequiredError extends Error {
   constructor() {
-    super('Alasan wajib diisi bila ada kanban yang belum diterima');
+    super('Alasan wajib diisi bila ada barang yang belum diterima');
     this.name = 'ReasonRequiredError';
   }
 }
@@ -190,6 +192,20 @@ export function closeScanSession(
 ): CloseResult {
   const missingKanbanIds: string[] = [];
   const results: CloseLineResult[] = lines.map((line) => {
+    if (line.manual) {
+      const { qtyExpected, qtyReceived } = line.manual;
+      if (qtyReceived === null) throw new Error('Qty part tanpa kanban belum diisi PPIC');
+      if (!Number.isInteger(qtyReceived) || qtyReceived < 0 || qtyReceived > qtyExpected) {
+        throw new Error('Qty diterima harus angka bulat antara 0 dan qty dikirim');
+      }
+      return {
+        picklistLineId: line.picklistLineId,
+        boxReceived: 0,
+        pcsReceived: qtyReceived,
+        boxMissing: 0,
+        qtyMissing: qtyExpected - qtyReceived,
+      };
+    }
     let boxReceived = 0;
     let boxMissing = 0;
     for (const k of line.kanbans) {
@@ -217,7 +233,7 @@ export function closeScanSession(
     };
   });
 
-  const picklistStatus = results.some((r) => r.boxMissing > 0) ? 'PARTIAL' : 'COMPLETE';
+  const picklistStatus = results.some((r) => r.boxMissing > 0 || (r.qtyMissing ?? 0) > 0) ? 'PARTIAL' : 'COMPLETE';
   if (picklistStatus === 'PARTIAL' && !reason?.trim()) throw new ReasonRequiredError();
 
   return { picklistStatus, missingKanbanIds, lines: results };
@@ -257,6 +273,7 @@ export interface ReceiptSheetLineInput {
   /** TT_RECEIPT_L.BOX_RECEIVED sesi ini; 0 bila line tidak punya baris receipt. */
   boxReceived: number;
   sapPoNo: string;
+  qtyReceived?: number;
 }
 
 /**
@@ -267,7 +284,7 @@ export interface ReceiptSheetLineInput {
 export function summarizeReceiptSheet(lines: readonly ReceiptSheetLineInput[]) {
   const rows = lines.map((line) => {
     const orderPcs = line.boxOrdered * line.qtyPerBox;
-    const receivedPcs = line.boxReceived * line.qtyPerBox;
+    const receivedPcs = line.qtyReceived ?? line.boxReceived * line.qtyPerBox;
     return { boxReceived: line.boxReceived, orderPcs, receivedPcs, undeliveredPcs: orderPcs - receivedPcs };
   });
   return {

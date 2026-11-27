@@ -162,6 +162,7 @@ export class DocumentService {
     const ringkas = summarizeDelivery(data.picklist.lines.map((line, i) => ({
       boxOrdered: line.boxOrdered,
       boxShipped: data.boxShipped[i] ?? 0,
+      usesKanban: line.usesKanban,
       qtyPerBox: line.qtyPerBox,
       sapPoNo: line.sapPoNo,
     })));
@@ -215,10 +216,11 @@ export class DocumentService {
 
     const data = await this.dataFor(receipt.picklistId);
     const diterima = await this.db
-      .select({ picklistLineId: receiptLines.picklistLineId, boxReceived: receiptLines.boxReceived })
+      .select({ picklistLineId: receiptLines.picklistLineId, boxReceived: receiptLines.boxReceived, qtyReceived: receiptLines.pcsReceived })
       .from(receiptLines)
       .where(eq(receiptLines.receiptId, receiptId));
     const boxByLine = new Map(diterima.map((r) => [r.picklistLineId, r.boxReceived]));
+    const qtyByLine = new Map(diterima.map((r) => [r.picklistLineId, r.qtyReceived]));
     const [urutan] = await this.db
       .select({ n: sql<number>`count(*)` })
       .from(receiptHeaders)
@@ -228,6 +230,7 @@ export class DocumentService {
       boxOrdered: line.boxOrdered,
       qtyPerBox: line.qtyPerBox,
       boxReceived: boxByLine.get(data.lineIds[i]!) ?? 0,
+      qtyReceived: qtyByLine.get(data.lineIds[i]!) ?? 0,
       sapPoNo: line.sapPoNo,
     })));
     const sheet: ReceiptSheetData = {
@@ -414,6 +417,7 @@ export class DocumentService {
         rack: vendorParts.rack,
         boxType: vendorParts.boxType,
         qtyPerBox: picklistLines.qtyPerBox,
+        usesKanban: picklistLines.usesKanban,
         boxOrdered: picklistLines.boxOrdered,
         boxShipped: picklistLines.boxShipped,
         pcs: picklistLines.pcs,
@@ -451,6 +455,7 @@ export class DocumentService {
         rack: l.rack,
         boxType: l.boxType,
         qtyPerBox: l.qtyPerBox,
+        usesKanban: l.usesKanban,
         boxOrdered: l.boxOrdered,
         pcs: l.pcs,
         sapPoNo: l.sapPoNo,
@@ -482,7 +487,7 @@ export class DocumentService {
       ...isiHeader,
       sapVendorNo: isiHeader.sapVendorNo ?? '',
       lines,
-      totalBox: lines.reduce((n, l) => n + l.boxOrdered, 0),
+      totalBox: lines.reduce((n, l) => n + (l.usesKanban ? l.boxOrdered : 0), 0),
       totalPcs: lines.reduce((n, l) => n + l.pcs, 0),
       totalKanban: cards.length,
     };

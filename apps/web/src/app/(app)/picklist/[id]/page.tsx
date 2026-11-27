@@ -184,7 +184,7 @@ export default async function PicklistDetailPage({ params }: { params: Promise<{
           <CardHeader
             icon={Layers}
             title="Line order"
-            subtitle={`${picklist.lines.length} part — kanban dicetak satu per box`}
+            subtitle={`${picklist.lines.length} part`}
           />
           <Table scroll>
             <thead>
@@ -193,10 +193,10 @@ export default async function PicklistDetailPage({ params }: { params: Promise<{
                 <Th>Back no</Th>
                 <Th>Rak</Th>
                 <Th>PO item</Th>
-                <Th align="right">Box</Th>
+                <Th align="right">Qty order</Th>
                 <Th align="right">Kirim</Th>
                 <Th align="right">Terima</Th>
-                <Th align="right">Pcs</Th>
+                <Th align="right">Qty total</Th>
                 <Th align="right">Kanban</Th>
                 <Th sticky="right">Status</Th>
               </tr>
@@ -220,16 +220,16 @@ export default async function PicklistDetailPage({ params }: { params: Promise<{
                       <span className="text-ink-muted"> / {l.sapPoItem}</span>
                     </Td>
                     <Td align="right" className="tabular">
-                      {l.boxOrdered}
+                      {l.boxOrdered} {l.usesKanban ? 'box' : l.uom}
                     </Td>
                     <Td align="right" className="tabular">
-                      {l.boxShipped ?? '—'}
+                      {l.boxShipped ?? '—'} {l.usesKanban ? 'box' : l.uom}
                     </Td>
                     <Td align="right" className="tabular">
-                      {l.boxReceived}
+                      {l.usesKanban ? l.boxReceived : l.qtyReceived} {l.usesKanban ? 'box' : l.uom}
                     </Td>
                     <Td align="right" className="tabular">
-                      {l.pcs}
+                      {l.pcs} {l.uom}
                     </Td>
                     <Td align="right" className="tabular">
                       {l.kanbanCount}

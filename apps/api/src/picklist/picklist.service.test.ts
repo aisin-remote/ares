@@ -1009,3 +1009,27 @@ describe('PicklistService.overrideShipment (6.3.4)', () => {
     await db.delete(receiptHeaders).where(eq(receiptHeaders.id, receiptId));
   });
 });
+
+describe('order cutoff part tanpa kanban', () => {
+  it('menerbitkan qty kg bulat sesuai antrean dan tidak membuat kartu kanban', async () => {
+    const [po] = await db.select({ id: poLines.id, openQty: poLines.openQty }).from(poLines)
+      .innerJoin(poHeaders, eq(poLines.poId, poHeaders.id))
+      .where(and(eq(poHeaders.vendorId, vendorId), eq(poLines.partId, partA), eq(poHeaders.validFrom, '2026-08-01')));
+    if (!po) throw new Error('PO uji Agustus tidak tersedia');
+    await db.update(poLines).set({ openQty: 1_000_000 }).where(eq(poLines.id, po.id));
+    await db.update(vendorParts).set({ usesKanban: false, qtyPerBox: 1 }).where(eq(vendorParts.id, vpA));
+    await db.update(parts).set({ uom: 'KG' }).where(eq(parts.id, partA));
+    try {
+      const cutoffAt = new Date('2026-08-09T17:00:00Z');
+      await db.insert(orderQueues).values({ vendorPartId: vpA, cutoffAt, pcs: 1000 });
+      const result = await svc.issueAutomatic(vendorId, cutoffAt, actor, 'Order uji ingot 1000 kg');
+      if (result.status !== 'CREATED') throw new Error(`Order ingot tidak terbit: ${result.reason}`);
+      const order = await svc.get(result.id, null);
+      expect(order.lines[0]).toMatchObject({ pcs: 1000, qtyPerBox: 1, usesKanban: false, kanbans: [] });
+    } finally {
+      await db.update(poLines).set({ openQty: po.openQty }).where(eq(poLines.id, po.id));
+      await db.update(vendorParts).set({ usesKanban: true, qtyPerBox: 100 }).where(eq(vendorParts.id, vpA));
+      await db.update(parts).set({ uom: 'PC' }).where(eq(parts.id, partA));
+    }
+  });
+});

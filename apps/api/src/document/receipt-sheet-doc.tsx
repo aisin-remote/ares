@@ -60,12 +60,12 @@ export function receiptSheetDocument(
               <Text style={[s.td, s.center, { width: `${w[1]}%` }]}>{data.truckStation ?? line.rack ?? '-'}</Text>
               <View style={[s.td, { width: `${w[2]}%` }]}><Text style={{ fontFamily: 'Helvetica-Bold' }}>{line.partNo}</Text><Text>{line.partName}</Text><Text>{line.sapMaterialNo}</Text></View>
               <Text style={[s.td, s.center, { width: `${w[3]}%`, fontFamily: 'Helvetica-Bold' }]}>{line.backNo}</Text>
-              <Text style={[s.td, s.right, { width: `${w[4]}%` }]}>{line.qtyPerBox}</Text>
+              <Text style={[s.td, s.right, { width: `${w[4]}%` }]}>{line.usesKanban === false ? '-' : line.qtyPerBox}</Text>
               <Text style={[s.td, s.center, { width: `${w[5]}%` }]}>{line.uom}</Text>
               <Text style={[s.td, s.right, { width: `${w[6]}%` }]}>{line.orderPcs}</Text>
               <Text style={[s.td, s.right, { width: `${w[7]}%` }]}>{line.undeliveredPcs}</Text>
               <Text style={[s.td, s.right, { width: `${w[8]}%` }]}>{line.receivedPcs}</Text>
-              <Text style={[s.td, s.right, { width: `${w[9]}%`, fontFamily: 'Helvetica-Bold' }]}>{line.boxReceived}</Text>
+              <Text style={[s.td, s.right, { width: `${w[9]}%`, fontFamily: 'Helvetica-Bold' }]}>{line.usesKanban === false ? '-' : line.boxReceived}</Text>
               <Text style={[s.td, { width: `${w[10]}%`, borderRightWidth: 0 }]}>{line.sapPoNo} / {line.sapPoItem}</Text>
             </View>
           ))}

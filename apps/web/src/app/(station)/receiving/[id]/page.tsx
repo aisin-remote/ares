@@ -25,5 +25,8 @@ export default async function ReceivingStationPage({
   if (!session) notFound();
   if (session.status !== 'OPEN') redirect(`/receiving/${session.publicId}/ringkasan`);
 
-  return <ReceivingStation session={session} userName={user?.name ?? '—'} npk={user?.npk ?? '—'} />;
+  return <ReceivingStation session={session} userName={user?.name ?? '—'} npk={user?.npk ?? '—'}
+    canInputManual={user.permissions.includes('receipt.manual')}
+    canScan={user.permissions.includes('receipt.scan')}
+    canClose={user.permissions.includes('receipt.close')} />;
 }

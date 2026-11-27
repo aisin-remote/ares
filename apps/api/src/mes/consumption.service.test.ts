@@ -250,4 +250,23 @@ describe('ConsumptionService.ingest (F-10–F-12)', () => {
       { vendorPartId: extraVp!.id, cutoffAt: '2026-09-21T17:00:00.000Z', kanban: 1, reason: 'Terlambat' }, actor,
     )).rejects.toBeInstanceOf(ConflictException);
   });
+
+  it('menambah dan mengubah qty kg part tanpa kanban tanpa konversi kemasan', async () => {
+    const [part] = await db.insert(parts).values({
+      sapMaterialNo: `ING${stamp}`, partNo: `INGOT-${stamp}`, name: 'Ingot uji', uom: 'KG',
+    }).$returningId();
+    componentIds.push(part!.id);
+    const [vp] = await db.insert(vendorParts).values({
+      partId: part!.id, vendorId, qtyPerBox: 1, backNo: '-', usesKanban: false,
+    }).$returningId();
+    vendorPartIds.push(vp!.id);
+    const added = await controls.addPart({
+      vendorPartId: vp!.id, cutoffAt: '2026-09-20T17:00:00.000Z', kanban: 1000, reason: 'Kebutuhan ingot',
+    }, actor);
+    expect(added.pcs).toBe(1000);
+    const adjusted = await controls.adjust(added.id, { kanban: 950, reason: 'Penyesuaian kebutuhan kg' }, actor);
+    expect(adjusted.pcs).toBe(950);
+    const [saved] = await db.select().from(orderQueues).where(eq(orderQueues.id, added.id));
+    expect(saved?.pcs).toBe(950);
+  });
 });

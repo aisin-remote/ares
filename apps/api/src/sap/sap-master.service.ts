@@ -130,7 +130,7 @@ export class SapMasterService {
         const packaging = pickSapPackaging(pair.supplierId, part.row, raw.kanbans.filter((k) => k.material?.trim() === pair.material));
         if (!packaging) {
           result.vendorParts.skipped++;
-          issue(key, 'Qty per box atau back number kosong di SAP; buat vendor part manual');
+          issue(key, 'Qty per kanban atau back number belum lengkap di staging. Lengkapi sumber lalu gunakan Create Kanban.');
           continue;
         }
         result.vendorParts.created++;

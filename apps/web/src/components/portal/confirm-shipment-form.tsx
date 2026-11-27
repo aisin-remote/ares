@@ -19,6 +19,8 @@ interface Line {
   backNo: string;
   boxOrdered: number;
   qtyPerBox: number;
+  usesKanban: boolean;
+  uom: string;
 }
 
 /**
@@ -124,7 +126,7 @@ export function ConfirmShipmentForm({
             <Th>Back no</Th>
             <Th align="right">Diorder</Th>
             <Th align="right">Dikirim</Th>
-            <Th align="right">Pcs</Th>
+            <Th align="right">Qty aktual</Th>
           </tr>
         </thead>
         <tbody>
@@ -139,7 +141,7 @@ export function ConfirmShipmentForm({
                 </Td>
                 <Td className="tabular">{l.backNo}</Td>
                 <Td align="right" className="tabular">
-                  {l.boxOrdered}
+                  {l.boxOrdered} {l.usesKanban ? 'box' : l.uom}
                 </Td>
                 <Td align="right">
                   <input
@@ -150,7 +152,7 @@ export function ConfirmShipmentForm({
                     step={1}
                     value={shipped[l.id] ?? ''}
                     onChange={(e) => setShipped((old) => ({ ...old, [l.id]: e.target.value }))}
-                    aria-label={`Box dikirim ${l.partNo}`}
+                    aria-label={`Qty dikirim ${l.partNo} (${l.usesKanban ? 'box' : l.uom})`}
                     className={cn(
                       'tabular h-10 w-24 rounded-2xl border bg-surface px-3 text-right text-[15px] font-semibold outline-none transition-colors focus:bg-card',
                       kurang ? 'border-warn text-warn' : 'border-line focus:border-line-strong',
@@ -158,7 +160,7 @@ export function ConfirmShipmentForm({
                   />
                 </Td>
                 <Td align="right" className="tabular">
-                  {Number.isFinite(n) ? n * l.qtyPerBox : '—'}
+                  {Number.isFinite(n) ? n * l.qtyPerBox : '—'} {l.uom}
                 </Td>
               </Tr>
             );
@@ -211,9 +213,7 @@ export function ConfirmShipmentForm({
         <p className="mx-6 mb-4 flex items-start gap-2 rounded-card border border-warn/40 bg-warn/10 px-4 py-3 text-[14px] text-warn">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" strokeWidth={2} aria-hidden />
           <span>
-            {totalKurang} box kurang dari order. Setelah dikonfirmasi jumlahnya tidak bisa diubah
-            dari portal; sisanya diproses pabrik sesuai kesepakatan (dibatalkan atau jadi order
-            revisi).
+            Ada barang yang dikirim kurang dari order. Kekurangan diteruskan ke Order Sheet recovery.
           </span>
         </p>
       ) : null}

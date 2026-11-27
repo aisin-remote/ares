@@ -200,6 +200,7 @@ export class PicklistService {
           id: vendorParts.id,
           partId: vendorParts.partId,
           qtyPerBox: vendorParts.qtyPerBox,
+          usesKanban: vendorParts.usesKanban,
           poItemDefaultId: vendorParts.poItemDefaultId,
           partNo: parts.partNo,
         })
@@ -310,13 +311,14 @@ export class PicklistService {
               vendorPartId: r.vp.id,
               boxOrdered: r.line.boxes,
               qtyPerBox: r.vp.qtyPerBox,
+              usesKanban: r.vp.usesKanban,
               pcs: r.line.boxes * r.vp.qtyPerBox,
               sapPoNo: r.po!.sapPoNo,
               sapPoItem: r.po!.sapPoItem,
             })
             .$returningId()
         )[0]!.id;
-        for (let i = 0; i < r.line.boxes; i += 1) {
+        for (let i = 0; r.vp.usesKanban && i < r.line.boxes; i += 1) {
           const id = ulid();
           kanbanRows.push({ id, picklistLineId: lineId, serial: ++serial, status: 'PRINTED' });
           kanbanCount += 1;
@@ -329,8 +331,8 @@ export class PicklistService {
           });
         }
       }
-      await tx.insert(kanbans).values(kanbanRows);
-      await tx.insert(kanbanEvents).values(eventRows);
+      if (kanbanRows.length > 0) await tx.insert(kanbans).values(kanbanRows);
+      if (eventRows.length > 0) await tx.insert(kanbanEvents).values(eventRows);
 
       await writeAudit(tx, 'TT_PICKLIST_H', picklistId, 'ISSUE', actor.userId, null, {
         picklistNo, revision: 0, status: 'ISSUED', vendorId: input.vendorId,
@@ -375,6 +377,7 @@ export class PicklistService {
           vendorPartId: vendorParts.id,
           vendorPartActive: vendorParts.isActive,
           qtyPerBox: vendorParts.qtyPerBox,
+          usesKanban: vendorParts.usesKanban,
           poItemDefaultId: vendorParts.poItemDefaultId,
           partId: parts.id,
           partNo: parts.partNo,
@@ -607,13 +610,14 @@ export class PicklistService {
                 vendorPartId: item.row.vendorPartId,
                 boxOrdered: item.plan.boxes,
                 qtyPerBox: item.row.qtyPerBox,
+                usesKanban: item.row.usesKanban,
                 pcs: item.plan.pcs,
                 sapPoNo: item.po!.sapPoNo,
                 sapPoItem: item.po!.sapPoItem,
               })
               .$returningId()
           )[0]!.id;
-          for (let i = 0; i < item.plan.boxes; i += 1) {
+          for (let i = 0; item.row.usesKanban && i < item.plan.boxes; i += 1) {
             const id = ulid();
             kanbanRows.push({ id, picklistLineId: lineId, serial: ++serial, status: 'PRINTED' });
             kanbanCount += 1;
@@ -626,8 +630,8 @@ export class PicklistService {
             });
           }
         }
-        await tx.insert(kanbans).values(kanbanRows);
-        await tx.insert(kanbanEvents).values(eventRows);
+        if (kanbanRows.length > 0) await tx.insert(kanbans).values(kanbanRows);
+        if (eventRows.length > 0) await tx.insert(kanbanEvents).values(eventRows);
         await writeAudit(tx, 'TT_PICKLIST_H', picklistId, 'ISSUE_AUTO', actor.userId, null, {
           picklistNo,
           revision: 0,
@@ -949,6 +953,7 @@ export class PicklistService {
           vendorPartId: picklistLines.vendorPartId,
           boxOrdered: picklistLines.boxOrdered,
           qtyPerBox: picklistLines.qtyPerBox,
+          usesKanban: picklistLines.usesKanban,
           sapPoNo: picklistLines.sapPoNo,
           sapPoItem: picklistLines.sapPoItem,
         })
@@ -1130,6 +1135,7 @@ export class PicklistService {
         boxOrdered: picklistLines.boxOrdered,
         boxShipped: picklistLines.boxShipped,
         qtyPerBox: picklistLines.qtyPerBox,
+        usesKanban: picklistLines.usesKanban,
         sapPoNo: picklistLines.sapPoNo,
         sapPoItem: picklistLines.sapPoItem,
       }).from(picklistLines).where(eq(picklistLines.picklistId, id))
@@ -1167,7 +1173,7 @@ export class PicklistService {
       for (const row of result) {
         const line = lineById.get(row.picklistLineId)!;
         const own = kanbanRows.filter((kanban) => kanban.picklistLineId === line.id);
-        if (own.length !== line.boxOrdered) {
+        if (line.usesKanban && own.length !== line.boxOrdered) {
           throw new ConflictException('Kanban sudah dipindah ke revisi, koreksi dibatalkan');
         }
         for (let index = 0; index < own.length; index += 1) {
@@ -1263,6 +1269,7 @@ export class PicklistService {
           id: picklistLines.id,
           vendorPartId: picklistLines.vendorPartId,
           qtyPerBox: picklistLines.qtyPerBox,
+          usesKanban: picklistLines.usesKanban,
           boxReceived: picklistLines.boxReceived,
           sapPoNo: picklistLines.sapPoNo,
           sapPoItem: picklistLines.sapPoItem,
@@ -1349,6 +1356,7 @@ export class PicklistService {
               vendorPartId: src.vendorPartId,
               boxOrdered: row.boxOrdered,
               qtyPerBox: src.qtyPerBox,
+              usesKanban: src.usesKanban,
               pcs: row.pcs,
               // Disalin sebagai keterangan; claim tidak pernah diangkat ke SAP.
               sapPoNo: src.sapPoNo,
@@ -1411,6 +1419,7 @@ export class PicklistService {
         id: picklistLines.id,
         vendorPartId: picklistLines.vendorPartId,
         qtyPerBox: picklistLines.qtyPerBox,
+        usesKanban: picklistLines.usesKanban,
         sapPoNo: picklistLines.sapPoNo,
         sapPoItem: picklistLines.sapPoItem,
       })
@@ -1426,7 +1435,9 @@ export class PicklistService {
       items.map((item) => ({ ...lineById.get(item.sourceLineId)!, boxes: item.boxes })),
     );
 
-    const revision = source.revision + 1;
+    const revisions = await tx.select({ revision: picklistHeaders.revision }).from(picklistHeaders)
+      .where(eq(picklistHeaders.picklistNo, source.picklistNo)).for('update');
+    const revision = Math.max(source.revision, ...revisions.map((row) => row.revision)) + 1;
     const publicId = randomUUID();
     const id = (
       await tx
@@ -1460,6 +1471,7 @@ export class PicklistService {
             vendorPartId: src.vendorPartId,
             boxOrdered: item.boxes,
             qtyPerBox: src.qtyPerBox,
+            usesKanban: src.usesKanban,
             pcs: item.boxes * src.qtyPerBox,
             sapPoNo: recoveryPos.get(src.id)!.sapPoNo,
             sapPoItem: recoveryPos.get(src.id)!.sapPoItem,
@@ -1596,7 +1608,7 @@ export class PicklistService {
           shippedAt: picklistHeaders.shippedAt,
           createdAt: picklistHeaders.createdAt,
           lineCount: sql<number>`(select count(*) from ${picklistLines} where ${picklistLines.picklistId} = ${picklistHeaders.id})`,
-          boxOrdered: sql<number>`(select coalesce(sum(${picklistLines.boxOrdered}), 0) from ${picklistLines} where ${picklistLines.picklistId} = ${picklistHeaders.id})`,
+          boxOrdered: sql<number>`(select coalesce(sum(case when ${picklistLines.usesKanban} then ${picklistLines.boxOrdered} else 0 end), 0) from ${picklistLines} where ${picklistLines.picklistId} = ${picklistHeaders.id})`,
         })
         .from(picklistHeaders)
         .innerJoin(vendors, eq(picklistHeaders.vendorId, vendors.id))
@@ -1685,6 +1697,7 @@ export class PicklistService {
           boxShipped: picklistLines.boxShipped,
           boxReceived: picklistLines.boxReceived,
           qtyPerBox: picklistLines.qtyPerBox,
+          usesKanban: picklistLines.usesKanban,
           pcs: picklistLines.pcs,
           sapPoNo: picklistLines.sapPoNo,
           sapPoItem: picklistLines.sapPoItem,

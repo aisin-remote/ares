@@ -139,4 +139,14 @@ describe('MasterService.updateVendorPartSelf', () => {
       BadRequestException,
     );
   });
+
+  it('PPIC mengatur part tanpa kanban dengan qty per unit dan supplier tidak dapat mengubah metodenya', async () => {
+    const ppic = { userId: actor.userId, role: 'ppic' };
+    const manual = await svc.update('vendorParts', vpId, { usesKanban: false }, ppic);
+    expect(manual).toMatchObject({ usesKanban: false, qtyPerBox: 1 });
+    const updated = await svc.update('vendorParts', vpId, { qtyPerBox: 200 }, ppic);
+    expect(updated).toMatchObject({ usesKanban: false, qtyPerBox: 1 });
+    await expect(svc.updateVendorPartSelf(vpId, { usesKanban: true }, actor))
+      .rejects.toBeInstanceOf(BadRequestException);
+  });
 });

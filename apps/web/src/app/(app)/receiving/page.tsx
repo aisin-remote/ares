@@ -96,8 +96,8 @@ export default async function ReceivingPage({
           <Card>
             <CardHeader
               icon={ScanLine}
-              title="Buka sesi scan"
-              subtitle="Scan barcode Delivery Sheet yang dibawa supplier untuk mulai menerima"
+              title="Buka penerimaan"
+              subtitle="Scan atau ketik kode Delivery Sheet untuk mulai menerima barang"
             />
             <CardDivider />
             <CardBody>

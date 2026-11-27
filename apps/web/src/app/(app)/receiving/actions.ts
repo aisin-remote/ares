@@ -85,6 +85,18 @@ export interface CloseOutcome {
   missingCount: number;
 }
 
+export async function saveManualReceiptAction(receiptId: string, picklistLineId: number, qty: number) {
+  try {
+    return await apiFetch<{ picklistLineId: number; qty: number }>(`/receipts/${receiptId}/manual`, {
+      method: 'POST',
+      body: JSON.stringify({ picklistLineId, qty }),
+    });
+  } catch (err) {
+    unstable_rethrow(err);
+    return { error: toMessage(err) };
+  }
+}
+
 /** F-37: tutup sesi; 422 dari API (alasan wajib, 6.5.2) dikembalikan sebagai pesan. */
 export async function closeReceiptAction(
   receiptId: string,

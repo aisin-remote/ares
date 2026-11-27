@@ -159,7 +159,7 @@ export class SapOutboxService {
         eq(poLines.balanceVerified, true),
         eq(poLines.isActive, true),
       ))
-      .where(eq(receiptLines.receiptId, receiptId));
+      .where(and(eq(receiptLines.receiptId, receiptId), gte(receiptLines.pcsReceived, 1)));
 
     const errors = validateGrForSap({
       plant: header.plant,

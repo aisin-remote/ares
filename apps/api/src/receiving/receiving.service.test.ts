@@ -685,3 +685,119 @@ describe('sesi scan: buka → 5 scan (1 dobel, 1 picklist lain) → tutup → ou
     );
   });
 });
+
+describe('penerimaan qty manual tanpa kanban', () => {
+  beforeAll(async () => {
+    await db.update(parts).set({ uom: 'KG' }).where(eq(parts.id, partB));
+  });
+  afterAll(async () => {
+    await db.update(parts).set({ uom: 'PC' }).where(eq(parts.id, partB));
+  });
+  async function manualOrder(boxes = 1000, includeScan = false, ship = true) {
+    await db.update(vendorParts).set({ usesKanban: false, qtyPerBox: 1 }).where(eq(vendorParts.id, vpB));
+    try {
+      return await issue([
+        ...(includeScan ? [{ vendorPartId: vpA, boxes: 1 }] : []),
+        { vendorPartId: vpB, boxes },
+      ], ship);
+    } finally {
+      await db.update(vendorParts).set({ usesKanban: true, qtyPerBox: 50 }).where(eq(vendorParts.id, vpB));
+    }
+  }
+
+  async function stockB() {
+    const [row] = await db.select({ qty: sql<number>`COALESCE(SUM(${stockMutations.deltaPcs}),0)` })
+      .from(stockMutations).where(eq(stockMutations.partId, partB));
+    return Number(row?.qty ?? 0);
+  }
+
+  it('menyimpan draft, menutup penerimaan campuran, mengirim qty aktual ke outbox, dan membalik stok saat batal', async () => {
+    const before = await stockB();
+    const order = await manualOrder(1000, true);
+    const manual = order.lines[1]!;
+    expect(manual.kanbanIds).toEqual([]);
+    const session = await receiving.open(picklistCode(order.picklistNo), actor);
+    expect(session.lines[1]!.usesKanban).toBe(false);
+    expect(session.lines[1]!.uom).toBe('KG');
+    await expect(receiving.saveManual(session.id, { picklistLineId: manual.id, qty: 100 }, { ...actor, plantId: -1 }))
+      .rejects.toThrow(/tidak ditemukan/);
+    await expect(receiving.close(session.id, undefined, actor)).rejects.toThrow(/PPIC/);
+    await expect(receiving.saveManual(session.id, { picklistLineId: order.lines[0]!.id, qty: 1 }, actor))
+      .rejects.toThrow(/scan kanban/);
+    await expect(receiving.saveManual(session.id, { picklistLineId: manual.id, qty: 1001 }, actor))
+      .rejects.toThrow(/melebihi/);
+    await expect(receiving.saveManual(session.id, { picklistLineId: manual.id, qty: 1.5 }, actor))
+      .rejects.toThrow(/bulat/);
+    await receiving.saveManual(session.id, { picklistLineId: manual.id, qty: 970 }, actor);
+    await receiving.saveManual(session.id, { picklistLineId: manual.id, qty: 950 }, actor);
+    expect(await stockB()).toBe(before);
+    await outbox.collect(actor.plantId);
+    const queuedBefore = await db.select().from(sapOutbox)
+      .where(and(eq(sapOutbox.sourceTable, 'TT_RECEIPT_H'), eq(sapOutbox.sourceId, session.id)));
+    expect(queuedBefore).toEqual([]);
+    await receiving.scan(session.id, kanbanCode(order.lines[0]!.kanbanIds[0]!), actor);
+    await expect(receiving.close(session.id, undefined, actor)).rejects.toThrow(/Alasan/);
+    const closed = await receiving.close(session.id, 'Timbangan aktual kurang 50', actor);
+    expect(closed.picklistStatus).toBe('PARTIAL');
+    expect(await stockB()).toBe(before + 950);
+    expect(closed.recovery).not.toBeNull();
+    const recovery = await picklists.get(closed.recovery!.id, null);
+    expect(recovery.lines[0]).toMatchObject({ usesKanban: false, pcs: 50, boxOrdered: 50, kanbans: [] });
+    const saved = await db.select().from(receiptLines).where(and(
+      eq(receiptLines.receiptId, session.id), eq(receiptLines.picklistLineId, manual.id),
+    ));
+    expect(saved).toHaveLength(1);
+    expect(saved[0]).toMatchObject({ boxReceived: 0, pcsReceived: 950 });
+    await outbox.collect(actor.plantId);
+    const [gr] = await db.select().from(sapOutbox).where(and(
+      eq(sapOutbox.sourceTable, 'TT_RECEIPT_H'), eq(sapOutbox.sourceId, session.id),
+    ));
+    expect(gr?.status).toBe('PENDING');
+    expect((gr?.payload as { items: Array<{ qty: number }> }).items.map((line) => line.qty)).toContain(950);
+    await expect(receiving.close(session.id, 'retry', actor)).rejects.toThrow();
+    await expect(receiving.saveManual(session.id, { picklistLineId: manual.id, qty: 900 }, actor)).rejects.toThrow();
+    expect(await stockB()).toBe(before + 950);
+    await receiving.cancel(session.id, 'Uji pembatalan', actor);
+    expect(await stockB()).toBe(before);
+  });
+
+  it('menutup order seluruhnya manual dan qty nol tidak ikut GR', async () => {
+    const order = await manualOrder(100);
+    const session = await receiving.open(picklistCode(order.picklistNo), actor);
+    await receiving.saveManual(session.id, { picklistLineId: order.lines[0]!.id, qty: 100 }, actor);
+    const closed = await receiving.close(session.id, undefined, actor);
+    expect(closed.picklistStatus).toBe('COMPLETE');
+    const full = await picklists.get(order.id, null);
+    expect(full.lines[0]!.status).toBe('RECEIVED');
+    await receiving.cancel(session.id, 'Uji pembatalan', actor);
+    const restored = await picklists.get(order.id, null);
+    expect(restored.lines[0]!.status).toBe('OPEN');
+
+    const empty = await manualOrder(100, true);
+    const zeroSession = await receiving.open(picklistCode(empty.picklistNo), actor);
+    await receiving.saveManual(zeroSession.id, { picklistLineId: empty.lines[1]!.id, qty: 0 }, actor);
+    await receiving.scan(zeroSession.id, kanbanCode(empty.lines[0]!.kanbanIds[0]!), actor);
+    await receiving.close(zeroSession.id, 'Ingot belum datang', actor);
+    await outbox.collect(actor.plantId);
+    const [gr] = await db.select().from(sapOutbox).where(and(
+      eq(sapOutbox.sourceTable, 'TT_RECEIPT_H'), eq(sapOutbox.sourceId, zeroSession.id),
+    ));
+    expect(gr?.status).toBe('PENDING');
+    expect((gr?.payload as { items: Array<{ qty: number }> }).items).toHaveLength(1);
+  });
+
+  it('membuat recovery berikutnya ketika kirim kurang dan penerimaan juga kurang', async () => {
+    const order = await manualOrder(100, false, false);
+    await picklists.markDownloaded(order.id, vendorId, actor.plantId);
+    const shipment = await picklists.confirmShipment(order.id, {
+      lines: [{ picklistLineId: order.lines[0]!.id, boxShipped: 80 }],
+    }, { vendorId, userId: actor.userId, plantId: actor.plantId });
+    expect(shipment.revision?.revision).toBe(1);
+    const session = await receiving.open(picklistCode(order.picklistNo), actor);
+    await receiving.saveManual(session.id, { picklistLineId: order.lines[0]!.id, qty: 70 }, actor);
+    const receipt = await receiving.close(session.id, 'Aktual kurang 10 kg dari yang dikirim', actor);
+    expect(receipt.recovery?.revision).toBe(2);
+    const recovery = await picklists.get(receipt.recovery!.id, null);
+    expect(recovery.lines[0]).toMatchObject({ pcs: 10, usesKanban: false, kanbans: [] });
+  });
+});

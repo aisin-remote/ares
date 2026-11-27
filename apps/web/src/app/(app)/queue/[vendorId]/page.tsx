@@ -43,7 +43,6 @@ export default async function QueueVendorDetailPage({
     group.rows.push(row);
     groups.set(key, group);
   }
-  const totalKanban = plannedRows.reduce((sum, row) => sum + row.plannedKanban, 0);
 
   return (
     <>
@@ -53,7 +52,7 @@ export default async function QueueVendorDetailPage({
           { label: detail.name },
         ]}
         title={detail.name}
-        description={`${detail.rows.length} item OPEN · ${totalKanban.toLocaleString('id-ID')} kanban direncanakan${detail.sapVendorNo ? ` · vendor ${detail.sapVendorNo}` : ''}`}
+        description={`${detail.rows.length} item OPEN${detail.sapVendorNo ? ` · vendor ${detail.sapVendorNo}` : ''}`}
       />
 
       {groups.size === 0 ? (
@@ -71,7 +70,6 @@ export default async function QueueVendorDetailPage({
       ) : (
         <div className="space-y-5">
           {[...groups.values()].map((group) => {
-            const kanban = group.rows.reduce((sum, row) => sum + row.plannedKanban, 0);
             const due = group.cutoffAt.getTime() <= now.getTime();
             const orderHref = `/queue/${vendorId}/order?cutoff=${encodeURIComponent(group.cutoffAt.toISOString())}`;
             return (
@@ -82,7 +80,7 @@ export default async function QueueVendorDetailPage({
                     title={`Cutoff ${hariCutoff(group.cutoffAt)}`}
                     subtitle={
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                        <span>{group.rows.length} item · {kanban.toLocaleString('id-ID')} kanban</span>
+                        <span>{group.rows.length} item</span>
                         <CutoffIndicator at={group.cutoffAt} now={now} />
                       </div>
                     }
@@ -118,13 +116,13 @@ export default async function QueueVendorDetailPage({
                           </Td>
                           <Td>{row.backNo}</Td>
                           <Td align="right" className="tabular">
-                            <span className="font-bold text-ink">{row.plannedKanban} kanban</span>
+                            <span className="font-bold text-ink">{row.plannedKanban} {row.usesKanban ? 'kanban' : row.uom}</span>
                             <span className="mt-0.5 block text-[11px] text-ink-muted">
-                              {row.qtyPerBox} pcs/kanban
+                              {row.usesKanban ? `${row.qtyPerBox} ${row.uom}/kanban` : 'Tanpa kanban'}
                             </span>
                           </Td>
                           <Td align="right" className="tabular">
-                            {row.standardKanban == null ? '—' : `${row.standardKanban} kanban`}
+                            {row.standardKanban == null ? '—' : `${row.standardKanban} ${row.usesKanban ? 'kanban' : row.uom}`}
                           </Td>
                           <Td>
                             {row.standardKanban == null ? (
@@ -141,12 +139,12 @@ export default async function QueueVendorDetailPage({
                             ) : (
                               <span className="rounded-full border border-warn/30 bg-warn/10 px-2.5 py-1 text-[11px] font-semibold text-warn">
                                 {row.plannedKanban > row.standardKanban ? '+' : ''}
-                                {row.plannedKanban - row.standardKanban} kanban
+                                {row.plannedKanban - row.standardKanban} {row.usesKanban ? 'kanban' : row.uom}
                               </span>
                             )}
                           </Td>
                           <Td align="right" className="tabular">
-                            {row.remainingKanban.toLocaleString('id-ID', { maximumFractionDigits: 2 })} kanban
+                            {row.remainingKanban.toLocaleString('id-ID', { maximumFractionDigits: 2 })} {row.usesKanban ? 'kanban' : row.uom}
                           </Td>
                           <Td>
                             {row.hold ? (

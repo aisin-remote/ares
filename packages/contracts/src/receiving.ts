@@ -15,6 +15,12 @@ export const scanReceiptSchema = z.object({
 });
 export type ScanReceiptInput = z.infer<typeof scanReceiptSchema>;
 
+export const manualReceiptSchema = z.object({
+  picklistLineId: z.number().int().positive(),
+  qty: z.number().int('Qty harus angka bulat').min(0).max(2_147_483_647),
+});
+export type ManualReceiptInput = z.infer<typeof manualReceiptSchema>;
+
 /** F-37: alasan wajib bila ada kanban kurang — dicek domain (6.5.2), bukan di sini. */
 export const closeReceiptSchema = z.object({
   reason: z.string().trim().max(255).optional(),

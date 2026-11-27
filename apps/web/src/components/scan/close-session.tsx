@@ -37,8 +37,10 @@ export function CloseSession({
   const reasonRef = useRef<HTMLTextAreaElement>(null);
   const feedback = useFeedback();
 
-  const kurang = lines.filter((l) => l.boxScanned < l.boxOrdered);
-  const totalKurang = kurang.reduce((n, l) => n + (l.boxOrdered - l.boxScanned), 0);
+  const received = (line: Line) => line.usesKanban ? line.boxScanned : line.manualQty ?? 0;
+  const expected = (line: Line) => line.usesKanban ? line.boxShipped ?? line.boxOrdered : (line.boxShipped ?? line.boxOrdered) * line.qtyPerBox;
+  const kurang = lines.filter((line) => received(line) < expected(line));
+  const totalKurang = kurang.length;
   const cocok = lines.length - kurang.length;
 
   useEffect(() => {
@@ -55,7 +57,7 @@ export function CloseSession({
 
   async function tutup() {
     if (totalKurang > 0 && !reason.trim()) {
-      setError('Alasan wajib diisi bila ada box yang belum datang.');
+      setError('Alasan wajib diisi bila ada barang yang kurang.');
       return;
     }
     setBusy(true);
@@ -68,9 +70,9 @@ export function CloseSession({
     }
     feedback.success(
       'Sesi Receiving berhasil ditutup',
-      res.missingCount > 0
-        ? `${res.missingCount} kanban belum diterima dan sudah ditandai kurang.`
-        : 'Semua kanban pada sesi ini sudah diterima.',
+      res.picklistStatus === 'PARTIAL'
+        ? 'Penerimaan tersimpan dengan catatan kekurangan.'
+        : 'Semua barang pada sesi ini sudah diterima.',
     );
     onClosed();
   }
@@ -88,10 +90,10 @@ export function CloseSession({
           id="tutup-sesi-judul"
           className="text-[22px] font-extrabold leading-tight tracking-tight"
         >
-          Tutup sesi scan
+          Tutup penerimaan
         </h2>
         <p className="mt-1.5 text-[14px] text-ink-muted">
-          Receipt dibuat untuk box yang sudah discan; box yang belum datang ditandai hilang.
+          Periksa hasil scan dan qty manual sebelum menyelesaikan penerimaan.
         </p>
 
         <div className="mt-5 grid grid-cols-2 gap-3">
@@ -125,7 +127,7 @@ export function CloseSession({
             </div>
             <div className="tabular mt-1 text-[28px] font-extrabold leading-none">
               {totalKurang}
-              <span className="text-[14px] font-semibold text-ink-muted"> box</span>
+              <span className="text-[14px] font-semibold text-ink-muted"> part</span>
             </div>
           </div>
         </div>
@@ -139,10 +141,10 @@ export function CloseSession({
                   <span className="text-ink-muted"> · {l.backNo}</span>
                 </span>
                 <span className="tabular shrink-0 text-ink-soft">
-                  {l.boxScanned} / {l.boxOrdered}
+                  {received(l)} / {expected(l)} {l.usesKanban ? 'box' : l.uom}
                 </span>
                 <span className="tabular shrink-0 font-bold text-warn">
-                  −{l.boxOrdered - l.boxScanned}
+                  −{expected(l) - received(l)}
                 </span>
               </li>
             ))}
@@ -159,7 +161,7 @@ export function CloseSession({
         {totalKurang > 0 ? (
           <div className="mt-5">
             <label htmlFor="alasan-kurang" className="mb-2 block text-[14px] font-semibold">
-              Alasan box kurang <span className="text-ng">*</span>
+              Alasan kekurangan <span className="text-ng">*</span>
             </label>
             <textarea
               ref={reasonRef}
@@ -188,7 +190,7 @@ export function CloseSession({
             disabled={busy}
             className="h-12 rounded-full px-4 text-[14px] font-semibold text-ink-soft transition-colors hover:bg-surface hover:text-ink disabled:opacity-50 sm:h-11"
           >
-            Lanjut scan
+            Kembali
           </button>
           <button
             type="button"

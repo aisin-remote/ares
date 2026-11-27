@@ -124,7 +124,7 @@ export class QueueControlService {
         .from(orderQueues)
         .where(and(eq(orderQueues.vendorPartId, vendorPart.id), eq(orderQueues.cutoffAt, cutoffAt)))
         .limit(1);
-      if (existing) throw new ConflictException('Part sudah ada di antrean cutoff ini; ubah jumlah kanbannya');
+      if (existing) throw new ConflictException('Part sudah ada di antrean cutoff ini; ubah qty ordernya');
 
       let plan: ReturnType<typeof setQueueKanbanQuantity>;
       try {

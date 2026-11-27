@@ -7,6 +7,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import { manualReceiptSchema, type ManualReceiptInput } from '@ares/contracts';
 import {
   and,
   asc,
@@ -243,6 +244,34 @@ export class ReceivingService {
     return hasil;
   }
 
+  async saveManual(receiptId: number, input: ManualReceiptInput, actor: Actor) {
+    const parsed = manualReceiptSchema.safeParse(input);
+    if (!parsed.success) throw new UnprocessableEntityException('Qty diterima harus angka bulat ≥ 0');
+    return this.db.transaction(async (tx) => {
+      const session = await this.openSession(tx, receiptId, actor.plantId);
+      const [line] = await tx.select().from(picklistLines).where(and(
+        eq(picklistLines.id, input.picklistLineId),
+        eq(picklistLines.picklistId, session.picklistId),
+      )).for('update');
+      if (!line) throw new NotFoundException('Part tidak ditemukan di penerimaan ini');
+      if (line.usesKanban) throw new UnprocessableEntityException('Part ini harus diterima dengan scan kanban');
+      const expected = (line.boxShipped ?? line.boxOrdered) * line.qtyPerBox;
+      if (input.qty > expected) {
+        throw new UnprocessableEntityException(`Qty diterima melebihi qty dikirim (${expected})`);
+      }
+      const [before] = await tx.select().from(receiptLines).where(and(
+        eq(receiptLines.receiptId, receiptId), eq(receiptLines.picklistLineId, line.id),
+      ));
+      await tx.insert(receiptLines).values({
+        receiptId, picklistLineId: line.id, boxReceived: 0, pcsReceived: input.qty,
+      }).onDuplicateKeyUpdate({ set: { pcsReceived: input.qty } });
+      await writeAudit(tx, 'TT_RECEIPT_H', receiptId, 'MANUAL_QTY', actor.userId,
+        { picklistLineId: line.id, qty: before?.pcsReceived ?? null },
+        { picklistLineId: line.id, qty: input.qty, receiptNo: session.receiptNo });
+      return { picklistLineId: line.id, qty: input.qty };
+    });
+  }
+
   private async closeInTx(receiptId: number, reason: string | undefined, actor: Actor) {
     return this.db.transaction(async (tx) => {
       const s = await this.openSession(tx, receiptId, actor.plantId);
@@ -258,12 +287,20 @@ export class ReceivingService {
           id: picklistLines.id,
           qtyPerBox: picklistLines.qtyPerBox,
           boxReceived: picklistLines.boxReceived,
+          boxShipped: picklistLines.boxShipped,
+          boxOrdered: picklistLines.boxOrdered,
+          usesKanban: picklistLines.usesKanban,
           partId: vendorParts.partId,
         })
         .from(picklistLines)
         .innerJoin(vendorParts, eq(picklistLines.vendorPartId, vendorParts.id))
         .where(eq(picklistLines.picklistId, pl.id));
       const lineIds = lines.map((l) => l.id);
+      const manualRows = await tx.select().from(receiptLines).where(eq(receiptLines.receiptId, s.id));
+      const manualByLine = new Map(manualRows.map((line) => [line.picklistLineId, line]));
+      if (lines.some((line) => !line.usesKanban && !manualByLine.has(line.id))) {
+        throw new UnprocessableEntityException('Minta PPIC mengisi qty seluruh part tanpa kanban sebelum menutup penerimaan');
+      }
       const ks = lineIds.length
         ? await tx
             .select({
@@ -281,6 +318,10 @@ export class ReceivingService {
         picklistLineId: l.id,
         qtyPerBox: l.qtyPerBox,
         kanbans: ks.filter((k) => k.picklistLineId === l.id),
+        ...(!l.usesKanban ? { manual: {
+          qtyExpected: (l.boxShipped ?? l.boxOrdered) * l.qtyPerBox,
+          qtyReceived: manualByLine.get(l.id)?.pcsReceived ?? null,
+        } } : {}),
       }));
 
       let closed: ReturnType<typeof closeScanSession>;
@@ -314,8 +355,8 @@ export class ReceivingService {
       const lineById = new Map(lines.map((l) => [l.id, l]));
       for (const r of closed.lines) {
         const line = lineById.get(r.picklistLineId)!;
-        if (r.boxReceived > 0) {
-          const receiptLineId = (
+        if (r.pcsReceived > 0) {
+          const receiptLineId = manualByLine.get(r.picklistLineId)?.id ?? (
             await tx
               .insert(receiptLines)
               .values({
@@ -345,7 +386,7 @@ export class ReceivingService {
           .set({
             boxReceived: totalReceived,
             // Tidak ada lagi yang ditunggu di line ini → RECEIVED.
-            ...(r.boxMissing === 0 && totalReceived > 0 ? { status: 'RECEIVED' as const } : {}),
+            ...(r.boxMissing === 0 && (r.qtyMissing ?? 0) === 0 && r.pcsReceived > 0 ? { status: 'RECEIVED' as const } : {}),
           })
           .where(eq(picklistLines.id, r.picklistLineId));
       }
@@ -366,7 +407,7 @@ export class ReceivingService {
        */
       let recovery: Awaited<ReturnType<PicklistService['createRecovery']>> | null = null;
       let recoveryError: string | null = null;
-      const kurang = closed.lines.filter((line) => line.boxMissing > 0);
+      const kurang = closed.lines.filter((line) => line.boxMissing > 0 || (line.qtyMissing ?? 0) > 0);
       if (kurang.length > 0 && pl.type !== 'CLAIM') {
         const hilang = new Set(closed.missingKanbanIds);
         recovery = await this.picklist.createRecovery(
@@ -374,7 +415,7 @@ export class ReceivingService {
           pl,
           kurang.map((line) => ({
             sourceLineId: line.picklistLineId,
-            boxes: line.boxMissing,
+            boxes: line.qtyMissing ?? line.boxMissing,
             kanbanIds: ks
               .filter(
                 (k) =>
@@ -756,6 +797,11 @@ export class ReceivingService {
         partNo: parts.partNo,
         partName: parts.name,
         backNo: vendorParts.backNo,
+        usesKanban: picklistLines.usesKanban,
+        uom: parts.uom,
+        qtyOrdered: picklistLines.pcs,
+        qtyPerBox: picklistLines.qtyPerBox,
+        manualQty: receiptLines.pcsReceived,
         boxOrdered: picklistLines.boxOrdered,
         boxShipped: picklistLines.boxShipped,
         boxReceived: picklistLines.boxReceived,
@@ -765,6 +811,7 @@ export class ReceivingService {
       .from(picklistLines)
       .innerJoin(vendorParts, eq(picklistLines.vendorPartId, vendorParts.id))
       .innerJoin(parts, eq(vendorParts.partId, parts.id))
+      .leftJoin(receiptLines, and(eq(receiptLines.picklistLineId, picklistLines.id), eq(receiptLines.receiptId, receiptId)))
       .where(eq(picklistLines.picklistId, r.picklistId))
       .orderBy(asc(picklistLines.id));
 
@@ -773,8 +820,8 @@ export class ReceivingService {
       ...r,
       lines: out,
       totals: {
-        boxOrdered: out.reduce((n, l) => n + l.boxOrdered, 0),
-        boxShipped: out.reduce((n, l) => n + (l.boxShipped ?? 0), 0),
+        boxOrdered: out.reduce((n, l) => n + (l.usesKanban ? l.boxOrdered : 0), 0),
+        boxShipped: out.reduce((n, l) => n + (l.usesKanban ? l.boxShipped ?? 0 : 0), 0),
         boxScanned: out.reduce((n, l) => n + l.boxScanned, 0),
       },
     };

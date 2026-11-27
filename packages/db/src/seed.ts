@@ -136,6 +136,10 @@ async function main() {
       { roleId: roleId('supplier'), action: 'vendorPart.self' },
       { roleId: roleId('admin'), action: 'receipt.read' },
       { roleId: roleId('ppic'), action: 'receipt.read' },
+      { roleId: roleId('ppic'), action: 'receipt.manual' },
+      { roleId: roleId('admin'), action: 'receipt.manual' },
+      { roleId: roleId('ppic'), action: 'receipt.open' },
+      { roleId: roleId('ppic'), action: 'receipt.close' },
       { roleId: roleId('warehouse'), action: 'receipt.read' },
       // Sesi scan kedatangan (F-34–F-37): operator gudang, admin sebagai cadangan.
       { roleId: roleId('warehouse'), action: 'receipt.open' },
@@ -151,6 +155,7 @@ async function main() {
       { roleId: roleId('admin'), action: 'sap.po.sync' },
       { roleId: roleId('ppic'), action: 'sap.po.sync' },
       { roleId: roleId('admin'), action: 'sap.master.sync' },
+      { roleId: roleId('admin'), action: 'sap.kanban.write' },
       { roleId: roleId('ppic'), action: 'sap.master.sync' },
       { roleId: roleId('admin'), action: 'outbox.collect' },
       { roleId: roleId('admin'), action: 'outbox.retry' },

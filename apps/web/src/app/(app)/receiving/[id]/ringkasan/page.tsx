@@ -53,10 +53,14 @@ export default async function ReceiptSummaryPage({ params }: { params: Promise<{
   const r = await getReceiptDetail(id, user.plantId);
   if (!r) notFound();
 
-  const totalOrdered = r.lines.reduce((n, l) => n + l.boxOrdered, 0);
+  const totalOrdered = r.lines.reduce((n, l) => n + (l.usesKanban ? l.boxOrdered : 0), 0);
   const totalScanned = r.lines.reduce((n, l) => n + l.boxScanned, 0);
   const totalMissing = r.lines.reduce((n, l) => n + l.boxMissing, 0);
-  const totalPcs = r.lines.reduce((n, l) => n + l.pcsReceived, 0);
+  const qtyByUnit = new Map<string, number>();
+  for (const line of r.lines) qtyByUnit.set(line.uom, (qtyByUnit.get(line.uom) ?? 0) + line.pcsReceived);
+  const receivedSummary = [...qtyByUnit].map(([uom, qty]) => `${qty.toLocaleString('id-ID')} ${uom}`).join(' · ');
+  const missingManual = (line: typeof r.lines[number]) => Math.max(0, (line.boxShipped ?? line.boxOrdered) * line.qtyPerBox - line.pcsReceived);
+  const missingParts = r.lines.filter((line) => line.usesKanban ? line.boxMissing > 0 : missingManual(line) > 0).length;
   const orderNo = orderSheetDisplayNo(r.picklistNo, r.revision);
 
   if (user.role === 'warehouse') {
@@ -101,8 +105,8 @@ export default async function ReceiptSummaryPage({ params }: { params: Promise<{
             <dd className="tabular mt-1 text-[24px] font-extrabold text-warn">{totalMissing}</dd>
           </div>
           <div className="rounded-2xl border border-line bg-card p-3">
-            <dt className="text-[11px] text-ink-muted">Pcs diterima</dt>
-            <dd className="tabular mt-1 text-[24px] font-extrabold">{totalPcs}</dd>
+            <dt className="text-[11px] text-ink-muted">Qty diterima</dt>
+            <dd className="tabular mt-1 text-[24px] font-extrabold">{receivedSummary}</dd>
           </div>
         </dl>
         {r.note ? (
@@ -127,15 +131,15 @@ export default async function ReceiptSummaryPage({ params }: { params: Promise<{
               <dl className="mt-3 grid grid-cols-3 gap-2 text-[12px]">
                 <div>
                   <dt className="text-ink-muted">Diorder</dt>
-                  <dd className="tabular mt-1 font-bold">{line.boxOrdered} box</dd>
+                  <dd className="tabular mt-1 font-bold">{line.boxOrdered} {line.usesKanban ? 'box' : line.uom}</dd>
                 </div>
                 <div>
                   <dt className="text-ink-muted">Diterima</dt>
-                  <dd className="tabular mt-1 font-bold text-ok">{line.boxScanned} box</dd>
+                  <dd className="tabular mt-1 font-bold text-ok">{line.usesKanban ? line.boxScanned : line.pcsReceived} {line.usesKanban ? 'box' : line.uom}</dd>
                 </div>
                 <div>
                   <dt className="text-ink-muted">Kurang</dt>
-                  <dd className="tabular mt-1 font-bold text-warn">{line.boxMissing} box</dd>
+                  <dd className="tabular mt-1 font-bold text-warn">{line.usesKanban ? line.boxMissing : missingManual(line)} {line.usesKanban ? 'box' : line.uom}</dd>
                 </div>
               </dl>
             </Card>
@@ -166,7 +170,7 @@ export default async function ReceiptSummaryPage({ params }: { params: Promise<{
         description={
           r.status === 'OPEN'
             ? 'Sesi masih terbuka — belum ada receipt'
-            : `${totalScanned} dari ${totalOrdered} box diterima · ${totalPcs} pcs masuk stok WH`
+            : `${totalScanned} dari ${totalOrdered} box diterima · ${receivedSummary} masuk stok WH`
         }
         actions={
           r.status === 'OPEN' ? (
@@ -279,9 +283,9 @@ export default async function ReceiptSummaryPage({ params }: { params: Promise<{
             icon={ClipboardList}
             title="Line Order Sheet"
             subtitle={
-              totalMissing > 0
-                ? `${totalMissing} box belum datang — ditandai hilang, menunggu revisi atau cutoff berikutnya`
-                : 'Semua box diterima'
+              missingParts > 0
+                ? `${missingParts} part memiliki kekurangan penerimaan`
+                : 'Semua barang diterima'
             }
           />
           <Table>
@@ -292,7 +296,7 @@ export default async function ReceiptSummaryPage({ params }: { params: Promise<{
                 <Th align="right">Diorder</Th>
                 <Th align="right">Dikirim</Th>
                 <Th align="right">Diterima sesi ini</Th>
-                <Th align="right">Pcs</Th>
+                <Th align="right">Qty diterima</Th>
                 <Th align="right">Hilang</Th>
               </tr>
             </thead>
@@ -305,10 +309,10 @@ export default async function ReceiptSummaryPage({ params }: { params: Promise<{
                   </Td>
                   <Td className="font-extrabold text-ink">{l.backNo}</Td>
                   <Td align="right" className="tabular">
-                    {l.boxOrdered}
+                    {l.boxOrdered} {l.usesKanban ? 'box' : l.uom}
                   </Td>
                   <Td align="right" className="tabular">
-                    {l.boxShipped ?? '—'}
+                    {l.boxShipped ?? '—'} {l.usesKanban ? 'box' : l.uom}
                   </Td>
                   <Td
                     align="right"
@@ -317,10 +321,10 @@ export default async function ReceiptSummaryPage({ params }: { params: Promise<{
                       l.boxScanned > 0 ? 'text-ok' : 'text-ink-muted',
                     )}
                   >
-                    {l.boxScanned}
+                    {l.usesKanban ? l.boxScanned : l.pcsReceived} {l.usesKanban ? 'box' : l.uom}
                   </Td>
                   <Td align="right" className="tabular">
-                    {l.pcsReceived}
+                    {l.pcsReceived} {l.uom}
                   </Td>
                   <Td
                     align="right"
@@ -329,7 +333,7 @@ export default async function ReceiptSummaryPage({ params }: { params: Promise<{
                       l.boxMissing > 0 ? 'text-warn' : 'text-ink-muted',
                     )}
                   >
-                    {l.boxMissing}
+                    {l.usesKanban ? l.boxMissing : missingManual(l)} {l.usesKanban ? 'box' : l.uom}
                   </Td>
                 </Tr>
               ))}

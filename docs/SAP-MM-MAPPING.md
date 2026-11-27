@@ -4,19 +4,35 @@ Ditinjau 2 November 2026. Sumber: `D:/fabian/00_Project/AI Project/MM/VB for GR.
 
 ## 1. Kesimpulan untuk implementasi
 
-Jika ARES akan memakai jalur penerimaan yang ditunjukkan VB, tujuan kirim GR adalah **`TT_PURCHASE_RECEIPT_H` dan `TT_PURCHASE_RECEIPT_L`**. PO SAP yang dibaca sebagai referensi adalah **`TT_PO_HEADER` dan `TT_PO_LINE`**. Nama serupa di database ARES tidak berarti struktur kolomnya sama.
+Sesuai arahan tim SAP, tujuan GR ARES adalah **`A_DB_STG.dbo.TT_GOODS_MOVEMENT_H` dan `TT_GOODS_MOVEMENT_L`**. PO tetap dibaca dari `TT_PO_HEADER` dan `TT_PO_LINE`.
 
-Kode VB memakai database **`DB_AIS`**, dan DDL penerimaan/PO yang disertakan juga memakai `DB_AIS.dbo`. Ini belum membuktikan tabel di **`A_DB_STG.dbo`** sudah dibaca program tersebut. Perlu dipastikan apakah staging diteruskan ke DB_AIS, atau VB/SAP akan diarahkan ke staging baru.
+| Tabel | Kolom | Nilai untuk request ARES |
+|---|---|---|
+| `TT_GOODS_MOVEMENT_H` | `CHR_TYPE_TRANS` | `FGDL` |
+| `TT_GOODS_MOVEMENT_H` | `CHR_VALIDATE` | `X` |
+| `TT_GOODS_MOVEMENT_L` | `CHR_UPLOAD` | `0` |
+
+Kedua tabel dan ketiga kolom diverifikasi di `A_DB_STG` dengan query baca saja. Kode VB SD menyeleksi request dengan flag tersebut, menghubungkan header dan detail lewat `INT_NUMBER`, lalu mengirim `FGDL` ke `ZZBAPI_AIIECC_SD00001`. Writer Finish Pulling di Avicenna MES bisa menjadi referensi untuk transaksi header/detail dan pencegahan duplikat.
+
+VB SD mengirim `CHR_DEL_NO` dan `CHR_DEL_ITEM` sebagai SAP Delivery dan item-nya. Tabel goods movement tidak memiliki kolom PO dan item PO khusus, sedangkan payload ARES saat ini membawa PO dan item PO. Sebelum writer diimplementasikan, perlu contoh satu header dan detail `FGDL` yang berhasil untuk penerimaan supplier. Contoh tersebut perlu menjelaskan referensi yang dipakai (SAP Delivery atau PO), sumber referensinya, movement type, plant/SLOC, dan kolom hasil yang mengonfirmasi GR. Saat ini gateway MSSQL ARES belum mengirim GR ke staging.
 
 ```text
 Master dan PO MM/SAP → sinkronisasi → master dan PO lokal ARES
 Receiving selesai di ARES → TT_SAP_OUTBOX ARES
-                         → TT_PURCHASE_RECEIPT_H/L di DB yang disepakati
+                         → A_DB_STG.dbo.TT_GOODS_MOVEMENT_H/L (FGDL)
                          → program penghubung → fungsi SAP
 Hasil SAP → pembacaan hasil oleh ARES → status Berhasil / Gagal
 ```
 
 ## 2. Tabel yang dibaca ARES
+
+Menu **Create Kanban** membaca `TM_VENDOR`, `TM_PARTS`, `TM_VENDOR_PARTS`, `TM_PARTS_SLOC`, dan `TM_KANBAN` staging. Plant baru diturunkan dari PO supplier–part bila hanya ada satu kode plant. Lokasi tujuan baru diambil bila part hanya memiliki satu lokasi aktif. Nilai sumber yang belum tersedia ditampilkan kosong.
+
+Admin hanya mengirim qty, identitas baris sumber, dan qty yang terakhir dibaca. API membaca ulang sumber dalam transaksi SQL Server sebelum menyimpan. Master supplier memakai tipe `S` sesuai data staging yang diperiksa. Master baru mendapat `INT_KANBAN_NO` dari identity SQL Server. Perubahan pada master yang sudah ada hanya mengisi `INT_QTY_PER_BOX`. Qty harus bilangan bulat positif.
+
+Hak akses khusus `sap.kanban.write` diberikan ke Admin. Penyimpanan master ini merupakan tindakan langsung Admin dan terpisah dari saklar pengiriman GR `STAGING_PUSH_ENABLED`. Intent serta hasil perubahan dicatat di audit ARES. Bila commit staging berhasil dan penyelarasan cache ARES terputus, penyimpanan ulang dengan qty yang sama memakai identitas master yang sama.
+
+Penyelarasan cache mengisi qty vendor part yang sudah memakai kanban. Part tanpa kanban mempertahankan konversi per satuan. Bila supplier dan part belum diimpor ke ARES, layar meminta Admin menjalankan **Tarik master**.
 
 Baris master/PO berikut adalah usulan pemetaan berdasarkan DDL dan kebutuhan ARES. Arsip VB ini berisi pengirim GR, bukan program pengunduh master/PO dari SAP, sehingga asal dan jadwal pembaruan setiap tabel masih perlu dikonfirmasi.
 
@@ -43,9 +59,9 @@ Catatan transformasi:
 - Master sumber memiliki beberapa kandidat jumlah per box (`TM_PARTS`, `TM_KANBAN`). Tetapkan sumber utama agar sinkronisasi tidak menimpa pengaturan supplier/kemasan secara keliru.
 - Sinkron supplier tidak boleh membatasi PPIC memesan berdasarkan plant supplier. Plant order tetap mengikuti plant Aisin yang membuat order.
 
-## 3. Tabel yang diisi ARES untuk GR
+## 3. Referensi historis VB untuk purchase receipt
 
-**Diisi otomatis setelah penerimaan selesai, melalui worker outbox; bukan saat Order Sheet baru diterbitkan.** Kedua tabel harus lengkap dalam satu transaksi database agar program VB tidak mengambil header tanpa detail.
+Bagian 3–7 mendokumentasikan analisis jalur MM lama dengan `TT_PURCHASE_RECEIPT_H/L`. Gunakan bagian 1 untuk kontrak GR ARES yang sedang disiapkan.
 
 ### Header: `TT_PURCHASE_RECEIPT_H`
 
@@ -82,7 +98,7 @@ Kunci DDL: `(CHR_PDS_NO, INT_PDS_PROCSEQ, INT_PDS_LINENO, CHR_PART_NO)`.
 
 Jumlah pada DDL bertipe `float`, tetapi variabel VB receipt bertipe `Integer`. UOM dan material yang memakai angka desimal perlu diuji/ditangani khusus. ARES saat ini juga memvalidasi qty GR sebagai bilangan bulat positif.
 
-## 4. Hasil SAP yang perlu dibaca kembali
+## 4. Hasil SAP pada jalur purchase receipt
 
 Pada header tersedia:
 
@@ -94,7 +110,7 @@ Pada header tersedia:
 
 Setelah insert staging berhasil, status ARES baru **STAGED**, belum **POSTED/Berhasil di SAP**. Perlu pembaca hasil dan penyimpanan nomor **serta tahun** dokumen SAP. Antarmuka gateway ARES saat ini baru menyediakan `sapDocNumber`, belum kolom tahun tersendiri.
 
-## 5. Pembatalan
+## 5. Pembatalan pada jalur purchase receipt
 
 `VB_RDS_CANCEL/rds cancel/Form1.vb` baris 42–78 memanggil `ZZBAPI_GOODSMVT_CANCEL` apabila:
 
@@ -108,7 +124,7 @@ Tidak ada literal movement type `102` pada pemanggilan cancel ini. ARES memiliki
 
 Join cancel hanya memakai PDS dan PO, tidak memasukkan `INT_PDS_PROCSEQ`, lalu memanggil SAP per hasil join detail. Pada beberapa baris/recovery ada risiko pemanggilan berulang atau baris tercampur; ini perlu diperbaiki/ditangani oleh penghubung sebelum dipakai ARES. Jangan menganggap fungsi SAP sudah idempoten tanpa melihat implementasinya.
 
-## 6. Tabel lain: tidak wajib diisi untuk jalur GR ini
+## 6. Tabel lain dalam analisis VB MM
 
 | Tabel | Hasil pemeriksaan |
 |---|---|
@@ -121,7 +137,7 @@ Join cancel hanya memakai PDS dan PO, tidak memasukkan `INT_PDS_PROCSEQ`, lalu m
 | `TM_MATDOC_IP_H/L` | Berdasarkan DDL terkait material document CKD/IP. Tidak dibaca program receipt/cancel ini; belum terbukti sumber hasil GR ARES. |
 | `PRD.TT_ELINA_H/L` | Tabel persiapan/kirim kebutuhan produksi; bukan tabel tujuan GR dalam VB ini. |
 
-## 7. Perbedaan yang harus diselesaikan sebelum tersambung
+## 7. Catatan historis pemetaan purchase receipt
 
 1. **Database — terjawab 3 November 2026:** `A_DB_STG` adalah tabel penghubung milik tim SAP. ARES hanya membaca/menulis `A_DB_STG`; program VB yang memindahkan data antara staging dan SAP asli (`DB_AIS` di kode VB lama akan diarahkan ke staging). ARES tidak pernah memanggil SAP langsung.
 2. **Nomor Order Sheet:** receipt biasa hanya memilih `D%` (baris 64–70), slitting hanya `S%` (106–109). Nomor ARES `7/8/9` tidak akan diproses apa adanya. Sesuaikan pemilih dokumen penghubung tanpa mengubah aturan nomor ARES.

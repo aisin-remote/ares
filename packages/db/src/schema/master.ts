@@ -136,6 +136,7 @@ export const vendorParts = mysqlTable(
       .notNull()
       .references(() => vendors.id),
     qtyPerBox: int('QTY_PER_BOX').notNull(),
+    usesKanban: boolean('USES_KANBAN').notNull().default(true),
     /** Dicetak besar di kanban untuk dibaca operator (F-24). */
     backNo: varchar('BACK_NO', { length: 32 }).notNull(),
     rack: varchar('RACK', { length: 32 }),

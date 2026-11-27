@@ -28,7 +28,7 @@ export function OrderStandardPage({ vendors }: { vendors: OrderStandardOption[] 
           <CardHeader
             icon={ListOrdered}
             title="Standar per supplier"
-            subtitle="Pilih supplier, lalu isi jumlah kanban normal untuk setiap part"
+            subtitle="Pilih supplier, lalu isi qty normal untuk setiap part"
           />
           <CardDivider />
           <OrderStandardForm vendors={vendors} />

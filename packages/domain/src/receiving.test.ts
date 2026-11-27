@@ -335,6 +335,13 @@ describe('picklistStatusPathOnClose (6.5 + catatan 6.4)', () => {
 });
 
 describe('summarizeReceiptSheet (Receipt Sheet)', () => {
+  it('mencetak qty manual sesuai satuan part tanpa mengubahnya menjadi box', () => {
+    const result = summarizeReceiptSheet([
+      { boxOrdered: 1000, qtyPerBox: 1, boxReceived: 0, qtyReceived: 950, sapPoNo: '450001' },
+    ]);
+    expect(result.lines[0]).toEqual({ boxReceived: 0, orderPcs: 1000, receivedPcs: 950, undeliveredPcs: 50 });
+    expect(result.totalBoxReceived).toBe(0);
+  });
   it('qty diterima, undelivered, dan total box dari baris receipt', () => {
     const out = summarizeReceiptSheet([
       { boxOrdered: 16, qtyPerBox: 100, boxReceived: 16, sapPoNo: '4500001' },
@@ -348,5 +355,28 @@ describe('summarizeReceiptSheet (Receipt Sheet)', () => {
     ]);
     expect(out.totalBoxReceived).toBe(17);
     expect(out.poNumbers).toEqual(['4500001', '4500002']);
+  });
+});
+
+describe('receiving tanpa kanban', () => {
+  const line = (qtyReceived: number | null): CloseLineInput => ({
+    picklistLineId: 1, qtyPerBox: 1, kanbans: [],
+    manual: { qtyExpected: 1000, qtyReceived },
+  });
+  it('qty yang belum diisi tidak dianggap sudah diterima', () => {
+    expect(() => closeScanSession([line(null)], 1)).toThrow(/belum diisi/);
+  });
+  it('menerima kg bulat dan memisahkan kekurangan dari jumlah box', () => {
+    expect(() => closeScanSession([line(950)], 1)).toThrow(ReasonRequiredError);
+    const result = closeScanSession([line(950)], 1, 'Timbangan aktual');
+    expect(result.picklistStatus).toBe('PARTIAL');
+    expect(result.missingKanbanIds).toEqual([]);
+    expect(result.lines[0]).toMatchObject({ boxReceived: 0, pcsReceived: 950, boxMissing: 0, qtyMissing: 50 });
+    expect(closeScanSession([line(1000)], 1).picklistStatus).toBe('COMPLETE');
+  });
+  it('menolak desimal, jumlah negatif, dan qty melebihi pengiriman', () => {
+    for (const qty of [1.5, -1, 1001, NaN]) {
+      expect(() => closeScanSession([line(qty)], 1, 'selisih')).toThrow();
+    }
   });
 });

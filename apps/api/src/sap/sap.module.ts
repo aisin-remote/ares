@@ -10,6 +10,7 @@ import { SapPoGateway } from './sap-po.gateway';
 import { SapPoService } from './sap-po.service';
 import { SapMasterGateway } from './sap-master.gateway';
 import { SapMasterService } from './sap-master.service';
+import { SapKanbanService } from './sap-kanban.service';
 
 @Module({
   imports: [QueueModule],
@@ -20,6 +21,7 @@ import { SapMasterService } from './sap-master.service';
     SapPoService,
     SapMasterGateway,
     SapMasterService,
+    SapKanbanService,
     SapOutboxService,
     SapWriterService,
     SapWorker,

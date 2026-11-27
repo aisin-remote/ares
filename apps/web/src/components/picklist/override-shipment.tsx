@@ -13,6 +13,8 @@ interface Line {
   backNo: string;
   boxOrdered: number;
   boxShipped: number | null;
+  usesKanban: boolean;
+  uom: string;
 }
 
 export function OverrideShipment({ id, lines }: { id: string; lines: Line[] }) {
@@ -56,7 +58,7 @@ export function OverrideShipment({ id, lines }: { id: string; lines: Line[] }) {
       <CardHeader
         icon={PencilLine}
         title="Koreksi jumlah kirim"
-        subtitle="PPIC dapat mengoreksi box terkirim sebelum sesi scan dibuka"
+        subtitle="PPIC dapat mengoreksi qty dikirim sebelum penerimaan dibuka"
       />
       <CardDivider />
       <CardBody className="space-y-4">
@@ -65,10 +67,11 @@ export function OverrideShipment({ id, lines }: { id: string; lines: Line[] }) {
             <label key={line.id} className="rounded-2xl border border-line bg-surface p-4">
               <span className="block text-[13px] font-semibold text-ink">{line.partNo}</span>
               <span className="block text-[12px] text-ink-muted">
-                Back no. {line.backNo} · order {line.boxOrdered} box
+                Back no. {line.backNo} · order {line.boxOrdered} {line.usesKanban ? 'box' : line.uom}
               </span>
               <input
                 type="number"
+                aria-label={`Qty dikirim ${line.partNo}`}
                 min={0}
                 max={line.boxOrdered}
                 step={1}

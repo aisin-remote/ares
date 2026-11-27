@@ -191,7 +191,7 @@ export class NotifyService {
         vendorId: picklistHeaders.vendorId,
         vendorName: vendors.name,
         lineCount: sql<number>`(select count(*) from ${picklistLines} where ${picklistLines.picklistId} = ${picklistHeaders.id})`,
-        boxOrdered: sql<number>`(select coalesce(sum(${picklistLines.boxOrdered}), 0) from ${picklistLines} where ${picklistLines.picklistId} = ${picklistHeaders.id})`,
+        boxOrdered: sql<number>`(select coalesce(sum(case when ${picklistLines.usesKanban} then ${picklistLines.boxOrdered} else 0 end), 0) from ${picklistLines} where ${picklistLines.picklistId} = ${picklistHeaders.id})`,
       })
       .from(picklistHeaders)
       .innerJoin(vendors, eq(picklistHeaders.vendorId, vendors.id))

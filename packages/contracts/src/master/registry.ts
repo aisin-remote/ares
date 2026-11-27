@@ -39,6 +39,7 @@ export interface EntityDef {
   searchFields: string[];
   defaultSort: string;
   fields: FieldDef[];
+  allowCreate?: boolean;
 }
 
 const activeField: FieldDef = {
@@ -48,6 +49,7 @@ const activeField: FieldDef = {
 
 export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
   vendors: {
+    allowCreate: false,
     key: 'vendors', label: 'Supplier', singular: 'Supplier', icon: 'Building2',
     description: 'Pemasok, pabrik, dan pola pengiriman dari SUPPLIER LIST', searchFields: ['sapVendorNo', 'name', 'scheduleCode', 'truckStation', 'location', 'email'],
     defaultSort: 'name', fields: [
@@ -72,6 +74,7 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
     ],
   },
   parts: {
+    allowCreate: false,
     key: 'parts', label: 'Part', singular: 'Part', icon: 'Package',
     description: 'Material beserta nomor material SAP', searchFields: ['sapMaterialNo', 'partNo', 'name'],
     defaultSort: 'partNo', fields: [
@@ -83,11 +86,14 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
     ],
   },
   vendorParts: {
+    allowCreate: false,
     key: 'vendorParts', label: 'Vendor Part', singular: 'Vendor Part', icon: 'PackageSearch',
     description: 'Kemasan dan lokasi part untuk setiap supplier', searchFields: ['backNo', 'rack', 'boxType'],
     defaultSort: 'id', fields: [
       { name: 'partId', label: 'Part', kind: 'reference', refEntity: 'parts', required: true, inList: true },
       { name: 'vendorId', label: 'Supplier', kind: 'reference', refEntity: 'vendors', required: true, inList: true },
+      { name: 'usesKanban', label: 'Menggunakan kanban', kind: 'boolean', defaultValue: true, inList: true,
+        hint: 'Matikan untuk part seperti ingot. Jumlah per box otomatis 1, order memakai satuan part, dan qty diterima diisi PPIC.' },
       { name: 'qtyPerBox', label: 'Jumlah per box', kind: 'number', required: true, min: 1, numeric: true, inList: true },
       { name: 'backNo', label: 'Back number', kind: 'text', required: true, max: 32, inList: true,
         vendorEditable: true },
@@ -102,11 +108,11 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
   },
   orderStandards: {
     key: 'orderStandards', label: 'Standar Order', singular: 'Standar Order', icon: 'ListOrdered',
-    description: 'Jumlah kanban normal per supplier-part untuk menandai anomali order',
+    description: 'Qty normal per supplier-part untuk menandai anomali order',
     searchFields: [], defaultSort: 'id', fields: [
       { name: 'vendorPartId', label: 'Supplier dan part', kind: 'reference', refEntity: 'vendorParts', required: true, inList: true },
-      { name: 'standardKanban', label: 'Standar order (kanban)', kind: 'number', required: true, min: 0, numeric: true, inList: true,
-        hint: 'Jumlah kanban yang biasanya dipesan pada satu cutoff.' },
+      { name: 'standardKanban', label: 'Qty standar order', kind: 'number', required: true, min: 0, numeric: true, inList: true,
+        hint: 'Jumlah normal per cutoff. Gunakan kanban untuk part berkartu dan satuan part untuk part tanpa kanban.' },
       activeField,
     ],
   },

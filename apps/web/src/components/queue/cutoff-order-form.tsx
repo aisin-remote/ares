@@ -24,6 +24,8 @@ type QueueRow = {
   partName: string;
   backNo: string;
   qtyPerKanban: number;
+  usesKanban: boolean;
+  uom: string;
   plannedKanban: number;
   remainingKanban: number;
   equivalentKanban: number;
@@ -40,6 +42,8 @@ type ExtraPart = {
   partName: string;
   backNo: string;
   qtyPerKanban: number;
+  usesKanban: boolean;
+  uom: string;
   standardKanban: number | null;
   po: CutoffPo;
 };
@@ -154,12 +158,12 @@ export function CutoffOrderForm({
       return value.trim() === '' || !Number.isSafeInteger(Number(value)) || Number(value) < 0;
     });
     if (invalid) {
-      setError(`${invalid.partNo}: isi jumlah kanban dengan bilangan bulat minimal 0.`);
+      setError(`${invalid.partNo}: isi qty dengan angka bulat minimal 0.`);
       return;
     }
     const invalidAdded = added.find((part) => !Number.isSafeInteger(Number(part.kanban)) || Number(part.kanban) < 1);
     if (invalidAdded) {
-      setError(`${invalidAdded.partNo}: part tambahan minimal 1 kanban.`);
+      setError(`${invalidAdded.partNo}: qty part tambahan minimal 1.`);
       return;
     }
     const cleanReason = reason.trim();
@@ -198,7 +202,7 @@ export function CutoffOrderForm({
         if ('error' in result) throw new Error(`${part.partNo}: ${result.error}`);
         setSavedRows((old) => [...old, {
           id: result.id, partNo: part.partNo, partName: part.partName, backNo: part.backNo,
-          qtyPerKanban: part.qtyPerKanban, plannedKanban: kanban, remainingKanban: 0,
+          qtyPerKanban: part.qtyPerKanban, usesKanban: part.usesKanban, uom: part.uom, plannedKanban: kanban, remainingKanban: 0,
           equivalentKanban: kanban, standardKanban: part.standardKanban, hold: false, blockedReason: null, po: part.po,
         }]);
         setDrafts((old) => ({ ...old, [result.id]: { kanban: String(kanban), hold: false } }));
@@ -256,13 +260,13 @@ export function CutoffOrderForm({
 
         <div className="mb-3 mt-7 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h3 className="text-[14px] font-bold">Part dan jumlah kanban</h3>
+            <h3 className="text-[14px] font-bold">Part dan qty order</h3>
             <p className="mt-1 text-[13px] text-ink-muted">
-              Isi jumlah kanban penuh. Aktifkan Tahan jika part dilanjutkan ke cutoff berikutnya.
+              Isi kanban untuk part berkartu, atau qty sesuai satuan untuk part tanpa kanban. Aktifkan Tahan untuk melanjutkan part ke cutoff berikutnya.
             </p>
           </div>
           <span className="rounded-full border border-line bg-surface px-3 py-1.5 text-[12px] font-semibold">
-            {itemCount + added.length} part · {numberLabel(totalKanban + addedKanban)} kanban · {heldCount} ditahan
+            {itemCount + added.length} part · {heldCount} ditahan
           </span>
         </div>
         <div className="scroll-slim overflow-x-auto rounded-2xl border border-line">
@@ -293,24 +297,24 @@ export function CutoffOrderForm({
                     </td>
                     <td className="px-4 py-4 font-mono text-[13px]">{row.backNo}</td>
                     <td className="px-4 py-4 text-right tabular-nums">
-                      {numberLabel(row.equivalentKanban)} kanban
-                      <p className="mt-1 text-[11px] text-ink-muted">Sisa {numberLabel(row.remainingKanban)} kanban</p>
+                      {numberLabel(row.equivalentKanban)} {row.usesKanban ? 'kanban' : row.uom}
+                      <p className="mt-1 text-[11px] text-ink-muted">Sisa {numberLabel(row.remainingKanban)} {row.usesKanban ? 'kanban' : row.uom}</p>
                     </td>
                     <td className="px-4 py-4 text-right tabular-nums">
-                      {row.standardKanban == null ? '—' : `${row.standardKanban} kanban`}
+                      {row.standardKanban == null ? '—' : `${row.standardKanban} ${row.usesKanban ? 'kanban' : row.uom}`}
                     </td>
                     <td className="px-4 py-4">
                       <span className={cn('text-[12px] font-semibold',
                         draft.hold ? 'text-ink-muted' : difference === 0 ? 'text-ok' : 'text-warn')}>
                         {draft.hold ? 'Ditahan' : difference == null ? 'Standar belum diatur'
                           : difference === 0 ? 'Sesuai standar'
-                            : `${difference > 0 ? '+' : ''}${numberLabel(difference)} kanban`}
+                            : `${difference > 0 ? '+' : ''}${numberLabel(difference)} ${row.usesKanban ? 'kanban' : row.uom}`}
                       </span>
                     </td>
-                    <td className="px-4 py-4"><PoCell po={row.po} needPcs={draft.hold ? 0 : quantity * row.qtyPerKanban} /></td>
+                    <td className="px-4 py-4"><PoCell uom={row.uom} po={row.po} needPcs={draft.hold ? 0 : quantity * row.qtyPerKanban} /></td>
                     <td className="px-4 py-4 text-right">
                       <input
-                        aria-label={`Jumlah kanban ${row.partNo}`}
+                        aria-label={`Qty order ${row.partNo} (${row.usesKanban ? 'kanban' : row.uom})`}
                         type="number" inputMode="numeric" min={0} step={1} required
                         value={draft.kanban}
                         disabled={draft.hold}
@@ -318,7 +322,7 @@ export function CutoffOrderForm({
                         onChange={(event) => updateDraft(row.id, { kanban: event.target.value })}
                         className="h-10 w-28 rounded-xl border border-line bg-surface px-3 text-right text-[15px] font-semibold tabular-nums outline-none focus:border-accent disabled:opacity-50"
                       />
-                      <p className="mt-1 text-[11px] text-ink-muted">{row.qtyPerKanban} pcs/kanban</p>
+                      <p className="mt-1 text-[11px] text-ink-muted">{row.usesKanban ? `${row.qtyPerKanban} ${row.uom}/kanban` : row.uom}</p>
                     </td>
                     <td className="px-5 py-4 text-center">
                       <input
@@ -346,19 +350,19 @@ export function CutoffOrderForm({
                     <td className="px-4 py-4 font-mono text-[13px]">{part.backNo}</td>
                     <td className="px-4 py-4 text-right text-ink-muted">—</td>
                     <td className="px-4 py-4 text-right tabular-nums">
-                      {part.standardKanban == null ? '—' : `${part.standardKanban} kanban`}
+                      {part.standardKanban == null ? '—' : `${part.standardKanban} ${part.usesKanban ? 'kanban' : part.uom}`}
                     </td>
                     <td className="px-4 py-4">
                       <span className={cn('text-[12px] font-semibold', difference === 0 ? 'text-ok' : 'text-warn')}>
                         {difference == null ? 'Standar belum diatur'
                           : difference === 0 ? 'Sesuai standar'
-                            : `${difference > 0 ? '+' : ''}${numberLabel(difference)} kanban`}
+                            : `${difference > 0 ? '+' : ''}${numberLabel(difference)} ${part.usesKanban ? 'kanban' : part.uom}`}
                       </span>
                     </td>
-                    <td className="px-4 py-4"><PoCell po={part.po} needPcs={quantity * part.qtyPerKanban} /></td>
+                    <td className="px-4 py-4"><PoCell uom={part.uom} po={part.po} needPcs={quantity * part.qtyPerKanban} /></td>
                     <td className="px-4 py-4 text-right">
                       <input
-                        aria-label={`Jumlah kanban ${part.partNo}`}
+                        aria-label={`Qty order ${part.partNo} (${part.usesKanban ? 'kanban' : part.uom})`}
                         type="number" inputMode="numeric" min={1} step={1} required
                         value={part.kanban}
                         onFocus={(event) => event.currentTarget.select()}
@@ -369,7 +373,7 @@ export function CutoffOrderForm({
                         }}
                         className="h-10 w-28 rounded-xl border border-line bg-surface px-3 text-right text-[15px] font-semibold tabular-nums outline-none focus:border-accent"
                       />
-                      <p className="mt-1 text-[11px] text-ink-muted">{part.qtyPerKanban} pcs/kanban</p>
+                      <p className="mt-1 text-[11px] text-ink-muted">{part.usesKanban ? `${part.qtyPerKanban} ${part.uom}/kanban` : part.uom}</p>
                     </td>
                     <td className="px-5 py-4 text-center">
                       <button
@@ -423,7 +427,7 @@ export function CutoffOrderForm({
             <div>
               {anomalies.length + addedAnomalies > 0 ? <p>{anomalies.length + addedAnomalies} item berbeda dari standar. Isi alasan sebelum menerbitkan.</p> : null}
               {!ready ? <p>Perubahan dapat disimpan sekarang. Penerbitan aktif setelah waktu cutoff tercapai.</p> : null}
-              {totalKanban + addedKanban === 0 ? <p>Belum ada kanban penuh untuk diterbitkan. Proses cutoff akan meneruskan sisa ke jadwal berikutnya tanpa membuat Order Sheet.</p> : null}
+              {totalKanban + addedKanban === 0 ? <p>Belum ada qty order untuk diterbitkan. Proses cutoff akan meneruskan sisa ke jadwal berikutnya tanpa membuat Order Sheet.</p> : null}
             </div>
           </div>
         ) : null}
@@ -468,14 +472,14 @@ export function CutoffOrderForm({
 }
 
 /** PO yang akan dipakai saat terbit dan sisanya (F-19, F-44); merah bila order melebihi sisa. */
-function PoCell({ po, needPcs }: { po: CutoffPo; needPcs: number }) {
+function PoCell({ po, needPcs, uom }: { po: CutoffPo; needPcs: number; uom: string }) {
   if (!po) return <span className="text-[12px] font-semibold text-warn">Belum ada PO</span>;
   const kurang = needPcs > po.remainingPcs;
   return (
     <div>
       <p className="font-mono text-[12px] font-semibold">{po.sapPoNo}/{po.item}</p>
       <p className={cn('mt-0.5 text-[12px] tabular-nums', kurang ? 'font-semibold text-ng' : 'text-ink-muted')}>
-        {kurang ? 'Kurang · ' : ''}sisa {numberLabel(po.remainingPcs)} / {numberLabel(po.openQty)} pcs
+        {kurang ? 'Kurang · ' : ''}sisa {numberLabel(po.remainingPcs)} / {numberLabel(po.openQty)} {uom}
       </p>
     </div>
   );

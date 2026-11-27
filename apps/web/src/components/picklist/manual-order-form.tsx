@@ -27,7 +27,7 @@ function poTersedia(part: OrderOption['parts'][number], deliveryDate: string) {
   return {
     sisa: berlaku.reduce((total, po) => total + po.remainingPcs, 0),
     qtyPo: berlaku.reduce((total, po) => total + po.openQty, 0),
-    nomor: berlaku.map((po) => `PO ${po.sapPoNo}/${po.item}: sisa ${po.remainingPcs} dari ${po.openQty} pcs`).join('\n'),
+    nomor: berlaku.map((po) => `PO ${po.sapPoNo}/${po.item}: sisa ${po.remainingPcs} dari ${po.openQty} ${part.uom}`).join('\n'),
   };
 }
 
@@ -60,7 +60,7 @@ export function ManualOrderForm({
     (part) => Number(boxesByPart[part.id] ?? 0) > 0,
   ).length;
   const totalBox = (vendor?.parts ?? []).reduce(
-    (total, part) => total + Math.max(0, Number(boxesByPart[part.id] ?? 0) || 0),
+    (total, part) => total + (part.usesKanban ? Math.max(0, Number(boxesByPart[part.id] ?? 0) || 0) : 0),
     0,
   );
   const masalahMaster = [
@@ -261,7 +261,7 @@ export function ManualOrderForm({
                     Kesiapan
                   </th>
                   <th scope="col" className="w-[16%] px-5 py-3 text-right">
-                    Jumlah box
+                    Qty order
                   </th>
                 </tr>
               </thead>
@@ -286,7 +286,7 @@ export function ManualOrderForm({
                         {part.backNo}
                       </td>
                       <td className="px-4 py-3 text-right tabular text-ink-soft">
-                        {part.qtyPerBox} pcs
+                        {part.usesKanban ? `${part.qtyPerBox} ${part.uom}` : 'Tanpa kanban'}
                       </td>
                       <td className="px-4 py-3">
                         <span
@@ -301,15 +301,15 @@ export function ManualOrderForm({
                           {po.qtyPo <= 0
                             ? 'PO belum ada'
                             : po.sisa <= 0
-                              ? `PO habis · 0 / ${po.qtyPo} pcs`
+                              ? `PO habis · 0 / ${po.qtyPo} ${part.uom}`
                               : pcsDipilih > po.sisa
-                                ? `PO kurang · sisa ${po.sisa} pcs`
-                                : `Sisa PO · ${po.sisa} / ${po.qtyPo} pcs`}
+                                ? `PO kurang · sisa ${po.sisa} ${part.uom}`
+                                : `Sisa PO · ${po.sisa} / ${po.qtyPo} ${part.uom}`}
                         </span>
                       </td>
                       <td className="px-5 py-3 text-right">
                         <input
-                          aria-label={`Jumlah box ${part.partNo}`}
+                          aria-label={`Qty order ${part.partNo} (${part.usesKanban ? 'box' : part.uom})`}
                           type="number"
                           inputMode="numeric"
                           min={0}
@@ -319,6 +319,7 @@ export function ManualOrderForm({
                           onChange={(event) => ubahJumlah(part.id, event.target.value)}
                           className="h-10 w-28 rounded-xl border border-line bg-surface px-3 text-right text-[15px] font-semibold tabular outline-none transition-colors focus:border-accent focus:bg-card"
                         />
+                        <div className="mt-1 text-xs text-ink-muted">{part.usesKanban ? 'box' : part.uom}</div>
                       </td>
                     </tr>
                   );

@@ -60,6 +60,7 @@ export function MasterTable({
   const canToggleActive = def.fields.some((f) => f.name === 'isActive');
 
   function openCreate() {
+    if (def.allowCreate === false) return;
     if (entity === 'orderStandards') {
       router.push('/master/orderStandards/baru');
       return;
@@ -98,14 +99,14 @@ export function MasterTable({
         {toolbarHeading ? <div className="min-w-0 flex-1">{toolbarHeading}</div> : null}
         <div className={cn('flex gap-3', toolbar ? 'flex-col items-stretch sm:flex-row sm:items-center sm:justify-end' : 'items-center justify-end')}>
           {toolbar}
-          <button
+          {def.allowCreate !== false && <button
           type="button"
           onClick={openCreate}
           className="inline-flex h-11 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-accent px-5 text-[14px] font-semibold text-white transition-colors hover:bg-accent-soft"
         >
           <Plus className="size-[18px]" strokeWidth={2.4} aria-hidden />
           Tambah {def.singular}
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -150,7 +151,7 @@ export function MasterTable({
                   colSpan={listFields.length + 1}
                   className="px-5 py-14 text-center text-[14px] text-ink-muted"
                 >
-                  {entity === 'vendorCutoffs' ? 'Tidak ada jadwal cutoff dalam daftar ini. Ubah pencarian atau tambahkan jadwal baru.' : <>
+                  {def.allowCreate === false ? 'Belum ada data. Gunakan Tarik master pada menu Integrasi SAP.' : entity === 'vendorCutoffs' ? 'Tidak ada jadwal cutoff dalam daftar ini. Ubah pencarian atau tambahkan jadwal baru.' : <>
                     Belum ada data {def.label.toLowerCase()}. Tekan
                     <span className="font-semibold text-ink"> Tambah {def.singular} </span>
                     untuk membuat yang pertama.

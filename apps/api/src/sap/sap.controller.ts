@@ -1,5 +1,5 @@
 import { BadRequestException, Body, Controller, Get, Post, Put, Param, Query, Req } from '@nestjs/common';
-import { poScheduleSchema, type PoScheduleInput } from '@ares/contracts';
+import { poScheduleSchema, saveSapKanbanSchema, type PoScheduleInput, type SaveSapKanbanInput } from '@ares/contracts';
 import type { Request } from 'express';
 import { z } from 'zod';
 import { SapOutboxService } from './sap-outbox.service';
@@ -10,6 +10,7 @@ import { QueueService } from '../queue/queue.service';
 import { JOBS, QUEUES } from '../queue/queue.constants';
 import { SapPoService } from './sap-po.service';
 import { SapMasterService } from './sap-master.service';
+import { SapKanbanService } from './sap-kanban.service';
 
 function actorOf(req: Request): { userId: number; plantId: number } {
   if (req.principal?.kind !== 'user') throw new BadRequestException('Aksi ini hanya untuk user');
@@ -56,7 +57,21 @@ export class SapController {
     private readonly queue: QueueService,
     private readonly po: SapPoService,
     private readonly master: SapMasterService,
+    private readonly kanban: SapKanbanService,
   ) {}
+
+  @Get('kanban')
+  @RequirePermission('sap.kanban.write')
+  listKanban(@Query('q') search?: string, @Query('page') page?: string) {
+    return this.kanban.list(search?.slice(0, 100), Math.max(1, Math.floor(Number(page)) || 1));
+  }
+
+  @Put('kanban')
+  @RequirePermission('sap.kanban.write')
+  saveKanban(@Body(new ZodValidationPipe(saveSapKanbanSchema)) body: SaveSapKanbanInput, @Req() req: Request) {
+    if (req.principal?.kind !== 'user') throw new BadRequestException('Aksi ini hanya untuk user');
+    return this.kanban.save(body, req.principal.sub);
+  }
 
   @Get('po/status')
   @RequirePermission('outbox.read')

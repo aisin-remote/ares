@@ -187,7 +187,7 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: 'ListOrdered',
         permission: 'master.read',
       },
-      { href: '/master/bom', label: 'BOM', icon: 'GitBranch', permission: 'master.read' },
+      { href: '/master/kanban', label: 'Create Kanban', icon: 'QrCode', permission: 'sap.kanban.write' },
       { href: '/master/users', label: 'User & Peran', icon: 'Users', permission: 'user.write' },
     ],
   },

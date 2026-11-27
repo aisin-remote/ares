@@ -93,7 +93,7 @@ export default async function QueuePage({
                             ≈ {row.boxes.toLocaleString('id-ID')} kanban
                           </p>
                           <p className="mt-0.5 text-[11px] tabular text-ink-muted">
-                            {row.totalPcs.toLocaleString('id-ID')} pcs
+                            {row.manualCount > 0 ? `${row.manualCount} item qty manual` : `${row.totalPcs.toLocaleString('id-ID')} pcs`}
                           </p>
                         </div>
                         <div className="whitespace-nowrap">

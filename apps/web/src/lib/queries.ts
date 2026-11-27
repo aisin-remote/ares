@@ -29,6 +29,7 @@ import {
   picklistLines,
   kanbans,
   receiptHeaders,
+  receiptLines,
   stockMutations,
   stockSnapshots,
   vendors,
@@ -388,7 +389,7 @@ export async function getDashboardSummary(schedule?: {
         cutoffAt: picklistHeaders.cutoffAt,
         deliveryDate: picklistHeaders.deliveryDate,
         arrivalTime: picklistHeaders.arrivalTime,
-        boxOrdered: sql<number>`(select coalesce(sum(${picklistLines.boxOrdered}), 0) from ${picklistLines} where ${picklistLines.picklistId} = ${picklistHeaders.id})`,
+        boxOrdered: sql<number>`(select coalesce(sum(case when ${picklistLines.usesKanban} then ${picklistLines.boxOrdered} else 0 end), 0) from ${picklistLines} where ${picklistLines.picklistId} = ${picklistHeaders.id})`,
       })
       .from(picklistHeaders)
       .innerJoin(vendors, eq(picklistHeaders.vendorId, vendors.id))
@@ -951,7 +952,7 @@ export async function listPicklists(
         shippedAt: picklistHeaders.shippedAt,
         createdAt: picklistHeaders.createdAt,
         lineCount: sql<number>`(select count(*) from ${picklistLines} where ${picklistLines.picklistId} = ${picklistHeaders.id})`,
-        boxOrdered: sql<number>`(select coalesce(sum(${picklistLines.boxOrdered}), 0) from ${picklistLines} where ${picklistLines.picklistId} = ${picklistHeaders.id})`,
+        boxOrdered: sql<number>`(select coalesce(sum(case when ${picklistLines.usesKanban} then ${picklistLines.boxOrdered} else 0 end), 0) from ${picklistLines} where ${picklistLines.picklistId} = ${picklistHeaders.id})`,
       })
       .from(picklistHeaders)
       .innerJoin(vendors, eq(picklistHeaders.vendorId, vendors.id))
@@ -1029,7 +1030,12 @@ export async function getPicklistDetail(scope: VendorScope, reference: string, p
       boxShipped: picklistLines.boxShipped,
       boxReceived: picklistLines.boxReceived,
       qtyPerBox: picklistLines.qtyPerBox,
+      usesKanban: picklistLines.usesKanban,
+      uom: parts.uom,
       pcs: picklistLines.pcs,
+      qtyReceived: sql<number>`(select coalesce(sum(rl.PCS_RECEIVED),0) from TT_RECEIPT_L rl
+        join TT_RECEIPT_H rh on rh.ID = rl.RECEIPT_ID
+        where rl.PICKLIST_LINE_ID = TT_PICKLIST_L.ID and rh.STATUS = 'CLOSED')`,
       sapPoNo: picklistLines.sapPoNo,
       sapPoItem: picklistLines.sapPoItem,
       status: picklistLines.status,
@@ -1044,7 +1050,7 @@ export async function getPicklistDetail(scope: VendorScope, reference: string, p
   return {
     ...header,
     receiptCount: Number(header.receiptCount),
-    lines: lines.map((l) => ({ ...l, kanbanCount: Number(l.kanbanCount) })),
+    lines: lines.map((l) => ({ ...l, kanbanCount: Number(l.kanbanCount), qtyReceived: Number(l.qtyReceived) })),
   };
 }
 
@@ -1115,6 +1121,8 @@ export async function getOrderOptions() {
         partName: parts.name,
         backNo: vendorParts.backNo,
         qtyPerBox: vendorParts.qtyPerBox,
+        usesKanban: vendorParts.usesKanban,
+        uom: parts.uom,
       })
       .from(vendorParts)
       .innerJoin(parts, eq(vendorParts.partId, parts.id))
@@ -1173,6 +1181,8 @@ export async function getOrderStandardOptions() {
         partName: parts.name,
         backNo: vendorParts.backNo,
         qtyPerKanban: vendorParts.qtyPerBox,
+        usesKanban: vendorParts.usesKanban,
+        uom: parts.uom,
         standardKanban: orderStandards.standardKanban,
         standardActive: orderStandards.isActive,
       })
@@ -1287,7 +1297,7 @@ export async function listReceipts(opts: {
         grStatus: sql<
           string | null
         >`(select so.STATUS from TT_SAP_OUTBOX so where so.SOURCE_TABLE = 'TT_RECEIPT_H' and so.SOURCE_ID = TT_RECEIPT_H.ID and so.DOC_TYPE = 'GR' limit 1)`,
-        boxOrdered: sql<number>`(select coalesce(sum(l.BOX_ORDERED),0) from TT_PICKLIST_L l where l.PICKLIST_ID = TT_PICKLIST_H.ID)`,
+        boxOrdered: sql<number>`(select coalesce(sum(case when l.USES_KANBAN then l.BOX_ORDERED else 0 end),0) from TT_PICKLIST_L l where l.PICKLIST_ID = TT_PICKLIST_H.ID)`,
         boxScanned: sql<number>`(select count(*) from TM_KANBAN k where k.RECEIPT_ID = TT_RECEIPT_H.ID and k.STATUS = 'RECEIVED')`,
       })
       .from(receiptHeaders)
@@ -1358,6 +1368,11 @@ export async function getReceiptDetail(reference: string, plantId: number) {
         partNo: parts.partNo,
         partName: parts.name,
         backNo: vendorParts.backNo,
+        usesKanban: picklistLines.usesKanban,
+        qtyOrdered: picklistLines.pcs,
+        qtyPerBox: picklistLines.qtyPerBox,
+        uom: parts.uom,
+        manualQty: receiptLines.pcsReceived,
         boxOrdered: picklistLines.boxOrdered,
         boxShipped: picklistLines.boxShipped,
         boxReceived: picklistLines.boxReceived,
@@ -1369,6 +1384,7 @@ export async function getReceiptDetail(reference: string, plantId: number) {
       .from(picklistLines)
       .innerJoin(vendorParts, eq(picklistLines.vendorPartId, vendorParts.id))
       .innerJoin(parts, eq(vendorParts.partId, parts.id))
+      .leftJoin(receiptLines, and(eq(receiptLines.picklistLineId, picklistLines.id), eq(receiptLines.receiptId, r.id)))
       .where(eq(picklistLines.picklistId, r.picklistId))
       .orderBy(asc(picklistLines.id)),
     // GR ke SAP untuk sesi ini (6.5.3); kosong = worker belum memungutnya.
@@ -1507,9 +1523,10 @@ export async function listOpenOrderQueueVendors(opts: {
         vendorId: vendors.id,
         vendorName: vendors.name,
         itemCount: count(),
+        manualCount: sql<number>`sum(case when ${vendorParts.usesKanban} then 0 else 1 end)`,
         cutoffCount: sql<number>`count(distinct ${orderQueues.cutoffAt})`,
         totalPcs: sql<number>`coalesce(sum(${orderQueues.pcs} + ${orderQueues.carryOverPcs}), 0)`,
-        boxes: sql<number>`coalesce(sum((${orderQueues.pcs} + ${orderQueues.carryOverPcs}) / nullif(${vendorParts.qtyPerBox}, 0)), 0)`,
+        boxes: sql<number>`coalesce(sum(case when ${vendorParts.usesKanban} then (${orderQueues.pcs} + ${orderQueues.carryOverPcs}) / nullif(${vendorParts.qtyPerBox}, 0) else 0 end), 0)`,
         holdCount: sql<number>`sum(case when ${orderQueues.hold} = true then 1 else 0 end)`,
         blockedCount: sql<number>`sum(case when ${orderQueues.blockedReason} is not null then 1 else 0 end)`,
         nextCutoffAt: nextCutoff,
@@ -1527,7 +1544,7 @@ export async function listOpenOrderQueueVendors(opts: {
         total: sql<number>`count(distinct ${vendors.id})`,
         items: count(),
         pcs: sql<number>`coalesce(sum(${orderQueues.pcs} + ${orderQueues.carryOverPcs}), 0)`,
-        boxes: sql<number>`coalesce(sum((${orderQueues.pcs} + ${orderQueues.carryOverPcs}) / nullif(${vendorParts.qtyPerBox}, 0)), 0)`,
+        boxes: sql<number>`coalesce(sum(case when ${vendorParts.usesKanban} then (${orderQueues.pcs} + ${orderQueues.carryOverPcs}) / nullif(${vendorParts.qtyPerBox}, 0) else 0 end), 0)`,
       })
       .from(orderQueues)
       .innerJoin(vendorParts, eq(orderQueues.vendorPartId, vendorParts.id))
@@ -1540,6 +1557,7 @@ export async function listOpenOrderQueueVendors(opts: {
     data: rows.map((row) => ({
       ...row,
       itemCount: Number(row.itemCount),
+      manualCount: Number(row.manualCount),
       cutoffCount: Number(row.cutoffCount),
       totalPcs: Number(row.totalPcs),
       boxes: Math.round(Number(row.boxes) * 100) / 100,
@@ -1578,6 +1596,8 @@ export async function getOpenOrderQueueVendorDetail(vendorId: number, plantId: n
         partName: parts.name,
         backNo: vendorParts.backNo,
         qtyPerBox: vendorParts.qtyPerBox,
+        usesKanban: vendorParts.usesKanban,
+        uom: parts.uom,
         standardKanban: orderStandards.standardKanban,
         pcs: orderQueues.pcs,
         carryOverPcs: orderQueues.carryOverPcs,
@@ -1715,6 +1735,8 @@ export async function listVendorPartsForOrder(vendorId: number) {
       partName: parts.name,
       backNo: vendorParts.backNo,
       qtyPerBox: vendorParts.qtyPerBox,
+        usesKanban: vendorParts.usesKanban,
+        uom: parts.uom,
       standardKanban: orderStandards.standardKanban,
     })
     .from(vendorParts)

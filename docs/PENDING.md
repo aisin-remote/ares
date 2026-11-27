@@ -127,23 +127,15 @@ outbox PENDING (GR 101, key RCP-260921-0010) dalam 15 detik.)
       tidak bisa dicetak. Isi QR = nomor receipt; "repeated no." = urutan receipt
       untuk DO yang sama, termasuk yang batal — konfirmasi definisi ini ke PPIC.
       Empat kotak tanda tangan di kanan bawah dibiarkan tanpa label seperti template.
-- [ ] **Kontrak staging SAP masih menunggu tim SAP.** Jalur ARES sudah siap:
-      outbox idempoten, validasi GR, worker terpisah, retry bertahap, serta status
-      `PENDING/PROCESSING/STAGED/POSTED`. Yang belum boleh ditebak adalah nama
-      tabel/kolom tujuan, arti flag siap/sukses/gagal, cara membaca nomor material
-      document, movement reversal 102, kode plant dan sloc final, serta interval
-      pembacaan staging oleh SAP. Sampai jawaban itu lengkap, gateway MSSQL tetap
-      sengaja menolak kiriman dan mode pilot memakai `SAP_GATEWAY=fake`.
-      Pembaruan 2026-11-02: konfigurasi koneksi `STAGING_*` dan diagnostik
-      `pnpm --filter @ares/api staging:check` sudah tersedia. Lokal memakai
-      `SAP_GATEWAY=mssql`, push/pull false. Database tujuan = `A_DB_STG`
-      (2026-11-03; `aisinbisa_sap_stagging` hanya trial tim SAP). `A_DB_STG` adalah
-      tabel penghubung: program VB tim SAP yang menarik data staging ke SAP asli
-      dan (diduga) menulis hasilnya kembali. Koneksi
-      berhasil dan delapan tabel utama pada schema `dbo` terverifikasi. Isinya
-      salinan data trial (2026-11-03), bukan data SAP sungguhan — bersihkan
-      sebelum SAP mulai membaca `A_DB_STG`. Sinkronisasi data, pengiriman GR, dan pembacaan hasil
-      SAP masih menunggu implementasi. Detail ada di `docs/SAP-MM-MAPPING.md`.
+- [ ] **Pengiriman GR dan pembacaan hasil SAP belum diimplementasikan.**
+      Tim SAP menetapkan `A_DB_STG.dbo.TT_GOODS_MOVEMENT_H/L`, dengan
+      `H.CHR_TYPE_TRANS='FGDL'`, `H.CHR_VALIDATE='X'`, dan `L.CHR_UPLOAD='0'`.
+      Minta contoh `FGDL` yang berhasil untuk penerimaan supplier guna memastikan
+      pemetaan SAP Delivery/item atau PO/item, movement type, plant/SLOC, dan
+      kolom sukses/gagal serta nomor/tahun material document. Jalur pembatalan
+      juga perlu dikonfirmasi. ARES sudah menyiapkan data receipt di SAP Outbox.
+      Verifikasi koneksi dan tabel dengan `pnpm --filter @ares/api staging:check`.
+      Lihat [pemetaan SAP](SAP-MM-MAPPING.md#1-kesimpulan-untuk-implementasi).
 
 ## 3. Lingkungan pengembangan tidak sesuai dokumen
 

@@ -41,6 +41,8 @@ export default async function CutoffOrderPage({
       partName: row.partName,
       backNo: row.backNo,
       qtyPerKanban: row.qtyPerBox,
+      usesKanban: row.usesKanban,
+      uom: row.uom,
       plannedKanban: plan.boxes,
       remainingKanban: plan.carryOverPcs / row.qtyPerBox,
       equivalentKanban: (row.pcs + row.carryOverPcs) / row.qtyPerBox,
@@ -66,7 +68,7 @@ export default async function CutoffOrderPage({
         <CardHeader
           icon={ClipboardList}
           title="Item order"
-          subtitle="Periksa jumlah kanban dan perbandingan standar, lalu simpan atau terbitkan order."
+          subtitle="Periksa qty dan perbandingan standar, lalu simpan atau terbitkan order."
         />
         <CardDivider />
         <CutoffOrderForm
@@ -86,6 +88,8 @@ export default async function CutoffOrderPage({
               partName: part.partName,
               backNo: part.backNo,
               qtyPerKanban: part.qtyPerBox,
+              usesKanban: part.usesKanban,
+              uom: part.uom,
               standardKanban: part.standardKanban,
               po: preview.po[part.vendorPartId] ?? null,
             }))}

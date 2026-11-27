@@ -11,6 +11,7 @@ export interface PicklistDocLine {
   boxType: string | null;
   qtyPerBox: number;
   boxOrdered: number;
+  usesKanban?: boolean;
   pcs: number;
   sapPoNo: string;
   sapPoItem: string;

@@ -47,7 +47,7 @@ export default async function PortalDetailPage({ params }: { params: Promise<{ i
 
   const totalKanban = picklist.lines.reduce((n, l) => n + l.kanbanCount, 0);
   const orderNo = orderSheetDisplayNo(picklist.picklistNo, picklist.revision);
-  const totalBox = picklist.lines.reduce((n, l) => n + l.boxOrdered, 0);
+  const totalBox = picklist.lines.reduce((n, l) => n + (l.usesKanban ? l.boxOrdered : 0), 0);
   const penanda = penandaKedatangan(picklist.deliveryDate, picklist.arrivalTime, picklist.status);
   // F-29: form konfirmasi baru muncul setelah dokumen diunduh; 6.3.4: sesudah
   // SHIPPED angkanya beku di layar ini.
@@ -198,6 +198,8 @@ export default async function PortalDetailPage({ params }: { params: Promise<{ i
                   backNo: l.backNo,
                   boxOrdered: l.boxOrdered,
                   qtyPerBox: l.qtyPerBox,
+                  usesKanban: l.usesKanban,
+                  uom: l.uom,
                 }))}
                 defaultEta={`${picklist.deliveryDate}T${jam(picklist.arrivalTime)}`}
               />
@@ -210,7 +212,7 @@ export default async function PortalDetailPage({ params }: { params: Promise<{ i
                     <Th align="right">Qty/box</Th>
                     <Th align="right">Diorder</Th>
                     <Th align="right">Dikirim</Th>
-                    <Th align="right">Pcs</Th>
+                    <Th align="right">Qty aktual</Th>
                     <Th sticky="right">Status</Th>
                   </tr>
                 </thead>
@@ -228,10 +230,10 @@ export default async function PortalDetailPage({ params }: { params: Promise<{ i
                         </Td>
                         <Td className="tabular">{l.backNo}</Td>
                         <Td align="right" className="tabular">
-                          {l.qtyPerBox}
+                          {l.usesKanban ? l.qtyPerBox : '—'}
                         </Td>
                         <Td align="right" className="tabular">
-                          {l.boxOrdered}
+                          {l.boxOrdered} {l.usesKanban ? 'box' : l.uom}
                         </Td>
                         <Td
                           align="right"
@@ -242,10 +244,10 @@ export default async function PortalDetailPage({ params }: { params: Promise<{ i
                               : 'text-ink',
                           )}
                         >
-                          {l.boxShipped ?? '—'}
+                          {l.boxShipped ?? '—'} {l.usesKanban ? 'box' : l.uom}
                         </Td>
                         <Td align="right" className="tabular">
-                          {(l.boxShipped ?? l.boxOrdered) * l.qtyPerBox}
+                          {(l.boxShipped ?? l.boxOrdered) * l.qtyPerBox} {l.uom}
                         </Td>
                         <Td sticky="right">{LINE_STATUS_LABEL[l.status] ?? l.status}</Td>
                       </Tr>

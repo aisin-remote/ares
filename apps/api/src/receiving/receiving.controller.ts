@@ -14,6 +14,8 @@ import {
   closeReceiptSchema,
   cancelReceiptSchema,
   receiveClaimSchema,
+  manualReceiptSchema,
+  type ManualReceiptInput,
   type OpenReceiptInput,
   type ScanReceiptInput,
   type CloseReceiptInput,
@@ -36,6 +38,19 @@ function actorOf(req: Request): Actor {
 @Controller('receipts')
 export class ReceivingController {
   constructor(private readonly receiving: ReceivingService) {}
+
+  @Post(':id/manual')
+  @RequirePermission('receipt.manual')
+  async manual(
+    @Param('id') reference: string,
+    @Body(new ZodValidationPipe(manualReceiptSchema)) body: ManualReceiptInput,
+    @Req() req: Request,
+  ) {
+    const actor = actorOf(req);
+    return this.receiving.saveManual(
+      await this.receiving.resolveId(reference, actor.plantId), body, actor,
+    );
+  }
 
   /** F-34: scan barcode picklist → sesi OPEN (atau lanjutkan yang ada). */
   @Post('open')

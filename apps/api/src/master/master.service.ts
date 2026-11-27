@@ -308,10 +308,14 @@ export class MasterService {
 
   async create(entity: MasterEntity, body: unknown, actor: MasterActor) {
     await this.assertExtraPermission(entity, actor);
+    if (getEntityDef(entity).allowCreate === false) {
+      throw new ForbiddenException('Data master ini berasal dari staging SAP. Gunakan Tarik master.');
+    }
     const parsed = buildCreateSchema(entity).safeParse(body);
     if (!parsed.success) throw validationError(parsed.error);
     const table = this.table(entity);
     const values = entity === 'users' ? await this.userValues(parsed.data, undefined, actor) : parsed.data;
+    if (entity === 'vendorParts' && values.usesKanban === false) values.qtyPerBox = 1;
     try {
       return await this.db.transaction(async (tx) => {
         const result = await tx.insert(table).values(values);
@@ -469,6 +473,10 @@ export class MasterService {
         const values =
           entity === 'users' ? await this.userValues(provided, before as Row, actor) : provided;
         const candidate = { ...(before as Row), ...values };
+        if (entity === 'vendorParts' && candidate.usesKanban === false) {
+          values.qtyPerBox = 1;
+          candidate.qtyPerBox = 1;
+        }
         if (
           candidate.isActive === true &&
           entity === 'vendors' &&

@@ -19,6 +19,7 @@ import {
   GitBranch,
   Users,
   Database,
+  QrCode,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -49,6 +50,7 @@ const ICONS: Record<string, LucideIcon> = {
   PackageSearch,
   GitBranch,
   Users,
+  QrCode,
 };
 
 /** Mengembalikan ikon Database sebagai cadangan agar UI tidak pernah kosong. */

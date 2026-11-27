@@ -60,6 +60,7 @@ export function MasterForm({
   const isEdit = Boolean(row);
   const supplierRoleId = options.roles?.find((option) => option.key === 'supplier')?.value;
   const [selectedRoleId, setSelectedRoleId] = useState(String(row?.roleId ?? ''));
+  const [usesKanban, setUsesKanban] = useState(String(row?.usesKanban ?? true));
   const isSupplierAccount =
     entity === 'users' &&
     supplierRoleId !== undefined &&
@@ -161,6 +162,11 @@ export function MasterForm({
                 ) : null}
 
                 {def.fields.map((field) => {
+                  if (entity === 'vendorParts' && usesKanban === 'false' &&
+                    (field.name === 'qtyPerBox' || field.name === 'backNo')) {
+                    return <input key={field.name} type="hidden" name={field.name}
+                      value={field.name === 'qtyPerBox' ? 1 : String(row?.backNo ?? '-')} />;
+                  }
                   if (entity === 'users' && field.name === 'vendorId' && !isSupplierAccount) {
                     return <input key={field.name} type="hidden" name={field.name} value="" />;
                   }
@@ -179,7 +185,8 @@ export function MasterForm({
                       options={options[field.refEntity ?? ''] ?? []}
                       error={state.fieldErrors?.[field.name]}
                       isEdit={isEdit}
-                      onValueChange={field.name === 'roleId' ? setSelectedRoleId : undefined}
+                      onValueChange={field.name === 'roleId' ? setSelectedRoleId
+                        : field.name === 'usesKanban' ? setUsesKanban : undefined}
                     />
                   );
                 })}
@@ -252,7 +259,7 @@ function Field({
           role="switch"
           aria-checked={checked}
           aria-labelledby={id}
-          onClick={() => setChecked((v) => !v)}
+          onClick={() => { setChecked(!checked); onValueChange?.(String(!checked)); }}
           className={cn(
             'relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors duration-200',
             checked ? 'bg-ok' : 'bg-line-strong',

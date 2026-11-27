@@ -8,3 +8,4 @@ export * from './stock';
 export * from './consumption';
 export * from './notification';
 export * from './sap-po';
+export * from './sap-kanban';

@@ -147,6 +147,7 @@ export interface DeliveryLineInput {
   boxShipped: number;
   qtyPerBox: number;
   sapPoNo: string;
+  usesKanban?: boolean;
 }
 
 export interface DeliverySummary {
@@ -165,7 +166,7 @@ export function summarizeDelivery(lines: readonly DeliveryLineInput[]): Delivery
   const rows = lines.map((line) => {
     const orderPcs = line.boxOrdered * line.qtyPerBox;
     const shippedPcs = line.boxShipped * line.qtyPerBox;
-    return { boxShipped: line.boxShipped, orderPcs, shippedPcs, undeliveredPcs: orderPcs - shippedPcs };
+    return { boxShipped: line.usesKanban === false ? 0 : line.boxShipped, orderPcs, shippedPcs, undeliveredPcs: orderPcs - shippedPcs };
   });
   return {
     lines: rows,

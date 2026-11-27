@@ -61,7 +61,7 @@ describe('tarik master SAP ke ARES (F-01, F-02)', () => {
     read.mockResolvedValue(snapshot());
     const result = await service.sync(false, userId);
     expect(result.vendorParts).toEqual({ created: 1, existing: 0, skipped: 1 });
-    expect(result.issues.some((i) => i.key.includes(M2) && /Qty per box/.test(i.reason))).toBe(true);
+    expect(result.issues.some((i) => i.key.includes(M2) && /Qty per kanban/.test(i.reason))).toBe(true);
     const [vendor] = await db.select().from(vendors).where(eq(vendors.sapVendorNo, V));
     expect(vendor).toMatchObject({ name: 'SUPPLIER UJI MASTER', address: 'JL UJI', isActive: true, plantId: null });
     const [part] = await db.select().from(parts).where(eq(parts.sapMaterialNo, M1));

@@ -211,6 +211,20 @@
       "when": 1794189143108,
       "tag": "0029_claim_of_line",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "5",
+      "when": 1794962021604,
+      "tag": "0030_manual_receiving",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "5",
+      "when": 1795576667016,
+      "tag": "0031_staging_kanban_menu",
+      "breakpoints": true
     }
   ]
 }

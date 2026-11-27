@@ -18,6 +18,7 @@ import type { ReceiptDetail } from '@/lib/queries';
 import { jam } from '@/components/picklist/status';
 import { StationBar } from './station-bar';
 import { CloseSession } from './close-session';
+import { ManualReceiptLines } from './manual-receipt-lines';
 import { useScanSound } from './use-scan-sound';
 import { usePreferences } from '../shell/preferences-provider';
 import { springSoft } from '../motion/transitions';
@@ -47,10 +48,16 @@ export function ReceivingStation({
   session,
   userName,
   npk,
+  canInputManual,
+  canScan,
+  canClose,
 }: {
   session: ReceiptDetail;
   userName: string;
   npk: string;
+  canInputManual: boolean;
+  canScan: boolean;
+  canClose: boolean;
 }) {
   const [code, setCode] = useState('');
   const [result, setResult] = useState<ScanOutcome | null>(null);
@@ -60,6 +67,7 @@ export function ReceivingStation({
   const [busy, setBusy] = useState(false);
   const [closing, setClosing] = useState(false);
   const [manual, setManual] = useState(false);
+  const [manualPending, setManualPending] = useState(false);
   const router = useRouter();
 
   // Diawali dari preferensi tersimpan, lalu masih bisa dimatikan sesaat dari
@@ -152,9 +160,39 @@ export function ReceivingStation({
   }
 
   const lineOf = (id: number | undefined) => lines.find((l) => l.id === id);
-  const totalOrdered = lines.reduce((n, l) => n + l.boxOrdered, 0);
-  const totalScanned = lines.reduce((n, l) => n + l.boxScanned, 0);
+  const scanLines = lines.filter((line) => line.usesKanban);
+  const manualLines = lines.filter((line) => !line.usesKanban);
+  const totalOrdered = scanLines.reduce((n, l) => n + l.boxOrdered, 0);
+  const totalScanned = scanLines.reduce((n, l) => n + l.boxScanned, 0);
   const selesai = totalOrdered > 0 && totalScanned >= totalOrdered;
+  const manualForm = manualLines.length > 0 ? (
+    <ManualReceiptLines receiptId={session.publicId} lines={manualLines} canEdit={canInputManual}
+      onPendingChange={setManualPending}
+      onSaved={(id, qty) => setLines((old) => old.map((line) => line.id === id ? { ...line, manualQty: qty } : line))} />
+  ) : null;
+  const closeDisabled = busy || !canClose || manualPending || manualLines.some((line) => line.manualQty === null);
+  const closeDialog = closing ? <CloseSession receiptId={session.publicId} lines={lines} rejected={rejected}
+    onCancel={() => setClosing(false)} onClosed={() => router.push(`/receiving/${session.publicId}/ringkasan`)} /> : null;
+
+  if (!canScan || scanLines.length === 0) {
+    return (
+      <div className="min-h-dvh">
+        <StationBar picklistNo={session.picklistNo} revision={session.revision} vendorName={session.vendorName}
+          arrivalTime={jam(session.arrivalTime)} receiptNo={session.receiptNo} userName={userName} npk={npk}
+          onClose={() => setClosing(true)} closeDisabled={closeDisabled} />
+        <main className="mx-auto max-w-3xl space-y-5 p-4 sm:p-6">
+          {manualForm && <div className="rounded-card border border-line bg-card">{manualForm}</div>}
+          {scanLines.length > 0 && <section className="rounded-card border border-line bg-card p-5">
+            <h2 className="font-bold">Part dengan kanban</h2>
+            <p className="mt-1 text-sm text-ink-muted">Scan dilakukan oleh petugas gudang.</p>
+            {scanLines.map((line) => <p key={line.id} className="mt-3 text-sm">{line.partNo} · {line.boxScanned} / {line.boxShipped ?? line.boxOrdered} box</p>)}
+          </section>}
+          {manualLines.some((line) => line.manualQty === null) && <p className="text-sm text-warn">Penerimaan dapat ditutup setelah PPIC mengisi seluruh qty tanpa kanban.</p>}
+        </main>
+        {closeDialog}
+      </div>
+    );
+  }
 
   const tone = error
     ? 'bad'
@@ -177,7 +215,7 @@ export function ReceivingStation({
         userName={userName}
         npk={npk}
         onClose={() => setClosing(true)}
-        closeDisabled={busy}
+        closeDisabled={closeDisabled}
       />
 
       {/*
@@ -371,8 +409,10 @@ export function ReceivingStation({
             <h2 className="text-[15px] font-bold">Line Order Sheet</h2>
             <span className="text-[13px] text-ink-muted">{lines.length} part</span>
           </header>
-          <ul className="scroll-slim min-h-0 flex-1 divide-y divide-line overflow-y-auto">
-            {lines.map((l) => {
+          <div className="scroll-slim min-h-0 flex-1 overflow-y-auto">
+          {manualForm}
+          <ul className="divide-y divide-line">
+            {scanLines.map((l) => {
               const done = l.boxScanned >= l.boxOrdered;
               const pct = l.boxOrdered > 0 ? Math.min(100, (l.boxScanned / l.boxOrdered) * 100) : 0;
               const aktif = result?.result !== 'REJECTED' && result?.line?.id === l.id;
@@ -422,18 +462,11 @@ export function ReceivingStation({
               );
             })}
           </ul>
+          </div>
         </section>
       </main>
 
-      {closing ? (
-        <CloseSession
-          receiptId={session.publicId}
-          lines={lines}
-          rejected={rejected}
-          onCancel={() => setClosing(false)}
-          onClosed={() => router.push(`/receiving/${session.publicId}/ringkasan`)}
-        />
-      ) : null}
+      {closeDialog}
     </div>
   );
 }

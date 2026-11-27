@@ -202,6 +202,13 @@ describe('confirmShipment — kanban yang sudah diterima sebelum konfirmasi', ()
 });
 
 describe('summarizeDelivery (Delivery Sheet, F-30)', () => {
+  it('tidak menghitung kg sebagai box', () => {
+    const summary = summarizeDelivery([
+      { boxOrdered: 1000, boxShipped: 950, qtyPerBox: 1, sapPoNo: '450001', usesKanban: false },
+    ]);
+    expect(summary.totalBoxShipped).toBe(0);
+    expect(summary.lines[0]).toMatchObject({ shippedPcs: 950, undeliveredPcs: 50 });
+  });
   it('menghitung qty kirim, undelivered, total box, dan PO unik', () => {
     const out = summarizeDelivery([
       { boxOrdered: 16, boxShipped: 16, qtyPerBox: 100, sapPoNo: '4500001' },

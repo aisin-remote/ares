@@ -145,9 +145,10 @@ Prioritas: **M** = wajib di v1, **S** = sebaiknya v1, **L** = setelah v1.
 
 | ID | Kebutuhan | Prio |
 | --- | --- | --- |
-| F-01 | Master supplier & part disinkron dari SAP (read-only); sebelum sinkron tersedia, CRUD manual dengan kolom nomor SAP wajib | M |
-| F-02 | Vendor part: part, supplier, qty per box, back number, rak, tipe box, aktif/nonaktif, PO item default | M |
-| F-03 | BOM per part jadi: komponen, qty per, berlaku dari/sampai; sinkron dari SAP atau upload Excel | M |
+| F-01 | Supplier dan part berasal dari staging SAP. Pembuatan manual melalui menu Supplier, Part, dan Vendor Part ditutup. | M |
+| F-02 | Vendor part berasal dari staging SAP dan menyimpan pengaturan penerimaan, kemasan, serta PO item default ARES. | M |
+| F-02a | Menu Create Kanban untuk Admin membaca supplier, part, lokasi, dan master kanban dari staging. Admin hanya mengisi qty per kanban. Simpan memperbarui qty master yang ada atau membuat master supplier baru di staging, lalu menyelaraskan kemasan vendor part ARES. | M |
+| F-03 | Data BOM dipakai untuk menghitung konsumsi hasil produksi; menu BOM di ARES dihilangkan. | M |
 | F-04 | Setting cutoff per supplier: satu jadwal per supplier berisi hari cutoff (tanpa jam), lead time ke tanggal kirim, dan jam kedatangan | M |
 | F-05 | Kalender hari libur dan aturan geser: cutoff jatuh di libur → maju ke hari kerja sebelumnya atau mundur ke sesudahnya (pilihan per supplier) | M |
 | F-06 | Kekurangan kirim otomatis membuat Order Sheet recovery dari order sebelumnya: plant + YYMMDD + NNN tetap, dua digit RR naik `01`, `02`, dan seterusnya | M |
@@ -303,6 +304,10 @@ Kanban `PRINTED` (supplier belum konfirmasi kirim) tetap boleh diterima; sistem 
 3. Receipt dibuat per sesi ditutup, berisi pcs diterima per line; satu baris outbox GR per receipt.
 4. Stok WH bertambah saat receipt dibuat, bukan saat GR terkonfirmasi SAP; GR gagal tidak mengubah stok WH tetapi tampil di error log sampai selesai.
 
+5. Part tanpa kanban seperti ingot memakai pengaturan `Menggunakan kanban` nonaktif pada Master Vendor Part. Satuan part diatur ke `KG`, jumlah order dalam kg bulat, dan jumlah per box internal memakai 1. Metode penerimaan disalin ke line saat order terbit. Order tersebut memakai input qty manual dan dapat digabung dengan part yang memakai scan.
+6. PPIC atau Admin membuka penerimaan dengan kode Delivery Sheet, mengisi qty aktual setiap part tanpa kanban, lalu menyimpannya. Qty tersimpan sebagai draft dan tercatat di audit. Penerimaan hanya dapat ditutup setelah seluruh qty manual diisi, termasuk angka 0 jika barang belum datang. Qty melebihi pengiriman ditolak.
+7. Penutupan membuat receipt, menambah stok sesuai qty aktual, dan menyiapkan GR di SAP Outbox. Kekurangan manual wajib beralasan dan mengikuti recovery dengan RR berikutnya. Receipt Sheet dan ringkasan menampilkan satuan part. Pembatalan receipt membalik stok sebesar qty aktual yang sebelumnya diterima.
+
 **6.6 Order Sheet dan PO**
 
 1. Setiap line Order Sheet menyimpan nomor PO dan item SAP untuk bulan tanggal kirim; PO berlaku dari awal sampai akhir bulan tersebut, bukan sampai receiving/GR pertama (keputusan PPIC 2026-11-02). PO bisa dipakai beberapa Order Sheet selama kapasitas cukup. Periode kosong/lintas bulan tidak boleh dipakai; tanpa PO bulan yang sesuai line tidak terbit (F-18).
@@ -374,8 +379,8 @@ ARES tidak pernah memanggil SAP dari dalam request; semua ke luar lewat outbox, 
 | --- | --- | --- | --- |
 | SAP → ARES | PO open items per supplier (PO/SA, item, part, open qty, berlaku) | Tabel staging MS SQL atau OData `API_PURCHASEORDER_PROCESS_SRV` | Tiap jam + manual |
 | SAP → ARES | Master vendor, material, BOM | Tabel staging / OData | Harian |
-| ARES → SAP | Good Receipt 101 ke PO item, delivery note = nomor Order Sheet, reference = nomor receipt | Outbox → tabel staging MS SQL (pola `TT_GOODS_MOVEMENT_H/L`) atau `API_MATERIAL_DOCUMENT_SRV` | Per receipt, worker |
-| ARES → SAP | Pembatalan GR (102) | Sama, doc type berbeda | Per pembatalan |
+| ARES → SAP | Goods Receipt dari penerimaan supplier | Outbox → `A_DB_STG.dbo.TT_GOODS_MOVEMENT_H/L` dengan tipe `FGDL`. Referensi PO/Delivery dan kolom lain mengikuti [pemetaan SAP](SAP-MM-MAPPING.md#1-kesimpulan-untuk-implementasi). | Per receipt, worker |
+| ARES → SAP | Pembatalan GR | Jalur staging menunggu konfirmasi tim SAP | Per pembatalan |
 
 Asumsi: SAP menjalankan backflush konsumsi dari konfirmasi produksi (bukan dari ARES); ARES hanya mengirim penerimaan. Bila ternyata SAP mengharapkan goods issue dari ARES, itu menjadi doc type outbox tambahan tanpa mengubah alur.
 
@@ -500,7 +505,7 @@ Menu sidebar `(app)` (`nav-config.ts`):
 | Integrasi | SAP outbox, Sinkron MES | `Share2`, `RefreshCw` |
 | Laporan | Kedatangan, Konsumsi & order | `BarChart3`, `FileSpreadsheet` |
 | Setting | Cutoff supplier, Kebijakan, Kalender libur | `Clock`, `SlidersHorizontal`, `CalendarDays` |
-| Master data (dapat dilipat) | Supplier, Part, Vendor part, BOM, User & peran | dari `ENTITY_DEFS` |
+| Master data (dapat dilipat) | Supplier, Part, Vendor part, Standar Order, Create Kanban (Admin), User & peran | dari `ENTITY_DEFS` dan menu khusus Create Kanban |
 
 Menu `(portal)`: Order baru, Order berjalan, Riwayat, Akun.
 

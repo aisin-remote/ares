@@ -2,6 +2,7 @@ import {
   mysqlTable,
   varchar,
   int,
+  boolean,
   date,
   time,
   timestamp,
@@ -102,6 +103,7 @@ export const picklistLines = mysqlTable(
     boxReceived: int('BOX_RECEIVED').notNull().default(0),
     /** Snapshot saat terbit — master boleh berubah, dokumen tidak. */
     qtyPerBox: int('QTY_PER_BOX').notNull(),
+    usesKanban: boolean('USES_KANBAN').notNull().default(true),
     pcs: int('PCS').notNull(),
     /** PO item SAP yang berlaku pada tanggal kirim; tanpa ini line tidak terbit (6.6.1, F-18). */
     sapPoNo: varchar('SAP_PO_NO', { length: 16 }).notNull(),

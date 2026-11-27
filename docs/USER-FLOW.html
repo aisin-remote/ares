@@ -579,7 +579,8 @@
         ],
         steps: [
           ['Buat akun supplier', 'Buka User & Peran, isi kode akun, nama, email perusahaan, pilih peran Supplier, hubungkan supplier yang benar, buat password awal, lalu aktifkan akun. PPIC hanya dapat membuat dan mengubah akun supplier.', 'Menu User & Peran', 'Email dipakai untuk OTP', '/master/users'],
-          ['Jaga master utama', 'Pastikan nomor SAP supplier dan part terisi, vendor part aktif, qty per box benar, serta BOM berlaku.', 'Menu Master Data', 'Nomor SAP wajib', '/master/vendors'],
+          ['Tarik master utama', 'Supplier, part, dan vendor part berasal dari staging SAP. Gunakan Tarik master pada menu Integrasi SAP agar data tersedia untuk order.', 'Menu Integrasi SAP', 'Data dari SAP', '/sap'],
+          ['Isi qty per kanban', 'Buka Create Kanban, cari supplier atau part, lalu isi qty per kanban dan simpan. Informasi supplier, part, back number, lokasi, dan kemasan langsung berasal dari staging SAP.', 'Menu Create Kanban', 'Khusus Admin', '/master/kanban'],
           ['Atur kalender operasi', 'Pelihara cutoff supplier, jam datang, lead day, aturan pembulatan, dan hari libur.', 'Menu Cutoff Supplier', 'Periksa simulasi cutoff', '/settings/cutoff'],
           ['Pantau sinkron MES', 'Periksa status job dan cursor. Pada mode fake, data uji dapat dimasukkan dari layar lalu ditarik manual.', 'Menu Sinkron MES', 'Mode sesuai environment', '/mes'],
           ['Pantau SAP Outbox', 'Periksa item Pending, Failed, Held, dan Sent. Baca error sebelum melakukan retry.', 'Menu SAP Outbox', 'Fake menghasilkan FAKE-&lt;n&gt;', '/sap'],
